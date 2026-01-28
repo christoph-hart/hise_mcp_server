@@ -1,0 +1,678 @@
+{
+  "ScriptButton": {
+    "filmstripImage": {
+      "defaultValue": "",
+      "type": "String",
+      "options": [
+        "Load new File",
+        "Use default skin"
+      ],
+      "description": " Select a filmstrip to replace the default button skin."
+    },
+    "numStrips": {
+      "defaultValue": "2",
+      "type": "String",
+      "description": " Set the correct amount of the strips in the filmstrips"
+    },
+    "isVertical": {
+      "defaultValue": true,
+      "type": "bool",
+      "description": " Set to false if not vertical (depreciated)"
+    },
+    "scaleFactor": {
+      "defaultValue": 1.0,
+      "type": "undefined",
+      "description": " if you use a filmstrip, this scalefactor will be used to resize the image. You can use this to support Retina displays."
+    },
+    "radioGroup": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " Set to 1 to makes this button part of a radioGroup 1. Multiple buttons in a common radioGroup will toggle between each other."
+    },
+    "isMomentary": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " in Momentary mode a button switches its value to 1 when clicked, and back to 0 on mouse release."
+    },
+    "enableMidiLearn": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "setValueOnClick": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "mouseCursor": {
+      "defaultValue": "ParentCursor",
+      "type": "String",
+      "options": [
+        "ParentCursor",
+        "NoCursor",
+        "NormalCursor",
+        "WaitCursor",
+        "IBeamCursor",
+        "CrosshairCursor",
+        "CopyingCursor",
+        "PointingHandCursor",
+        "DraggingHandCursor",
+        "LeftRightResizeCursor",
+        "UpDownResizeCursor",
+        "UpDownLeftRightResizeCursor",
+        "TopEdgeResizeCursor",
+        "BottomEdgeResizeCursor",
+        "LeftEdgeResizeCursor",
+        "RightEdgeResizeCursor",
+        "TopLeftCornerResizeCursor",
+        "TopRightCornerResizeCursor",
+        "BottomLeftCornerResizeCursor",
+        "BottomRightCornerResizeCursor"
+      ]
+    }
+  },
+  "ScriptSlider": {
+    "mode": {
+      "defaultValue": "Linear",
+      "type": "String",
+      "options": [
+        "Frequency",
+        "Decibel",
+        "Time",
+        "TempoSync",
+        "Linear",
+        "Discrete",
+        "Pan",
+        "NormalizedPercentage"
+      ],
+      "description": " Select between, Linear, Frequency, Decibel, Time... to adjust the sliders value display to its connected modules domain type."
+    },
+    "style": {
+      "defaultValue": "Knob",
+      "type": "String",
+      "options": [
+        "Knob",
+        "Horizontal",
+        "Vertical",
+        "Range"
+      ],
+      "description": " Display the Slider as a knob, vertical or horizontal slider."
+    },
+    "stepSize": {
+      "defaultValue": 0.01,
+      "type": "undefined",
+      "options": [
+        "0.0",
+        "0.01",
+        "0.1",
+        "1.0"
+      ],
+      "description": " Select the resolution of the value display"
+    },
+    "middlePosition": {
+      "defaultValue": -1.0,
+      "type": "undefined",
+      "description": " Set the value of the sliders middle position. If this value is skewed, the scale of the values will adapt accordingly."
+    },
+    "suffix": {
+      "defaultValue": "",
+      "type": "String",
+      "description": " Set a custom suffix"
+    },
+    "filmstripImage": {
+      "defaultValue": "Use default skin",
+      "type": "String",
+      "options": [
+        "Load new File",
+        "Use default skin"
+      ],
+      "description": " Select a filmstrip to replace the default slider skin. See more below"
+    },
+    "numStrips": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " Set the amount your filmstrips strips."
+    },
+    "isVertical": {
+      "defaultValue": true,
+      "type": "bool",
+      "description": " Set to false if not vertical (depreciated)"
+    },
+    "scaleFactor": {
+      "defaultValue": 1.0,
+      "type": "undefined",
+      "description": " if you use a filmstrip, this scalefactor will be used to resize the image. You can use this to support Retina displays."
+    },
+    "mouseSensitivity": {
+      "defaultValue": 1.0,
+      "type": "undefined",
+      "description": " Adjust this value to finetune how quick/slow you can drag the slider."
+    },
+    "dragDirection": {
+      "defaultValue": "Diagonal",
+      "type": "String",
+      "options": [
+        "Diagonal",
+        "Vertical",
+        "Horizontal"
+      ],
+      "description": " Select a drag direction"
+    },
+    "showValuePopup": {
+      "defaultValue": "No",
+      "type": "String",
+      "options": [
+        "No",
+        "Above",
+        "Below",
+        "Left",
+        "Right"
+      ],
+      "description": " Displays a Value Popup that shows the sliders value"
+    },
+    "showTextBox": {
+      "defaultValue": true,
+      "type": "bool",
+      "description": " If in horizontal or vertical mode: show slider value or not."
+    },
+    "scrollWheel": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "enableMidiLearn": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "sendValueOnDrag": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "matrixTargetId": {
+      "defaultValue": "",
+      "type": "String",
+      "description": " This property registers this UI knob as modulation target for the matrix modulation system. If the string corresponds to a target ID of one (or more) Matrix modulator(s), then it will connect to this module and update it's value parameter, otherwise it will create a custom modulation slot which will be periodically updated with the modulation value. |"
+    }
+  },
+  "ScriptComboBox": {
+    "items": {
+      "defaultValue": "",
+      "type": "String",
+      "description": " Put in a list with the values that you want to select. Seperate the values with a newline."
+    },
+    "fontName": {
+      "defaultValue": "Default",
+      "type": "String",
+      "description": " Select a font of your system fonts."
+    },
+    "fontSize": {
+      "defaultValue": 13.0,
+      "type": "undefined",
+      "description": " Set the font size"
+    },
+    "fontStyle": {
+      "defaultValue": "plain",
+      "type": "String",
+      "options": [
+        "Regular",
+        "Italic",
+        "Bold",
+        "Bold Italic",
+        "Black"
+      ],
+      "description": " Set the font style"
+    },
+    "enableMidiLearn": {
+      "defaultValue": false,
+      "type": "bool",
+      "description": " If `true` then you can right-click and assign this combobox to a MIDI controller / macro control."
+    },
+    "popupAlignment": {
+      "defaultValue": "bottom",
+      "type": "String",
+      "options": [
+        "bottom",
+        "top",
+        "topRight",
+        "bottomRight"
+      ],
+      "description": " Controls where the popup menu will appear relative to the combobox"
+    },
+    "useCustomPopup": {
+      "defaultValue": false,
+      "type": "bool",
+      "description": " If `true`, then you can use the [advanced syntax](/scripting/scripting-in-hise/scriptpanel#context-menus) for creating complex popup menus with headers, submenus etc."
+    }
+  },
+  "ScriptFloatingTile": {
+    "itemColour3": {
+      "defaultValue": 0,
+      "type": "int"
+    },
+    "updateAfterInit": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "ContentType": {
+      "defaultValue": "Empty",
+      "type": "String",
+      "options": [
+        "Empty",
+        "PresetBrowser",
+        "AboutPagePanel",
+        "Keyboard",
+        "PerformanceLabel",
+        "MidiOverlayPanel",
+        "ActivityLed",
+        "CustomSettings",
+        "MidiSources",
+        "MidiChannelList",
+        "TooltipPanel",
+        "MidiLearnPanel",
+        "FrontendMacroPanel",
+        "Plotter",
+        "AudioAnalyser",
+        "Waveform",
+        "FilterDisplay",
+        "DraggableFilterPanel",
+        "WavetableWaterfall",
+        "MPEPanel",
+        "ModulationMatrix",
+        "ModulationMatrixController",
+        "AHDSRGraph",
+        "FlexAHDSRGraph",
+        "MarkdownPanel",
+        "MatrixPeakMeter"
+      ]
+    },
+    "Font": {
+      "defaultValue": "Default",
+      "type": "String"
+    },
+    "FontSize": {
+      "defaultValue": 14.0,
+      "type": "undefined"
+    },
+    "Data": {
+      "defaultValue": "{\n}",
+      "type": "String"
+    }
+  },
+  "ScriptImage": {
+    "alpha": {
+      "defaultValue": 1.0,
+      "type": "undefined",
+      "description": " Sets the alpha value of the image."
+    },
+    "fileName": {
+      "defaultValue": "",
+      "type": "String",
+      "options": [
+        "Load new File"
+      ],
+      "description": " Select an Image. Defaults to the **Image** Project Folder."
+    },
+    "offset": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " Image offset to the top in `px`"
+    },
+    "scale": {
+      "defaultValue": 1.0,
+      "type": "undefined",
+      "description": " Scales the image."
+    },
+    "blendMode": {
+      "defaultValue": "Normal",
+      "type": "String",
+      "options": [
+        "Normal",
+        "Lighten",
+        "Darken",
+        "Multiply",
+        "Average",
+        "Add",
+        "Subtract",
+        "Difference",
+        "Negation",
+        "Screen",
+        "Exclusion",
+        "Overlay",
+        "SoftLight",
+        "HardLight",
+        "ColorDodge",
+        "ColorBurn",
+        "LinearDodge",
+        "LinearBurn",
+        "LinearLight",
+        "VividLight",
+        "PinLight",
+        "HardMix",
+        "Reflect",
+        "Glow",
+        "Phoenix"
+      ]
+    },
+    "allowCallbacks": {
+      "defaultValue": false,
+      "type": "bool",
+      "options": [
+        "No Callbacks",
+        "Context Menu",
+        "Clicks Only",
+        "Clicks & Hover",
+        "Clicks, Hover & Dragging",
+        "All Callbacks"
+      ]
+    },
+    "popupMenuItems": {
+      "defaultValue": "",
+      "type": "String"
+    },
+    "popupOnRightClick": {
+      "defaultValue": true,
+      "type": "bool"
+    }
+  },
+  "ScriptLabel": {
+    "fontName": {
+      "defaultValue": "Arial",
+      "type": "String",
+      "description": " Select a Font"
+    },
+    "fontSize": {
+      "defaultValue": 13.0,
+      "type": "undefined",
+      "description": " set the size of the Font"
+    },
+    "fontStyle": {
+      "defaultValue": "plain",
+      "type": "String",
+      "options": [
+        "Regular",
+        "Italic",
+        "Bold",
+        "Bold Italic",
+        "Black",
+        "Password"
+      ],
+      "description": " Select one of the font styles"
+    },
+    "alignment": {
+      "defaultValue": "centred",
+      "type": "String",
+      "options": [
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "centred",
+        "centredTop",
+        "centredBottom",
+        "topLeft",
+        "topRight",
+        "bottomLeft",
+        "bottomRight"
+      ],
+      "description": " choose where you want to align the text in its box."
+    },
+    "editable": {
+      "defaultValue": true,
+      "type": "bool",
+      "description": " Turn this off to make the text consistent."
+    },
+    "multiline": {
+      "defaultValue": false,
+      "type": "bool",
+      "description": " Enable this to turn on the multiline mode, that automatically breaks the text into multiple lines."
+    },
+    "updateEachKey": {
+      "defaultValue": false,
+      "type": "bool"
+    }
+  },
+  "ScriptPanel": {
+    "borderSize": {
+      "defaultValue": 2.0,
+      "type": "undefined"
+    },
+    "borderRadius": {
+      "defaultValue": 6.0,
+      "type": "undefined"
+    },
+    "opaque": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "allowDragging": {
+      "defaultValue": 0,
+      "type": "int"
+    },
+    "allowCallbacks": {
+      "defaultValue": "No Callbacks",
+      "type": "String",
+      "options": [
+        "No Callbacks",
+        "Context Menu",
+        "Clicks Only",
+        "Clicks & Hover",
+        "Clicks, Hover & Dragging",
+        "All Callbacks"
+      ]
+    },
+    "popupMenuItems": {
+      "defaultValue": "",
+      "type": "String"
+    },
+    "popupOnRightClick": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "popupMenuAlign": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "selectedPopupIndex": {
+      "defaultValue": -1,
+      "type": "int"
+    },
+    "stepSize": {
+      "defaultValue": 0.0,
+      "type": "undefined"
+    },
+    "enableMidiLearn": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "holdIsRightClick": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "isPopupPanel": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "bufferToImage": {
+      "defaultValue": false,
+      "type": "bool"
+    }
+  },
+  "ScriptAudioWaveform": {
+    "itemColour3": {
+      "defaultValue": 587202559,
+      "type": "int"
+    },
+    "opaque": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "showLines": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "showFileName": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "sampleIndex": {
+      "defaultValue": 0,
+      "type": "int"
+    },
+    "enableRange": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "loadWithLeftClick": {
+      "defaultValue": false,
+      "type": "bool"
+    }
+  },
+  "ScriptTable": {
+    "tableIndex": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " the table index (starting with 0) of the table that you want to control. In most cases it will just be zero, but eg. the Table Envelope has two tables (0 = Attack, 1 = Release). It might be possible that you have to [rebuild](/working-with-hise/hise-interface/interface-designer#canvas) the interface after changing this value to apply the changes."
+    },
+    "customColours": {
+      "defaultValue": 0,
+      "type": "int",
+      "description": " if true, it will use a flat design with customizable colours, otherwise it will look like the thing above."
+    }
+  },
+  "ScriptSliderPack": {
+    "sliderAmount": {
+      "defaultValue": 16,
+      "type": "int"
+    },
+    "stepSize": {
+      "defaultValue": 0.01,
+      "type": "undefined",
+      "options": [
+        "0.01",
+        "0.1",
+        "1.0"
+      ]
+    },
+    "flashActive": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "showValueOverlay": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "SliderPackIndex": {
+      "defaultValue": 0,
+      "type": "int"
+    },
+    "mouseUpCallback": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "stepSequencerMode": {
+      "defaultValue": false,
+      "type": "bool"
+    }
+  },
+  "ScriptedViewport": {
+    "scrollBarThickness": {
+      "defaultValue": 16.0,
+      "type": "undefined"
+    },
+    "autoHide": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "useList": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "viewPositionX": {
+      "defaultValue": 0.0,
+      "type": "undefined"
+    },
+    "viewPositionY": {
+      "defaultValue": 0.0,
+      "type": "undefined"
+    },
+    "items": {
+      "defaultValue": "",
+      "type": "String"
+    },
+    "fontName": {
+      "defaultValue": "Arial",
+      "type": "String"
+    },
+    "fontSize": {
+      "defaultValue": 13.0,
+      "type": "undefined"
+    },
+    "fontStyle": {
+      "defaultValue": "plain",
+      "type": "String",
+      "options": [
+        "Regular",
+        "Italic",
+        "Bold",
+        "Bold Italic",
+        "Black"
+      ]
+    },
+    "alignment": {
+      "defaultValue": "centred",
+      "type": "String",
+      "options": [
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "centred",
+        "centredTop",
+        "centredBottom",
+        "topLeft",
+        "topRight",
+        "bottomLeft",
+        "bottomRight"
+      ]
+    }
+  },
+  "ScriptMultipageDialog": {
+    "Font": {
+      "defaultValue": "Default",
+      "type": "String"
+    },
+    "FontSize": {
+      "defaultValue": 16.0,
+      "type": "undefined"
+    },
+    "EnableConsoleOutput": {
+      "defaultValue": false,
+      "type": "bool"
+    },
+    "DialogWidth": {
+      "defaultValue": 500,
+      "type": "int"
+    },
+    "DialogHeight": {
+      "defaultValue": 400,
+      "type": "int"
+    },
+    "UseViewport": {
+      "defaultValue": true,
+      "type": "bool"
+    },
+    "StyleSheet": {
+      "defaultValue": "Dark",
+      "type": "String",
+      "options": [
+        "None",
+        "Property Editor",
+        "RawHTML",
+        "Dark",
+        "Bright",
+        "ModalPopup"
+      ]
+    },
+    "ConfirmClose": {
+      "defaultValue": false,
+      "type": "bool"
+    }
+  }
+}
