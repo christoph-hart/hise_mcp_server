@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:configure": "node scripts/build-and-configure.js",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js"
   },

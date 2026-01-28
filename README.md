@@ -85,7 +85,17 @@ Download the LTS version from: https://nodejs.org/
 npm install
 ```
 
-3. Build the project:
+3. Build the project and configure opencode (recommended):
+```bash
+npm run build:configure
+```
+
+This will:
+- Compile TypeScript to JavaScript
+- Automatically find and update your opencode config file
+- Add the HISE MCP server entry with the correct absolute path
+
+Or manually build only:
 ```bash
 npm run build
 ```
@@ -160,19 +170,26 @@ List all available tools from the HISE MCP server
 
 ### Using with Opencode
 
-Configure Opencode to connect to the HISE MCP server by adding it to your `opencode.json` config file.
+The easiest way to configure Opencode is to use the automated script:
+```bash
+npm run build:configure
+```
 
-#### Finding Opencode Config
+This will:
+- Build the TypeScript project
+- Find your opencode config file automatically
+- Add or update the HISE MCP server entry with the correct absolute path
+- Create the config directory if it doesn't exist
 
-**macOS/Linux:** `~/.local/share/opencode/opencode.json`
+After running, restart Opencode to load the MCP server.
 
-**Windows:** `%USERPROFILE%\.local\share\opencode\opencode.json` (usually `C:\Users\<username>\.local\share\opencode\opencode.json`)
+#### Manual Configuration
 
-Create the directory if it doesn't exist.
+If you prefer to configure manually, add the following to your `opencode.json`:
 
-#### Configuration
-
-Add the following to your `opencode.json`:
+**Config location:**
+- **macOS/Linux:** `~/.local/share/opencode/opencode.json`
+- **Windows:** `%USERPROFILE%\.config\opencode\opencode.json`
 
 ```json
 {
@@ -180,10 +197,7 @@ Add the following to your `opencode.json`:
   "mcp": {
     "hise": {
       "type": "local",
-      "command": ["node", "./dist/index.js"],
-      "environment": {
-        "HISE_DATA_PATH": "./data/hise-data.json"
-      },
+      "command": ["node", "/path/to/hise_mcp_server/dist/index.js"],
       "enabled": true
     }
   }
@@ -193,9 +207,10 @@ Add the following to your `opencode.json`:
 **Important notes:**
 - Use `$schema` at the top for validation
 - The `command` must be an array with each argument as a separate element
-- Environment variables go under `environment` (not `env`)
-- Use relative paths if running Opencode from the `hise_mcp` directory
+- Replace `/path/to/hise_mcp_server/dist/index.js` with your actual installation path
+- Use forward slashes on Windows or double backslashes (`\\`)
 - Set `enabled: true` to activate the server
+- After `git pull`, run `npm run build` to rebuild TypeScript
 
 #### Using from Opencode
 
@@ -350,6 +365,15 @@ npm run dev
 ```bash
 npm run build
 ```
+
+### Updating after git pull
+After pulling changes from the repository:
+```bash
+git pull
+npm run build:configure
+```
+
+This will rebuild TypeScript and update the opencode config with the new code. Then restart Opencode.
 
 ## Troubleshooting
 
