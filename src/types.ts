@@ -62,3 +62,19 @@ export interface CodeSnippet {
   relatedComponents: string[];
   difficulty: "beginner" | "intermediate" | "advanced";
 }
+
+export type SearchDomain = "all" | "api" | "ui" | "modules" | "snippets";
+
+export interface SearchResult {
+  id: string;
+  domain: SearchDomain;
+  name: string;
+  description: string;
+  score: number;
+  matchType: "exact" | "prefix" | "keyword" | "fuzzy";
+}
+
+export interface EnrichedResult<T> {
+  result: T;
+  related: string[];
+}
