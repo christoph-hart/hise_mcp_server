@@ -10,7 +10,7 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter } from './types.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain } from './types.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
