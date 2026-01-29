@@ -2,13 +2,17 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
+  isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
 import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain } from './types.js';
+import express, { Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 
 const server = new Server(
   {
@@ -467,12 +471,140 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main() {
   dataLoader = new HISEDataLoader();
-  
   await dataLoader.loadData();
-  
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error('HISE MCP server started');
+
+  const args = process.argv.slice(2);
+  const isProduction = args.includes('--production') || args.includes('-p');
+  const port = parseInt(process.env.PORT || '3000', 10);
+
+  if (isProduction) {
+    const app = express();
+    app.use(express.json());
+
+    const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+
+    app.get('/health', (_req: Request, res: Response) => {
+      res.json({ status: 'ok', server: 'hise-mcp-server' });
+    });
+
+    app.post('/mcp', async (req: Request, res: Response) => {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+      if (sessionId) {
+        console.error(`Received MCP request for session: ${sessionId}`);
+      }
+
+      try {
+        let transport: StreamableHTTPServerTransport;
+
+        if (sessionId && transports[sessionId]) {
+          transport = transports[sessionId];
+        } else if (!sessionId && isInitializeRequest(req.body)) {
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (sid) => {
+              console.error(`Session initialized with ID: ${sid}`);
+              transports[sid] = transport;
+            },
+          });
+
+          transport.onclose = () => {
+            const sid = transport.sessionId;
+            if (sid && transports[sid]) {
+              console.error(`Transport closed for session ${sid}`);
+              delete transports[sid];
+            }
+          };
+
+          await server.connect(transport);
+          await transport.handleRequest(req, res, req.body);
+          return;
+        } else {
+          res.status(400).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
+            id: null,
+          });
+          return;
+        }
+
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('Error handling MCP request:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error' },
+            id: null,
+          });
+        }
+      }
+    });
+
+    app.get('/mcp', async (req: Request, res: Response) => {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+      if (!sessionId || !transports[sessionId]) {
+        res.status(400).send('Invalid or missing session ID');
+        return;
+      }
+
+      const lastEventId = req.headers['last-event-id'];
+      if (lastEventId) {
+        console.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+      } else {
+        console.error(`Establishing SSE stream for session ${sessionId}`);
+      }
+
+      const transport = transports[sessionId];
+      await transport.handleRequest(req, res);
+    });
+
+    app.delete('/mcp', async (req: Request, res: Response) => {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+      if (!sessionId || !transports[sessionId]) {
+        res.status(400).send('Invalid or missing session ID');
+        return;
+      }
+
+      console.error(`Session termination request for session ${sessionId}`);
+
+      try {
+        const transport = transports[sessionId];
+        await transport.handleRequest(req, res);
+      } catch (error) {
+        console.error('Error handling session termination:', error);
+        if (!res.headersSent) {
+          res.status(500).send('Error processing session termination');
+        }
+      }
+    });
+
+    app.listen(port, () => {
+      console.error(`HISE MCP server running in production mode on port ${port}`);
+      console.error(`MCP endpoint: http://localhost:${port}/mcp`);
+    });
+
+    process.on('SIGINT', async () => {
+      console.error('Shutting down server...');
+      for (const sessionId in transports) {
+        try {
+          console.error(`Closing transport for session ${sessionId}`);
+          await transports[sessionId].close();
+          delete transports[sessionId];
+        } catch (error) {
+          console.error(`Error closing transport for session ${sessionId}:`, error);
+        }
+      }
+      console.error('Server shutdown complete');
+      process.exit(0);
+    });
+  } else {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error('HISE MCP server started in local mode (stdio)');
+  }
 }
 
 main().catch((error) => {

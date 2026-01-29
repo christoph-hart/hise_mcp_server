@@ -354,11 +354,111 @@ For code snippets, use a two-step process:
 
 This keeps responses lightweight and allows AI agents to select only relevant examples.
 
+## Production Deployment
+
+The server can run in two modes:
+1. **Local mode (stdio)** - For use with Claude Desktop / Opencode
+2. **Production mode (HTTP)** - For deployment on a server
+
+### Production Mode
+
+Production mode uses Express + StreamableHTTP transport (the modern MCP protocol), allowing the MCP server to be deployed on a remote server with support for resumability and session management.
+
+#### Running in Production Mode
+
+```bash
+# Build and start in production mode
+npm run build
+npm run start:production
+
+# Or with a custom port
+PORT=8080 npm run start:production
+```
+
+The server will start on port 3000 by default (configurable via `PORT` environment variable).
+
+#### Endpoints
+
+- **POST /mcp** - Main MCP endpoint (initialization & JSON-RPC requests)
+- **GET /mcp** - SSE stream for server-to-client notifications (requires `mcp-session-id` header)
+- **DELETE /mcp** - Session termination (requires `mcp-session-id` header)
+- **GET /health** - Health check (returns `{"status":"ok","server":"hise-mcp-server"}`)
+
+#### Systemd Service Setup
+
+1. Copy the service file template:
+```bash
+sudo cp hise-mcp-server.service /etc/systemd/system/
+```
+
+2. Edit the service file:
+```bash
+sudo nano /etc/systemd/system/hise-mcp-server.service
+```
+
+Update the following:
+- `User=YOUR_USER` - Replace with your Ubuntu username
+- `WorkingDirectory=/path/to/hise_mcp_server` - Replace with actual path
+- `PORT=3000` - Change if needed
+
+3. Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable hise-mcp-server
+sudo systemctl start hise-mcp-server
+```
+
+4. Check service status:
+```bash
+sudo systemctl status hise-mcp-server
+sudo journalctl -u hise-mcp-server -f  # View logs
+```
+
+#### Nginx Configuration
+
+1. Copy the example nginx config:
+```bash
+sudo cp nginx.conf.example /etc/nginx/sites-available/hise-mcp-server
+```
+
+2. Edit the configuration:
+```bash
+sudo nano /etc/nginx/sites-available/hise-mcp-server
+```
+
+Update:
+- `server_name your-domain.com` - Replace with your domain
+- SSL certificate paths (if using HTTPS)
+
+3. Enable the site:
+```bash
+sudo ln -s /etc/nginx/sites-available/hise-mcp-server /etc/nginx/sites-enabled/
+sudo nginx -t  # Test configuration
+sudo systemctl reload nginx
+```
+
+#### Connecting to Production Server
+
+Configure your MCP client to connect to the production server:
+```json
+{
+  "mcpServers": {
+    "hise": {
+      "url": "https://your-domain.com/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
 ## Development
 
 ### Development mode (with auto-rebuild):
 ```bash
 npm run dev
+
+# Or in production mode for testing
+npm run dev:production
 ```
 
 ### TypeScript compilation:
