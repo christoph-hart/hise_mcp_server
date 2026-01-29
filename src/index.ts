@@ -471,14 +471,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main() {
   console.error("DEBUG: main() started");
-  dataLoader = new HISEDataLoader();
-  await dataLoader.loadData();
+
+  try {
+    dataLoader = new HISEDataLoader();
+    await dataLoader.loadData();
+    console.error("Data loaded successfully.");
+  } catch (e) {
+    console.error("Warning: Data loader failed to initialize:", e);
+  }
 
   const args = process.argv.slice(2);
-  const isProduction = args.includes('--production') || args.includes('-p') || process.env.PORT;
-  const port = parseInt(process.env.PORT || '3000', 10);
+  
+  
+  // Check for the flag OR the environment variable you set in the .service file
+const isProduction = 
+  args.includes('--production') || 
+  args.includes('-p') || 
+  process.env.NODE_ENV === 'production'; 
 
   if (isProduction) {
+    console.error(`Starting HTTP server`);
     const app = express();
     app.use(express.json());
 
@@ -582,7 +594,8 @@ async function main() {
       }
     });
 
-    app.listen(port, () => {
+    app.listen(port, '0.0.0.0', () => {
+      console.error(`SERVER LIVE: http://localhost:${port}`);
       console.error(`HISE MCP server running in production mode on port ${port}`);
       console.error(`MCP endpoint: http://localhost:${port}/mcp`);
     });
@@ -602,6 +615,7 @@ async function main() {
       process.exit(0);
     });
   } else {
+    console.error("DEBUG: No production flag. Arguments were:", JSON.stringify(args));
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error('HISE MCP server started in local mode (stdio)');
