@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import 'dotenv/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -11,6 +12,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
 import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain } from './types.js';
+import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
+import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
@@ -487,6 +490,25 @@ async function main() {
       res.json({ status: 'ok', server: 'hise-mcp-server' });
     });
 
+    // Auth status endpoint (for debugging)
+    app.get('/auth/status', (_req: Request, res: Response) => {
+      const authConfigured = isAuthConfigured();
+      const oauthConfigured = isOAuthConfigured();
+      res.json({
+        authEnabled: authConfigured,
+        oauthEnabled: oauthConfigured,
+        cacheStats: authConfigured ? getTokenCache().stats() : null,
+      });
+    });
+
+    // OAuth routes (Phase 3: Claude Desktop support)
+    // Mount at root for /.well-known/oauth-authorization-server
+    // and /oauth/* endpoints
+    app.use(oauthRouter);
+
+    // Apply auth middleware to all /mcp routes
+    app.use('/mcp', authMiddleware);
+
     app.post('/mcp', async (req: Request, res: Response) => {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
@@ -584,10 +606,34 @@ async function main() {
     app.listen(port, () => {
       console.error(`HISE MCP server running in production mode on port ${port}`);
       console.error(`MCP endpoint: http://localhost:${port}/mcp`);
+      
+      // Auth status
+      if (isAuthConfigured()) {
+        console.error(`Auth enabled: validating tokens against ${process.env.MCP_VALIDATE_TOKEN_URL}`);
+      } else {
+        console.error(`WARNING: Auth not configured - MCP endpoints are publicly accessible!`);
+        console.error(`Set MCP_VALIDATE_TOKEN_URL and MCP_SHARED_SECRET to enable auth.`);
+      }
+      
+      // OAuth status
+      if (isOAuthConfigured()) {
+        console.error(`OAuth enabled: Claude Desktop can authenticate via ${process.env.OAUTH_AUTHORIZE_URL}`);
+        console.error(`OAuth metadata: http://localhost:${port}/.well-known/oauth-authorization-server`);
+      } else {
+        console.error(`OAuth not configured - Claude Desktop OAuth flow unavailable.`);
+        console.error(`Set OAUTH_ISSUER, OAUTH_AUTHORIZE_URL, OAUTH_TOKEN_URL, MCP_CLIENT_ID, MCP_CLIENT_SECRET, MCP_SERVER_URL to enable.`);
+      }
     });
 
     process.on('SIGINT', async () => {
       console.error('Shutting down server...');
+      
+      // Cleanup token cache
+      if (isAuthConfigured()) {
+        console.error('Cleaning up token cache...');
+        getTokenCache().destroy();
+      }
+      
       for (const sessionId in transports) {
         try {
           console.error(`Closing transport for session ${sessionId}`);
