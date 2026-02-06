@@ -20,6 +20,7 @@ import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain,
 import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
+import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -868,6 +869,18 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         description: w.description,
         mimeType: 'text/markdown',
       })),
+      {
+        uri: 'hise://style-guides',
+        name: 'HISE Style Guides',
+        description: 'Coding style guides for HISE development',
+        mimeType: 'application/json',
+      },
+      ...STYLE_GUIDES.map(s => ({
+        uri: `hise://style-guides/${s.id}`,
+        name: s.name,
+        description: s.description,
+        mimeType: 'text/markdown',
+      })),
     ],
   };
 });
@@ -895,15 +908,49 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   }
 
   // Specific workflow
-  const match = uri.match(/^hise:\/\/workflows\/(.+)$/);
-  if (match) {
-    const workflow = WORKFLOWS.find(w => w.id === match[1]);
+  const workflowMatch = uri.match(/^hise:\/\/workflows\/(.+)$/);
+  if (workflowMatch) {
+    const workflow = WORKFLOWS.find(w => w.id === workflowMatch[1]);
     if (workflow) {
       return {
         contents: [{
           uri,
           mimeType: 'text/markdown',
           text: formatWorkflowAsMarkdown(workflow),
+        }],
+      };
+    }
+  }
+
+  // List all style guides
+  if (uri === 'hise://style-guides') {
+    return {
+      contents: [{
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          STYLE_GUIDES.map(s => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+          })),
+          null,
+          2
+        ),
+      }],
+    };
+  }
+
+  // Specific style guide
+  const styleGuideMatch = uri.match(/^hise:\/\/style-guides\/(.+)$/);
+  if (styleGuideMatch) {
+    const styleGuide = STYLE_GUIDES.find(s => s.id === styleGuideMatch[1]);
+    if (styleGuide) {
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/markdown',
+          text: formatStyleGuideAsMarkdown(styleGuide),
         }],
       };
     }
@@ -1193,7 +1240,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: w.name,
             description: w.description,
           })),
-          // Future: guides, style docs, etc. would be added here
+          styleGuides: STYLE_GUIDES.map(s => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+          })),
         };
         return {
           content: [{ type: 'text', text: JSON.stringify(resources, null, 2) }],
@@ -1211,10 +1262,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        // Future: check other resource categories here
+        // Check style guides
+        const styleGuide = STYLE_GUIDES.find(s => s.id === id);
+        if (styleGuide) {
+          return {
+            content: [{ type: 'text', text: formatStyleGuideAsMarkdown(styleGuide) }],
+          };
+        }
 
         // Not found
-        const availableIds = WORKFLOWS.map(w => w.id);
+        const availableIds = [
+          ...WORKFLOWS.map(w => w.id),
+          ...STYLE_GUIDES.map(s => s.id),
+        ];
         return {
           content: [{
             type: 'text',
@@ -1292,8 +1352,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
+          // Add hint for style guide when errors occur
+          const response = result.errors?.length
+            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
+            : result;
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
           };
         } catch (err) {
           return {
@@ -1318,8 +1382,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
+          // Add hint for style guide when errors occur
+          const response = result.errors?.length
+            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
+            : result;
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
           };
         } catch (err) {
           return {
@@ -1377,8 +1445,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
+          // Add hint for style guide when errors occur
+          const response = result.errors?.length
+            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
+            : result;
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
           };
         } catch (err) {
           return {
