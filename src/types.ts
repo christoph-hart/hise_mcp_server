@@ -113,7 +113,7 @@ export interface ServerStatus extends ServerStatusBase {
     error: string | null;
   };
   hints: {
-    workflows: string;
+    resources: string;
   };
 }
 

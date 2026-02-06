@@ -48,54 +48,60 @@ See [ADDING_RUNTIME_BRIDGES.md](ADDING_RUNTIME_BRIDGES.md) for developer documen
 
 #### Exact Query Tools
 
-1. **`query_ui_property`** - Query UI component properties
-   - Input: `componentType`, `propertyName`
-   - Returns: Property details including type, default value, description, and possible values
-
-2. **`query_scripting_api`** - Query Scripting API methods
-   - Input: `namespace`, `methodName`
-   - Returns: Method signature, parameters, return type, description, and example usage
-
-3. **`query_module_parameter`** - Query module parameter IDs
-   - Input: `moduleType`, `parameterId`
-   - Returns: Parameter details including min/max values, step size, default value, and description
+| Tool | Description | Input | Returns |
+|------|-------------|-------|---------|
+| `query_ui_property` | Query UI component properties | `componentType`, `propertyName` | Property details including type, default value, description, and possible values |
+| `query_scripting_api` | Query Scripting API methods | `namespace`, `methodName` | Method signature, parameters, return type, description, and example usage |
+| `query_module_parameter` | Query module parameter IDs | `moduleType`, `parameterId` | Parameter details including min/max values, step size, default value, and description |
 
 #### Code Snippet Tools
 
-4. **`list_snippets`** - List all available code snippets with metadata
-   - Input: none
-   - Returns: Array of snippet summaries (id, title, description, category, tags, difficulty)
-   - Use this first to browse and discover relevant snippets
-
-5. **`get_snippet`** - Get full details and code for a specific snippet
-   - Input: `id` (snippet ID from `list_snippets`)
-   - Returns: Complete snippet with code, related APIs, and components
+| Tool | Description | Input | Returns |
+|------|-------------|-------|---------|
+| `list_snippets` | List all available code snippets with metadata | none | Array of snippet summaries (id, title, description, category, tags, difficulty) |
+| `get_snippet` | Get full details and code for a specific snippet | `id` | Complete snippet with code, related APIs, and components |
 
 #### Listing Tools
 
-6. **`list_ui_components`** - List all available UI component types
-7. **`list_scripting_namespaces`** - List all available Scripting API namespaces
-8. **`list_module_types`** - List all available module types
-9. **`server_status`** - Get server version, statistics, and HISE runtime availability
+| Tool | Description |
+|------|-------------|
+| `list_ui_components` | List all available UI component types |
+| `list_scripting_namespaces` | List all available Scripting API namespaces |
+| `list_module_types` | List all available module types |
+| `server_status` | Get server version, statistics, and HISE runtime availability |
+
+#### Resource Tools
+
+| Tool | Description | Input | Returns |
+|------|-------------|-------|---------|
+| `list_resources` | List available static resources (workflows, guides) | none | Categorized list of resources with IDs and descriptions |
+| `get_resource` | Get full content of a specific resource | `id` | Resource content in markdown format |
 
 ### HISE Runtime Bridge Tools (Require Local HISE)
 
 These tools require HISE running locally with the REST API enabled (port 1900):
 
-**Scripting Tools:**
-10. **`hise_runtime_status`** - Get HISE project info and script processors
-11. **`hise_runtime_get_script`** - Read script content from a processor
-12. **`hise_runtime_set_script`** - Update and compile script content
-13. **`hise_runtime_recompile`** - Recompile a processor without changing script
-14. **`hise_runtime_screenshot`** - Capture UI screenshot (base64 or file)
+#### Scripting Tools
 
-**Component Tools:**
-15. **`hise_runtime_list_components`** - List all UI components (flat or hierarchical)
-16. **`hise_runtime_get_component_properties`** - Get all properties for a component
-17. **`hise_runtime_set_component_properties`** - Batch set properties on components
-18. **`hise_runtime_get_component_value`** - Get runtime value of a component
-19. **`hise_runtime_set_component_value`** - Set runtime value, trigger callbacks
-20. **`hise_runtime_get_selected_components`** - Get Interface Designer selection
+| Tool | Description |
+|------|-------------|
+| `hise_runtime_status` | Get HISE project info and script processors |
+| `hise_runtime_get_script` | Read script content from a processor |
+| `hise_runtime_set_script` | Update and compile script content |
+| `hise_runtime_recompile` | Recompile a processor without changing script |
+| `hise_runtime_screenshot` | Capture UI screenshot (base64 or file) |
+| `hise_runtime_edit_script` | Edit specific lines without sending full script |
+
+#### Component Tools
+
+| Tool | Description |
+|------|-------------|
+| `hise_runtime_list_components` | List all UI components (flat or hierarchical) |
+| `hise_runtime_get_component_properties` | Get all properties for a component |
+| `hise_runtime_set_component_properties` | Batch set properties on components |
+| `hise_runtime_get_component_value` | Get runtime value of a component |
+| `hise_runtime_set_component_value` | Set runtime value, trigger callbacks |
+| `hise_runtime_get_selected_components` | Get Interface Designer selection |
 
 ## Installation
 

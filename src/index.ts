@@ -329,6 +329,41 @@ RETURNS: Server name/version, Node.js version, platform, cache status, counts fo
     },
   },
 
+  // RESOURCE TOOLS - Access static documentation resources
+  {
+    name: 'list_resources',
+    description: `List all available HISE static resources (workflows, guides, documentation).
+
+Returns categorized list with IDs that can be passed to get_resource.
+
+Current resource categories:
+- workflows: Step-by-step guides for common development tasks
+
+Use get_resource with a specific ID to retrieve the full content.`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_resource',
+    description: `Get the content of a specific HISE resource by ID.
+
+USE AFTER list_resources to retrieve full content for workflows, guides, or documentation.
+
+RETURNS: Resource content in markdown format (for workflows: steps, tools used, tips).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The resource ID from list_resources (e.g., "fix-errors", "ui-layout")',
+        },
+      },
+      required: ['id'],
+    },
+  },
+
   // ============================================================================
   // HISE RUNTIME BRIDGE TOOLS
   // These tools require a running HISE instance with REST API enabled
@@ -1128,12 +1163,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ...baseStatus,
           hiseRuntime,
           hints: {
-            workflows: 'Read hise://workflows to discover recommended development workflows',
+            resources: 'Use list_resources tool to discover available workflows and guides',
           },
         };
 
         return {
           content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
+        };
+      }
+
+      // RESOURCE TOOLS
+      case 'list_resources': {
+        const resources = {
+          workflows: WORKFLOWS.map(w => ({
+            id: w.id,
+            name: w.name,
+            description: w.description,
+          })),
+          // Future: guides, style docs, etc. would be added here
+        };
+        return {
+          content: [{ type: 'text', text: JSON.stringify(resources, null, 2) }],
+        };
+      }
+
+      case 'get_resource': {
+        const { id } = args as { id: string };
+
+        // Check workflows
+        const workflow = WORKFLOWS.find(w => w.id === id);
+        if (workflow) {
+          return {
+            content: [{ type: 'text', text: formatWorkflowAsMarkdown(workflow) }],
+          };
+        }
+
+        // Future: check other resource categories here
+
+        // Not found
+        const availableIds = WORKFLOWS.map(w => w.id);
+        return {
+          content: [{
+            type: 'text',
+            text: `Resource not found: "${id}". Available resources: ${availableIds.join(', ')}`
+          }],
+          isError: true,
         };
       }
 
