@@ -14,7 +14,8 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain } from './types.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus } from './types.js';
+import { getHiseClient } from './hise-client.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -254,18 +255,165 @@ RETURNS: Complete snippet including:
   // SERVER INFO TOOL
   {
     name: 'server_status',
-    description: `Get server version, runtime information, and data statistics.
+    description: `Get server version, runtime information, data statistics, and HISE runtime availability.
 
 USE THIS TO:
 - Verify the server version matches expectations
 - Check if data is loaded and from cache
 - View statistics about available documentation
+- Check if HISE runtime bridge is available (requires local HISE instance)
 - Debug connection issues
 
-RETURNS: Server name/version, Node.js version, platform, cache status, and counts for all data types.`,
+RETURNS: Server name/version, Node.js version, platform, cache status, counts for all data types, and HISE runtime status.`,
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+
+  // ============================================================================
+  // HISE RUNTIME BRIDGE TOOLS
+  // These tools require a running HISE instance with REST API enabled
+  // ============================================================================
+
+  {
+    name: 'hise_runtime_status',
+    description: `Get status of the running HISE instance.
+
+REQUIRES: HISE running locally with REST API enabled (default port 1900).
+
+RETURNS: Project info, script processors, callbacks, and external files.
+
+USE THIS TO:
+- Verify HISE is running and accessible
+- Discover available script processors and their moduleIds
+- Find which callbacks have content (empty: false)
+- Get the scriptsFolder path for external files`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'hise_runtime_get_script',
+    description: `Read script content from a HISE processor.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID (e.g., "Interface")
+- callback (optional): Specific callback (e.g., "onInit"). If omitted, returns all callbacks merged.
+
+NOTE: onInit returns raw code (no function wrapper). Other callbacks include the function signature.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID (e.g., "Interface")',
+        },
+        callback: {
+          type: 'string',
+          description: 'Optional: specific callback name (e.g., "onInit", "onNoteOn")',
+        },
+      },
+      required: ['moduleId'],
+    },
+  },
+  {
+    name: 'hise_runtime_set_script',
+    description: `Update and compile script content in a HISE processor.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID
+- script (required): The script content
+- callback (optional): Specific callback to update. If omitted, script is treated as merged content.
+- compile (optional): Whether to compile after setting (default: true)
+
+RETURNS: Compilation result with success status, console logs, and any errors with callstacks.
+
+NOTE: For onInit, provide raw code. For other callbacks, include the function wrapper.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        script: {
+          type: 'string',
+          description: 'The script content',
+        },
+        callback: {
+          type: 'string',
+          description: 'Optional: specific callback to update',
+        },
+        compile: {
+          type: 'boolean',
+          description: 'Whether to compile after setting (default: true)',
+        },
+      },
+      required: ['moduleId', 'script'],
+    },
+  },
+  {
+    name: 'hise_runtime_recompile',
+    description: `Recompile a HISE processor without changing its script.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+USE THIS:
+- After editing external .js files directly on disk
+- To re-run initialization code
+- To check current compile state
+
+RETURNS: Compilation result with success status, logs, and errors.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+      },
+      required: ['moduleId'],
+    },
+  },
+  {
+    name: 'hise_runtime_screenshot',
+    description: `Capture a screenshot of the HISE interface or a specific component.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (optional): Processor ID (default: "Interface")
+- id (optional): Component ID to capture (omit for full interface)
+- scale (optional): Scale factor - 0.5 or 1.0 (default: 1.0)
+- outputPath (optional): File path to save PNG. If provided, saves to file. If omitted, returns base64.
+
+RETURNS: Image dimensions and either base64 imageData or filePath.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'Processor ID (default: "Interface")',
+        },
+        id: {
+          type: 'string',
+          description: 'Component ID to capture (omit for full interface)',
+        },
+        scale: {
+          type: 'number',
+          description: 'Scale factor: 0.5 or 1.0 (default: 1.0)',
+        },
+        outputPath: {
+          type: 'string',
+          description: 'File path to save PNG (must end with .png)',
+        },
+      },
     },
   },
 ];
@@ -491,10 +639,154 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // SERVER STATUS TOOL
       case 'server_status': {
-        const status = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
+        const baseStatus = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
+        const hiseClient = getHiseClient();
+        
+        // Check HISE runtime availability
+        let hiseRuntime: ServerStatus['hiseRuntime'];
+        try {
+          const available = await hiseClient.isAvailable();
+          if (available) {
+            const hiseStatus = await hiseClient.getStatus();
+            hiseRuntime = {
+              available: true,
+              url: hiseClient.getBaseUrl(),
+              project: hiseStatus.project?.name || null,
+              error: null,
+            };
+          } else {
+            hiseRuntime = {
+              available: false,
+              url: hiseClient.getBaseUrl(),
+              project: null,
+              error: 'HISE not reachable',
+            };
+          }
+        } catch (err) {
+          hiseRuntime = {
+            available: false,
+            url: hiseClient.getBaseUrl(),
+            project: null,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          };
+        }
+
+        const status: ServerStatus = {
+          ...baseStatus,
+          hiseRuntime,
+        };
+
         return {
           content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
         };
+      }
+
+      // ========================================================================
+      // HISE RUNTIME BRIDGE TOOLS
+      // ========================================================================
+
+      case 'hise_runtime_status': {
+        const hiseClient = getHiseClient();
+        try {
+          const status = await hiseClient.getStatus();
+          return {
+            content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}\n\nEnsure HISE is running with the REST API enabled (default port 1900).`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_get_script': {
+        const { moduleId, callback } = args as { moduleId: string; callback?: string };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.getScript(moduleId, callback);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_set_script': {
+        const { moduleId, script, callback, compile } = args as {
+          moduleId: string;
+          script: string;
+          callback?: string;
+          compile?: boolean;
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.setScript({ moduleId, script, callback, compile });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_recompile': {
+        const { moduleId } = args as { moduleId: string };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.recompile(moduleId);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_screenshot': {
+        const { moduleId, id, scale, outputPath } = args as {
+          moduleId?: string;
+          id?: string;
+          scale?: number;
+          outputPath?: string;
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.screenshot({ moduleId, id, scale, outputPath });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
       }
 
       default:

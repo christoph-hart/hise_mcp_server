@@ -79,7 +79,7 @@ export interface EnrichedResult<T> {
   related: string[];
 }
 
-export interface ServerStatus {
+export interface ServerStatusBase {
   server: {
     name: string;
     version: string;
@@ -103,6 +103,123 @@ export interface ServerStatus {
     moduleParameters: number;
     codeSnippets: number;
   };
+}
+
+export interface ServerStatus extends ServerStatusBase {
+  hiseRuntime: {
+    available: boolean;
+    url: string;
+    project: string | null;
+    error: string | null;
+  };
+}
+
+// ============================================================================
+// HISE Runtime Bridge Types
+// These types correspond to HISE REST API responses
+// ============================================================================
+
+/**
+ * HISE REST API error structure
+ */
+export interface HiseError {
+  errorMessage: string;
+  callstack: string[];
+}
+
+/**
+ * Script processor callback info
+ */
+export interface HiseCallback {
+  id: string;
+  empty: boolean;
+}
+
+/**
+ * Script processor info from HISE
+ */
+export interface HiseScriptProcessor {
+  moduleId: string;
+  isMainInterface: boolean;
+  externalFiles: string[];
+  callbacks: HiseCallback[];
+}
+
+/**
+ * Response from GET /api/status
+ */
+export interface HiseStatusResponse {
+  success: boolean;
+  server: {
+    version: string;
+    compileTimeout?: string;  // Timeout in seconds (from HISE settings)
+  };
+  project: {
+    name: string;
+    projectFolder: string;
+    scriptsFolder: string;
+  };
+  scriptProcessors: HiseScriptProcessor[];
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Response from GET /api/get_script
+ */
+export interface HiseScriptResponse {
+  success: boolean;
+  moduleId: string;
+  callback?: string;
+  script: string;
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Response from POST /api/set_script and POST /api/recompile
+ */
+export interface HiseCompileResponse {
+  success: boolean;
+  result?: string;
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Response from GET /api/screenshot
+ */
+export interface HiseScreenshotResponse {
+  success: boolean;
+  moduleId: string;
+  id?: string;
+  width: number;
+  height: number;
+  scale: number;
+  imageData?: string;   // Base64 PNG if outputPath not specified
+  filePath?: string;    // File path if outputPath was specified
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Parameters for set_script
+ */
+export interface SetScriptParams {
+  moduleId: string;
+  script: string;
+  callback?: string;
+  compile?: boolean;
+}
+
+/**
+ * Parameters for screenshot
+ */
+export interface ScreenshotParams {
+  moduleId?: string;
+  id?: string;
+  scale?: number;
+  outputPath?: string;
 }
 
 // Auth Types (Phase 1-2)

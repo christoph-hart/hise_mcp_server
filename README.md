@@ -15,9 +15,38 @@ A Model Context Protocol (MCP) server for querying HISE documentation, including
 - **Fast Lookups**: Indexed data structures for O(1) exact queries
 - **Type-Safe**: Full TypeScript implementation
 
+## Modes of Operation
+
+The HISE MCP server can run in two configurations:
+
+### 1. Documentation Mode (Default)
+
+Provides static documentation lookups - works without a running HISE instance:
+- UI component properties
+- Scripting API methods
+- Module parameters
+- Code snippets
+
+### 2. Runtime Bridge Mode (Local Development)
+
+When running locally alongside HISE, the server can also bridge to a running HISE instance via its REST API:
+- Read/write scripts in real-time
+- Compile and see errors immediately
+- Capture screenshots of the UI
+- Interactive development workflow
+
+**To use Runtime Bridge tools:**
+1. Run HISE with REST API enabled (default port 1900)
+2. Run the MCP server locally (`npm start`)
+3. Use `hise_runtime_*` tools
+
+See [ADDING_RUNTIME_BRIDGES.md](ADDING_RUNTIME_BRIDGES.md) for developer documentation.
+
 ## Available Tools
 
-### Exact Query Tools
+### Documentation Tools (Always Available)
+
+#### Exact Query Tools
 
 1. **`query_ui_property`** - Query UI component properties
    - Input: `componentType`, `propertyName`
@@ -31,7 +60,7 @@ A Model Context Protocol (MCP) server for querying HISE documentation, including
    - Input: `moduleType`, `parameterId`
    - Returns: Parameter details including min/max values, step size, default value, and description
 
-### Code Snippet Tools
+#### Code Snippet Tools
 
 4. **`list_snippets`** - List all available code snippets with metadata
    - Input: none
@@ -42,11 +71,22 @@ A Model Context Protocol (MCP) server for querying HISE documentation, including
    - Input: `id` (snippet ID from `list_snippets`)
    - Returns: Complete snippet with code, related APIs, and components
 
-### Listing Tools
+#### Listing Tools
 
 6. **`list_ui_components`** - List all available UI component types
 7. **`list_scripting_namespaces`** - List all available Scripting API namespaces
 8. **`list_module_types`** - List all available module types
+9. **`server_status`** - Get server version, statistics, and HISE runtime availability
+
+### HISE Runtime Bridge Tools (Require Local HISE)
+
+These tools require HISE running locally with the REST API enabled (port 1900):
+
+10. **`hise_runtime_status`** - Get HISE project info and script processors
+11. **`hise_runtime_get_script`** - Read script content from a processor
+12. **`hise_runtime_set_script`** - Update and compile script content
+13. **`hise_runtime_recompile`** - Recompile a processor without changing script
+14. **`hise_runtime_screenshot`** - Capture UI screenshot (base64 or file)
 
 ## Installation
 

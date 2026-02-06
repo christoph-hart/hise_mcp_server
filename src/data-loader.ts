@@ -11,7 +11,7 @@ import {
   SearchDomain,
   SearchResult,
   EnrichedResult,
-  ServerStatus
+  ServerStatusBase
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -840,7 +840,7 @@ export class HISEDataLoader {
     }));
   }
 
-  getServerStatus(name: string, version: string): ServerStatus {
+  getServerStatus(name: string, version: string): ServerStatusBase {
     const data = this.data;
     
     // Calculate cache age in minutes
