@@ -24,7 +24,48 @@ import {
   SetComponentValueParams,
   GetScriptOptions,
   GetComponentPropertiesOptions,
+  HiseError,
+  ErrorCodeContext,
 } from './types.js';
+
+// ============================================================================
+// Callstack Parsing Utilities
+// ============================================================================
+
+/**
+ * Parsed callstack entry with location info
+ */
+export interface ParsedCallstack {
+  callback: string;
+  moduleId: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * Parse HISE callstack entry to extract location info
+ * Format: "onInit() at Interface.js:57:16"
+ */
+export function parseCallstackEntry(entry: string): ParsedCallstack | null {
+  const match = entry.match(/^(\w+)\(\) at (\w+)\.js:(\d+):(\d+)$/);
+  if (!match) return null;
+  return {
+    callback: match[1],
+    moduleId: match[2],
+    line: parseInt(match[3], 10),
+    column: parseInt(match[4], 10),
+  };
+}
+
+/**
+ * Format code lines with line numbers
+ */
+export function formatCodeWithLineNumbers(code: string, startLine: number): string {
+  return code
+    .split('\n')
+    .map((line, i) => `${startLine + i}: ${line}`)
+    .join('\n');
+}
 
 /**
  * Configuration for the HISE client
@@ -179,9 +220,10 @@ export class HiseClient {
    * Set script content and optionally compile
    * 
    * @param params - Script parameters including moduleId, script, callback, and compile flag
+   * @param errorContextLines - Lines of context around errors (default: 1)
    */
-  async setScript(params: SetScriptParams): Promise<HiseCompileResponse> {
-    return this.fetchWithTimeout<HiseCompileResponse>(
+  async setScript(params: SetScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const result = await this.fetchWithTimeout<HiseCompileResponse>(
       '/api/set_script',
       'POST',
       {
@@ -192,20 +234,79 @@ export class HiseClient {
       },
       this.getCompileTimeout()
     );
+
+    // Enrich errors with code context if compilation failed
+    if (!result.success && result.errors?.length && errorContextLines > 0) {
+      await this.enrichErrorsWithCodeContext(params.moduleId, result.errors, errorContextLines);
+    }
+
+    return result;
   }
 
   /**
    * Recompile a processor without changing its script
    * 
    * @param moduleId - The script processor's module ID
+   * @param errorContextLines - Lines of context around errors (default: 1)
    */
-  async recompile(moduleId: string): Promise<HiseCompileResponse> {
-    return this.fetchWithTimeout<HiseCompileResponse>(
+  async recompile(moduleId: string, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const result = await this.fetchWithTimeout<HiseCompileResponse>(
       '/api/recompile',
       'POST',
       { moduleId },
       this.getCompileTimeout()
     );
+
+    // Enrich errors with code context if compilation failed
+    if (!result.success && result.errors?.length && errorContextLines > 0) {
+      await this.enrichErrorsWithCodeContext(moduleId, result.errors, errorContextLines);
+    }
+
+    return result;
+  }
+
+  /**
+   * Enrich errors with code context from the script
+   * 
+   * @param moduleId - The script processor's module ID
+   * @param errors - Array of errors to enrich
+   * @param contextLines - Number of lines before/after the error line
+   */
+  private async enrichErrorsWithCodeContext(
+    moduleId: string,
+    errors: HiseError[],
+    contextLines: number
+  ): Promise<void> {
+    for (const error of errors) {
+      if (!error.callstack?.length) continue;
+
+      // Parse the first callstack entry
+      const location = parseCallstackEntry(error.callstack[0]);
+      if (!location || location.moduleId !== moduleId) continue;
+
+      try {
+        // Fetch lines around the error
+        const startLine = Math.max(1, location.line - contextLines);
+        const endLine = location.line + contextLines;
+
+        // For anonymous functions (callback === "function"), fetch without specifying callback
+        // This gets the merged script where we can find the line
+        const callbackToFetch = location.callback === 'function' ? undefined : location.callback;
+        const script = await this.getScript(moduleId, callbackToFetch, { startLine, endLine });
+
+        if (script.success && script.script && script.lineRange) {
+          const codeContext: ErrorCodeContext = {
+            callback: location.callback,
+            line: location.line,
+            column: location.column,
+            code: formatCodeWithLineNumbers(script.script, script.lineRange.start),
+          };
+          error.codeContext = codeContext;
+        }
+      } catch {
+        // If fetching context fails, just continue without it
+      }
+    }
   }
 
   /**

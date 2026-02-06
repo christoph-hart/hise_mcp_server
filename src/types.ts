@@ -120,11 +120,29 @@ export interface ServerStatus extends ServerStatusBase {
 // ============================================================================
 
 /**
+ * Code context for an error location
+ */
+export interface ErrorCodeContext {
+  /** Callback name where error occurred (e.g., "onInit") */
+  callback: string;
+  /** Error line number (1-based) */
+  line: number;
+  /** Error column number (1-based) */
+  column: number;
+  /** Code snippet with line numbers (e.g., "14: code\n15: error line\n16: code") */
+  code: string;
+}
+
+/**
  * HISE REST API error structure
  */
 export interface HiseError {
   errorMessage: string;
   callstack: string[];
+  /** Auto-populated code context around the error location */
+  codeContext?: ErrorCodeContext;
+  /** Suggestions for fixing the error (from pattern matching + API search) */
+  suggestions?: string[];
 }
 
 /**

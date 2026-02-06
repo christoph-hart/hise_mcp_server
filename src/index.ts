@@ -14,8 +14,9 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus } from './types.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError } from './types.js';
 import { getHiseClient } from './hise-client.js';
+import { findPatternMatch } from './error-patterns.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -41,6 +42,59 @@ const server = new Server(
 );
 
 let dataLoader: HISEDataLoader;
+
+// ============================================================================
+// Error Enrichment Helpers
+// ============================================================================
+
+/**
+ * Extract potential API call from error message for fuzzy search
+ */
+function extractApiCallFromError(errorMessage: string): string | null {
+  const patterns = [
+    /Unknown function '([^']+)'/,
+    /Can't find '([^']+)'/,
+    /Unknown identifier '([^']+)'/,
+    /API call (\w+\.\w+)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = errorMessage.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Enrich errors with suggestions from pattern matching and API fuzzy search
+ */
+async function enrichErrorsWithSuggestions(errors: HiseError[]): Promise<void> {
+  for (const error of errors) {
+    const suggestions: string[] = [];
+
+    // 1. Check error patterns first
+    const patternSuggestion = findPatternMatch(
+      error.errorMessage,
+      error.codeContext?.code
+    );
+    if (patternSuggestion) {
+      suggestions.push(patternSuggestion);
+    }
+
+    // 2. Try fuzzy API search for unknown functions/identifiers
+    const apiCall = extractApiCallFromError(error.errorMessage);
+    if (apiCall) {
+      const similar = await dataLoader.findSimilar(apiCall, 3, 'api');
+      if (similar.length > 0) {
+        suggestions.push(`Did you mean: ${similar.join(', ')}`);
+      }
+    }
+
+    if (suggestions.length > 0) {
+      error.suggestions = suggestions;
+    }
+  }
+}
 
 const TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
@@ -347,8 +401,10 @@ PARAMETERS:
 - script (required): The script content
 - callback (optional): Specific callback to update. If omitted, script is treated as merged content.
 - compile (optional): Whether to compile after setting (default: true)
+- errorContextLines (optional): Lines of context around errors (default: 1)
 
 RETURNS: Compilation result with success status, console logs, and any errors with callstacks.
+Errors are auto-enriched with source code context and fix suggestions.
 
 NOTE: For onInit, provide raw code. For other callbacks, include the function wrapper.`,
     inputSchema: {
@@ -370,6 +426,10 @@ NOTE: For onInit, provide raw code. For other callbacks, include the function wr
           type: 'boolean',
           description: 'Whether to compile after setting (default: true)',
         },
+        errorContextLines: {
+          type: 'number',
+          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
+        },
       },
       required: ['moduleId', 'script'],
     },
@@ -385,13 +445,17 @@ USE THIS:
 - To re-run initialization code
 - To check current compile state
 
-RETURNS: Compilation result with success status, logs, and errors.`,
+RETURNS: Compilation result with success status, logs, and errors auto-enriched with source code context.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
           description: 'The script processor module ID',
+        },
+        errorContextLines: {
+          type: 'number',
+          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
         },
       },
       required: ['moduleId'],
@@ -955,15 +1019,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'hise_runtime_set_script': {
-        const { moduleId, script, callback, compile } = args as {
+        const { moduleId, script, callback, compile, errorContextLines } = args as {
           moduleId: string;
           script: string;
           callback?: string;
           compile?: boolean;
+          errorContextLines?: number;
         };
         const hiseClient = getHiseClient();
         try {
-          const result = await hiseClient.setScript({ moduleId, script, callback, compile });
+          const result = await hiseClient.setScript(
+            { moduleId, script, callback, compile },
+            errorContextLines ?? 1
+          );
+          // Enrich errors with suggestions if compilation failed
+          if (!result.success && result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -979,10 +1051,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'hise_runtime_recompile': {
-        const { moduleId } = args as { moduleId: string };
+        const { moduleId, errorContextLines } = args as { 
+          moduleId: string;
+          errorContextLines?: number;
+        };
         const hiseClient = getHiseClient();
         try {
-          const result = await hiseClient.recompile(moduleId);
+          const result = await hiseClient.recompile(moduleId, errorContextLines ?? 1);
+          // Enrich errors with suggestions if compilation failed
+          if (!result.success && result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
