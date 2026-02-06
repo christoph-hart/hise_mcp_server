@@ -112,6 +112,25 @@ export interface ServerStatus extends ServerStatusBase {
     project: string | null;
     error: string | null;
   };
+  hints: {
+    workflows: string;
+  };
+}
+
+// ============================================================================
+// Workflow Types
+// ============================================================================
+
+/**
+ * Workflow definition for guiding AI agents through common tasks
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  steps: string[];
+  tools: string[];
+  tips?: string[];
 }
 
 // ============================================================================

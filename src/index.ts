@@ -10,6 +10,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   Tool,
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -17,6 +19,7 @@ import { HISEDataLoader } from './data-loader.js';
 import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError } from './types.js';
 import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
+import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -37,6 +40,7 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
     },
   }
 );
@@ -806,6 +810,73 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+// ============================================================================
+// MCP Resource Handlers
+// ============================================================================
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  return {
+    resources: [
+      {
+        uri: 'hise://workflows',
+        name: 'HISE Workflows',
+        description: 'List of recommended workflows for HISE development',
+        mimeType: 'application/json',
+      },
+      ...WORKFLOWS.map(w => ({
+        uri: `hise://workflows/${w.id}`,
+        name: w.name,
+        description: w.description,
+        mimeType: 'text/markdown',
+      })),
+    ],
+  };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+
+  // List all workflows
+  if (uri === 'hise://workflows') {
+    return {
+      contents: [{
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          WORKFLOWS.map(w => ({
+            id: w.id,
+            name: w.name,
+            description: w.description,
+          })),
+          null,
+          2
+        ),
+      }],
+    };
+  }
+
+  // Specific workflow
+  const match = uri.match(/^hise:\/\/workflows\/(.+)$/);
+  if (match) {
+    const workflow = WORKFLOWS.find(w => w.id === match[1]);
+    if (workflow) {
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/markdown',
+          text: formatWorkflowAsMarkdown(workflow),
+        }],
+      };
+    }
+  }
+
+  throw new Error(`Resource not found: ${uri}`);
+});
+
+// ============================================================================
+// MCP Tool Handlers
+// ============================================================================
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -1056,6 +1127,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const status: ServerStatus = {
           ...baseStatus,
           hiseRuntime,
+          hints: {
+            workflows: 'Read hise://workflows to discover recommended development workflows',
+          },
         };
 
         return {
