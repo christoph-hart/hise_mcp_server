@@ -2,6 +2,22 @@
 
 This document provides essential information for AI agents working in this repository.
 
+## Git Policy
+
+**CRITICAL: This repository uses AI-assisted development with human code review.**
+
+- **NEVER commit changes** - Always present changes for user review first
+- **NEVER push to remote** - The user will handle all git operations
+- **NEVER use `git commit`** - Even with good commit messages, let the user decide when to commit
+- Use `git status` and `git diff` to show pending changes when asked
+- You may prepare commit messages as suggestions, but do not execute the commit
+
+When changes are complete:
+1. Summarize what was changed and why
+2. Show `git status` to list modified files
+3. Suggest a commit message
+4. **Stop and wait** for the user to commit manually
+
 ## Build Commands
 
 ```bash

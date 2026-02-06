@@ -172,8 +172,21 @@ export interface HiseScriptResponse {
   moduleId: string;
   callback?: string;
   script: string;
+  lineRange?: {        // Present when startLine/endLine filtering is used
+    start: number;     // First line returned (1-based)
+    end: number;       // Last line returned (1-based)
+    total: number;     // Total lines in full script
+  };
   logs: string[];
   errors: HiseError[];
+}
+
+/**
+ * Options for getScript - allows fetching a range of lines
+ */
+export interface GetScriptOptions {
+  startLine?: number;  // First line to return (1-based)
+  endLine?: number;    // Last line to return (1-based, inclusive)
 }
 
 /**
@@ -220,6 +233,154 @@ export interface ScreenshotParams {
   id?: string;
   scale?: number;
   outputPath?: string;
+}
+
+// ============================================================================
+// Component-related types for UI bridge tools
+// ============================================================================
+
+/**
+ * Basic component info (flat list)
+ */
+export interface HiseComponentInfo {
+  id: string;
+  type: string;
+}
+
+/**
+ * Component info with hierarchy and layout properties
+ */
+export interface HiseComponentHierarchy extends HiseComponentInfo {
+  visible: boolean;
+  enabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  childComponents: HiseComponentHierarchy[];
+}
+
+/**
+ * Response from GET /api/list_components
+ */
+export interface HiseListComponentsResponse {
+  success: boolean;
+  moduleId: string;
+  components: HiseComponentInfo[] | HiseComponentHierarchy[];
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Component property with value and metadata
+ */
+export interface HiseComponentProperty {
+  id: string;
+  value: string | number | boolean;
+  isDefault: boolean;
+  options?: string[];
+}
+
+/**
+ * Response from GET /api/get_component_properties
+ */
+export interface HiseGetComponentPropertiesResponse {
+  success: boolean;
+  moduleId: string;
+  id: string;
+  type: string;
+  properties?: HiseComponentProperty[];  // Optional - omitted when compact=true and all properties are default
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Options for getComponentProperties - allows filtering the response
+ */
+export interface GetComponentPropertiesOptions {
+  compact?: boolean;      // Default: true - only return non-default properties
+  properties?: string[];  // Filter to only these specific property names
+}
+
+/**
+ * Response from POST /api/set_component_properties
+ */
+export interface HiseSetComponentPropertiesResponse {
+  success: boolean;
+  moduleId: string;
+  applied?: { id: string; properties: string[] }[];
+  recompileRequired?: boolean;
+  locked?: { id: string; property: string }[];
+  errorMessage?: string;
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Response from GET /api/get_component_value
+ */
+export interface HiseGetComponentValueResponse {
+  success: boolean;
+  moduleId: string;
+  id: string;
+  type: string;
+  value: number;
+  min: number;
+  max: number;
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Response from POST /api/set_component_value
+ */
+export interface HiseSetComponentValueResponse {
+  success: boolean;
+  moduleId: string;
+  id: string;
+  type: string;
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Selected component with full properties
+ */
+export interface HiseSelectedComponent {
+  id: string;
+  type: string;
+  properties: HiseComponentProperty[];
+}
+
+/**
+ * Response from GET /api/get_selected_components
+ */
+export interface HiseGetSelectedComponentsResponse {
+  success: boolean;
+  moduleId: string;
+  selectionCount: number;
+  components: HiseSelectedComponent[];
+  logs: string[];
+  errors: HiseError[];
+}
+
+/**
+ * Parameters for set_component_properties
+ */
+export interface SetComponentPropertiesParams {
+  moduleId: string;
+  changes: { id: string; properties: Record<string, unknown> }[];
+  force?: boolean;
+}
+
+/**
+ * Parameters for set_component_value
+ */
+export interface SetComponentValueParams {
+  moduleId: string;
+  id: string;
+  value: number;
+  validateRange?: boolean;
 }
 
 // Auth Types (Phase 1-2)

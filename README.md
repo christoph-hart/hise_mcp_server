@@ -82,11 +82,20 @@ See [ADDING_RUNTIME_BRIDGES.md](ADDING_RUNTIME_BRIDGES.md) for developer documen
 
 These tools require HISE running locally with the REST API enabled (port 1900):
 
+**Scripting Tools:**
 10. **`hise_runtime_status`** - Get HISE project info and script processors
 11. **`hise_runtime_get_script`** - Read script content from a processor
 12. **`hise_runtime_set_script`** - Update and compile script content
 13. **`hise_runtime_recompile`** - Recompile a processor without changing script
 14. **`hise_runtime_screenshot`** - Capture UI screenshot (base64 or file)
+
+**Component Tools:**
+15. **`hise_runtime_list_components`** - List all UI components (flat or hierarchical)
+16. **`hise_runtime_get_component_properties`** - Get all properties for a component
+17. **`hise_runtime_set_component_properties`** - Batch set properties on components
+18. **`hise_runtime_get_component_value`** - Get runtime value of a component
+19. **`hise_runtime_set_component_value`** - Set runtime value, trigger callbacks
+20. **`hise_runtime_get_selected_components`** - Get Interface Designer selection
 
 ## Installation
 

@@ -14,6 +14,16 @@ import {
   HiseScreenshotResponse,
   SetScriptParams,
   ScreenshotParams,
+  HiseListComponentsResponse,
+  HiseGetComponentPropertiesResponse,
+  HiseSetComponentPropertiesResponse,
+  HiseGetComponentValueResponse,
+  HiseSetComponentValueResponse,
+  HiseGetSelectedComponentsResponse,
+  SetComponentPropertiesParams,
+  SetComponentValueParams,
+  GetScriptOptions,
+  GetComponentPropertiesOptions,
 } from './types.js';
 
 /**
@@ -122,19 +132,47 @@ export class HiseClient {
    * 
    * @param moduleId - The script processor's module ID (e.g., "Interface")
    * @param callback - Optional: specific callback name (e.g., "onInit")
+   * @param options - Optional: line range filtering options
    */
-  async getScript(moduleId: string, callback?: string): Promise<HiseScriptResponse> {
+  async getScript(moduleId: string, callback?: string, options?: GetScriptOptions): Promise<HiseScriptResponse> {
     const params = new URLSearchParams({ moduleId });
     if (callback) {
       params.append('callback', callback);
     }
 
-    return this.fetchWithTimeout<HiseScriptResponse>(
+    const result = await this.fetchWithTimeout<HiseScriptResponse>(
       `/api/get_script?${params.toString()}`,
       'GET',
       undefined,
       this.getCompileTimeout()
     );
+
+    // Apply line range filtering if requested
+    if (result.success && result.script && options?.startLine !== undefined) {
+      const lines = result.script.split('\n');
+      const totalLines = lines.length;
+      
+      // Convert to 0-based index, clamp to valid range
+      const startIdx = Math.max(0, Math.min(options.startLine - 1, totalLines - 1));
+      const endIdx = options.endLine !== undefined 
+        ? Math.min(totalLines, options.endLine)
+        : totalLines;
+      
+      // Ensure end is not before start
+      const actualEndIdx = Math.max(startIdx + 1, endIdx);
+      
+      // Extract the requested lines
+      result.script = lines.slice(startIdx, actualEndIdx).join('\n');
+      
+      // Add metadata about the line range
+      result.lineRange = {
+        start: startIdx + 1,  // Back to 1-based
+        end: Math.min(actualEndIdx, totalLines),  // 1-based, clamped to actual lines
+        total: totalLines,
+      };
+    }
+
+    return result;
   }
 
   /**
@@ -199,6 +237,153 @@ export class HiseClient {
       'GET',
       undefined,
       this.config.timeouts.screenshot
+    );
+  }
+
+  // ==========================================================================
+  // Component Methods
+  // ==========================================================================
+
+  /**
+   * List all UI components in a script processor
+   * 
+   * @param moduleId - The script processor's module ID
+   * @param hierarchy - If true, returns nested tree with layout properties
+   */
+  async listComponents(moduleId: string, hierarchy?: boolean): Promise<HiseListComponentsResponse> {
+    const params = new URLSearchParams({ moduleId });
+    if (hierarchy) {
+      params.append('hierarchy', 'true');
+    }
+
+    return this.fetchWithTimeout<HiseListComponentsResponse>(
+      `/api/list_components?${params.toString()}`,
+      'GET',
+      undefined,
+      this.config.timeouts.status
+    );
+  }
+
+  /**
+   * Get properties for a specific UI component
+   * 
+   * @param moduleId - The script processor's module ID
+   * @param id - The component's ID (e.g., "Button1")
+   * @param options - Optional: filtering options (compact mode, specific properties)
+   */
+  async getComponentProperties(
+    moduleId: string, 
+    id: string,
+    options?: GetComponentPropertiesOptions
+  ): Promise<HiseGetComponentPropertiesResponse> {
+    const params = new URLSearchParams({ moduleId, id });
+
+    const result = await this.fetchWithTimeout<HiseGetComponentPropertiesResponse>(
+      `/api/get_component_properties?${params.toString()}`,
+      'GET',
+      undefined,
+      this.config.timeouts.status
+    );
+
+    // Apply filtering if successful and properties exist
+    if (result.success && result.properties) {
+      // If specific properties requested, filter to only those
+      if (options?.properties?.length) {
+        const requestedProps = new Set(options.properties.map(p => p.toLowerCase()));
+        result.properties = result.properties.filter(p => 
+          requestedProps.has(p.id.toLowerCase())
+        );
+      }
+      // Default behavior (compact=true): only return non-default properties
+      else if (options?.compact !== false) {
+        const nonDefaultProps = result.properties.filter(p => !p.isDefault);
+        
+        // If all properties are default, omit the properties field entirely
+        if (nonDefaultProps.length === 0) {
+          delete result.properties;
+        } else {
+          result.properties = nonDefaultProps;
+        }
+      }
+      // compact=false: return all properties (no filtering)
+    }
+
+    return result;
+  }
+
+  /**
+   * Set properties on one or more UI components
+   * 
+   * @param params - Parameters including moduleId, changes array, and optional force flag
+   */
+  async setComponentProperties(params: SetComponentPropertiesParams): Promise<HiseSetComponentPropertiesResponse> {
+    return this.fetchWithTimeout<HiseSetComponentPropertiesResponse>(
+      '/api/set_component_properties',
+      'POST',
+      {
+        moduleId: params.moduleId,
+        changes: params.changes,
+        force: params.force ?? false,
+      },
+      this.config.timeouts.status
+    );
+  }
+
+  /**
+   * Get the current runtime value of a UI component
+   * 
+   * @param moduleId - The script processor's module ID
+   * @param id - The component's ID
+   */
+  async getComponentValue(moduleId: string, id: string): Promise<HiseGetComponentValueResponse> {
+    const params = new URLSearchParams({ moduleId, id });
+
+    return this.fetchWithTimeout<HiseGetComponentValueResponse>(
+      `/api/get_component_value?${params.toString()}`,
+      'GET',
+      undefined,
+      this.config.timeouts.status
+    );
+  }
+
+  /**
+   * Set the runtime value of a UI component (triggers control callback)
+   * 
+   * @param params - Parameters including moduleId, id, value, and optional validateRange
+   */
+  async setComponentValue(params: SetComponentValueParams): Promise<HiseSetComponentValueResponse> {
+    return this.fetchWithTimeout<HiseSetComponentValueResponse>(
+      '/api/set_component_value',
+      'POST',
+      {
+        moduleId: params.moduleId,
+        id: params.id,
+        value: params.value,
+        validateRange: params.validateRange ?? false,
+      },
+      this.getCompileTimeout()  // Uses compile timeout since callbacks may run
+    );
+  }
+
+  /**
+   * Get the currently selected UI components from the Interface Designer
+   * 
+   * @param moduleId - The script processor's module ID (default: "Interface")
+   */
+  async getSelectedComponents(moduleId?: string): Promise<HiseGetSelectedComponentsResponse> {
+    const params = new URLSearchParams();
+    if (moduleId) {
+      params.append('moduleId', moduleId);
+    }
+
+    const queryString = params.toString();
+    const url = queryString ? `/api/get_selected_components?${queryString}` : '/api/get_selected_components';
+
+    return this.fetchWithTimeout<HiseGetSelectedComponentsResponse>(
+      url,
+      'GET',
+      undefined,
+      this.config.timeouts.status
     );
   }
 

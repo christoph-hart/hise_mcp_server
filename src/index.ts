@@ -303,6 +303,14 @@ REQUIRES: HISE running locally with REST API enabled.
 PARAMETERS:
 - moduleId (required): The processor ID (e.g., "Interface")
 - callback (optional): Specific callback (e.g., "onInit"). If omitted, returns all callbacks merged.
+- startLine (optional): First line to return (1-based)
+- endLine (optional): Last line to return (1-based, inclusive)
+
+RESPONSE:
+- With lineRange: Returns script excerpt with {start, end, total} metadata
+- Without lineRange: Returns complete script
+
+USE lineRange when debugging errors - fetch only lines around the error location instead of the entire script.
 
 NOTE: onInit returns raw code (no function wrapper). Other callbacks include the function signature.`,
     inputSchema: {
@@ -315,6 +323,14 @@ NOTE: onInit returns raw code (no function wrapper). Other callbacks include the
         callback: {
           type: 'string',
           description: 'Optional: specific callback name (e.g., "onInit", "onNoteOn")',
+        },
+        startLine: {
+          type: 'number',
+          description: 'Optional: first line to return (1-based)',
+        },
+        endLine: {
+          type: 'number',
+          description: 'Optional: last line to return (1-based, inclusive)',
         },
       },
       required: ['moduleId'],
@@ -412,6 +428,214 @@ RETURNS: Image dimensions and either base64 imageData or filePath.`,
         outputPath: {
           type: 'string',
           description: 'File path to save PNG (must end with .png)',
+        },
+      },
+    },
+  },
+  {
+    name: 'hise_runtime_list_components',
+    description: `List all UI components in a HISE script processor.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID (e.g., "Interface")
+- hierarchy (optional): If true, returns nested tree with layout properties (x, y, width, height, visible, enabled)
+
+RETURNS: Array of components with id and type. If hierarchy=true, includes layout properties and childComponents.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID (e.g., "Interface")',
+        },
+        hierarchy: {
+          type: 'boolean',
+          description: 'If true, returns nested tree with layout properties (default: false)',
+        },
+      },
+      required: ['moduleId'],
+    },
+  },
+  {
+    name: 'hise_runtime_get_component_properties',
+    description: `Get properties for a UI component.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID
+- id (required): The component's ID (e.g., "Button1", "Knob1")
+- compact (optional): Only return non-default properties (default: true)
+- properties (optional): Array of specific property names to return
+
+RESPONSE:
+- With compact=true (default): Returns only modified properties, or just id/type if all are default
+- With properties=[...]: Returns only the requested properties
+- With compact=false: Returns all 45+ properties (use sparingly)
+
+USE THIS TO:
+- Check which properties have been modified from defaults
+- Query specific properties like position (x, y, width, height)
+- Get full property list only when discovering available options
+
+AVOID calling this just to verify a set operation succeeded.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        id: {
+          type: 'string',
+          description: 'The component ID (e.g., "Button1", "Knob1")',
+        },
+        compact: {
+          type: 'boolean',
+          description: 'Only return non-default properties (default: true)',
+        },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: array of specific property names to return',
+        },
+      },
+      required: ['moduleId', 'id'],
+    },
+  },
+  {
+    name: 'hise_runtime_set_component_properties',
+    description: `Set properties on one or more UI components (like Interface Designer).
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID
+- changes (required): Array of {id, properties: {...}} objects
+- force (optional): If true, bypasses script-lock check (default: false)
+
+RETURNS: Applied changes and recompileRequired flag. If properties are locked by script, returns error with locked list.
+
+NOTE: When recompileRequired is true (parentComponent changed), call hise_runtime_recompile to apply.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        changes: {
+          type: 'array',
+          description: 'Array of {id, properties: {...}} objects',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Component ID' },
+              properties: { type: 'object', description: 'Properties to set' },
+            },
+            required: ['id', 'properties'],
+          },
+        },
+        force: {
+          type: 'boolean',
+          description: 'Bypass script-lock check (default: false)',
+        },
+      },
+      required: ['moduleId', 'changes'],
+    },
+  },
+  {
+    name: 'hise_runtime_get_component_value',
+    description: `Get the current runtime value of a UI component.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID
+- id (required): The component's ID
+
+RETURNS: Component type, current value, and min/max range.
+
+USE THIS TO:
+- Verify component state during testing
+- Read current knob/slider position
+- Check button toggle state`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        id: {
+          type: 'string',
+          description: 'The component ID',
+        },
+      },
+      required: ['moduleId', 'id'],
+    },
+  },
+  {
+    name: 'hise_runtime_set_component_value',
+    description: `Set the runtime value of a UI component (triggers control callback).
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (required): The processor ID
+- id (required): The component's ID
+- value (required): The value to set
+- validateRange (optional): If true, validates value is within min/max range (default: false)
+
+RETURNS: Success status. Console.print() output from callbacks appears in logs array.
+
+NOTE: This triggers the component's control callback, simulating user interaction.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        id: {
+          type: 'string',
+          description: 'The component ID',
+        },
+        value: {
+          type: 'number',
+          description: 'The value to set',
+        },
+        validateRange: {
+          type: 'boolean',
+          description: 'Validate value is within min/max range (default: false)',
+        },
+      },
+      required: ['moduleId', 'id', 'value'],
+    },
+  },
+  {
+    name: 'hise_runtime_get_selected_components',
+    description: `Get the currently selected UI components from HISE's Interface Designer.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+PARAMETERS:
+- moduleId (optional): The processor ID (default: "Interface")
+
+RETURNS: Selection count and array of selected components with all their properties.
+
+USE THIS FOR AI-ASSISTED WORKFLOWS:
+- User selects components in HISE, asks AI to align/resize them
+- Batch property changes on selected components
+- Generate code for selected components`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The processor ID (default: "Interface")',
         },
       },
     },
@@ -704,10 +928,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'hise_runtime_get_script': {
-        const { moduleId, callback } = args as { moduleId: string; callback?: string };
+        const { moduleId, callback, startLine, endLine } = args as { 
+          moduleId: string; 
+          callback?: string;
+          startLine?: number;
+          endLine?: number;
+        };
         const hiseClient = getHiseClient();
         try {
-          const result = await hiseClient.getScript(moduleId, callback);
+          const options = (startLine !== undefined || endLine !== undefined) 
+            ? { startLine, endLine } 
+            : undefined;
+          const result = await hiseClient.getScript(moduleId, callback, options);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -775,6 +1007,135 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const hiseClient = getHiseClient();
         try {
           const result = await hiseClient.screenshot({ moduleId, id, scale, outputPath });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_list_components': {
+        const { moduleId, hierarchy } = args as { moduleId: string; hierarchy?: boolean };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.listComponents(moduleId, hierarchy);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_get_component_properties': {
+        const { moduleId, id, compact, properties } = args as { 
+          moduleId: string; 
+          id: string;
+          compact?: boolean;
+          properties?: string[];
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const options = { compact, properties };
+          const result = await hiseClient.getComponentProperties(moduleId, id, options);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_set_component_properties': {
+        const { moduleId, changes, force } = args as {
+          moduleId: string;
+          changes: { id: string; properties: Record<string, unknown> }[];
+          force?: boolean;
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.setComponentProperties({ moduleId, changes, force });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_get_component_value': {
+        const { moduleId, id } = args as { moduleId: string; id: string };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.getComponentValue(moduleId, id);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_set_component_value': {
+        const { moduleId, id, value, validateRange } = args as {
+          moduleId: string;
+          id: string;
+          value: number;
+          validateRange?: boolean;
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.setComponentValue({ moduleId, id, value, validateRange });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_get_selected_components': {
+        const { moduleId } = args as { moduleId?: string };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.getSelectedComponents(moduleId);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };

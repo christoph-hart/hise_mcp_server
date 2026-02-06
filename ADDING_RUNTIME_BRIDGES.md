@@ -282,17 +282,12 @@ See `HISE_REST_API.md` in the HISE repository for the complete API reference.
 | `hise_runtime_set_script` | `POST /api/set_script` |
 | `hise_runtime_recompile` | `POST /api/recompile` |
 | `hise_runtime_screenshot` | `GET /api/screenshot` |
-
-### Available for Future Bridge Tools
-
-| HISE Endpoint | Purpose |
-|---------------|---------|
-| `GET /api/list_components` | List UI components |
-| `GET /api/get_component_properties` | Get component properties |
-| `POST /api/set_component_properties` | Set component properties |
-| `GET /api/get_component_value` | Get runtime value |
-| `POST /api/set_component_value` | Set runtime value |
-| `GET /api/get_selected_components` | Get Interface Designer selection |
+| `hise_runtime_list_components` | `GET /api/list_components` |
+| `hise_runtime_get_component_properties` | `GET /api/get_component_properties` |
+| `hise_runtime_set_component_properties` | `POST /api/set_component_properties` |
+| `hise_runtime_get_component_value` | `GET /api/get_component_value` |
+| `hise_runtime_set_component_value` | `POST /api/set_component_value` |
+| `hise_runtime_get_selected_components` | `GET /api/get_selected_components` |
 
 ## Naming Conventions
 
