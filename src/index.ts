@@ -100,7 +100,11 @@ async function enrichErrorsWithSuggestions(errors: HiseError[]): Promise<void> {
   }
 }
 
-const TOOLS: Tool[] = [
+// Track server mode (set in main())
+let isProductionMode = false;
+
+// Documentation tools - always available
+const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
   {
     name: 'search_hise',
@@ -364,11 +368,10 @@ RETURNS: Resource content in markdown format (for workflows: steps, tools used, 
     },
   },
 
-  // ============================================================================
-  // HISE RUNTIME BRIDGE TOOLS
-  // These tools require a running HISE instance with REST API enabled
-  // ============================================================================
+];
 
+// HISE Runtime tools - only available in local mode when HISE is connected
+const RUNTIME_TOOLS: Tool[] = [
   {
     name: 'hise_runtime_status',
     description: `Get status of the running HISE instance.
@@ -840,9 +843,10 @@ USE THIS FOR AI-ASSISTED WORKFLOWS:
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: TOOLS,
-  };
+  // In production mode, only expose documentation tools
+  // In local mode, expose all tools (HISE connection verified at startup)
+  const tools = isProductionMode ? DOC_TOOLS : [...DOC_TOOLS, ...RUNTIME_TOOLS];
+  return { tools };
 });
 
 // ============================================================================
@@ -914,6 +918,14 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+
+  // Guard: reject runtime tools in production mode
+  if (isProductionMode && name.startsWith('hise_runtime_')) {
+    return {
+      content: [{ type: 'text', text: 'HISE runtime tools are not available in production mode.' }],
+      isError: true,
+    };
+  }
 
   try {
     switch (name) {
@@ -1161,6 +1173,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const status: ServerStatus = {
           ...baseStatus,
+          mode: isProductionMode ? 'production' : 'local',
           hiseRuntime,
           hints: {
             resources: 'Use list_resources tool to discover available workflows and guides',
@@ -1213,6 +1226,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ========================================================================
       // HISE RUNTIME BRIDGE TOOLS
+      // These tools are only available in local mode
       // ========================================================================
 
       case 'hise_runtime_status': {
@@ -1522,10 +1536,11 @@ async function main() {
   await dataLoader.loadData();
 
   const args = process.argv.slice(2);
-  const isProduction = args.includes('--production') || args.includes('-p');
+  isProductionMode = args.includes('--production') || args.includes('-p');
   const port = parseInt(process.env.PORT || '3000', 10);
 
-  if (isProduction) {
+  if (isProductionMode) {
+    console.error('HISE MCP server starting in production mode (documentation only)...');
     const app = express();
     app.use(express.json());
 
@@ -1692,6 +1707,7 @@ async function main() {
       process.exit(0);
     });
   } else {
+    // Local mode - start server, HISE tools will error if HISE isn't running
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error('HISE MCP server started in local mode (stdio)');

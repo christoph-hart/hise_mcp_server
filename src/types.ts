@@ -106,6 +106,7 @@ export interface ServerStatusBase {
 }
 
 export interface ServerStatus extends ServerStatusBase {
+  mode: 'local' | 'production';
   hiseRuntime: {
     available: boolean;
     url: string;
