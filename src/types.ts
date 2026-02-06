@@ -104,3 +104,104 @@ export interface ServerStatus {
     codeSnippets: number;
   };
 }
+
+// Auth Types (Phase 1-2)
+
+export interface TokenValidationResult {
+  valid: boolean;
+  user_id?: number;
+  username?: string;
+  email?: string;
+  scopes?: string[];
+  token_type?: 'access_token' | 'api_key';
+  error?: string;
+  error_description?: string;
+}
+
+export interface UserContext {
+  id: number;
+  username: string;
+  email: string;
+  scopes: string[];
+  tokenType: 'access_token' | 'api_key';
+}
+
+export interface CachedToken {
+  user: UserContext;
+  expires: number;
+}
+
+export interface AuthConfig {
+  validateTokenUrl: string;
+  sharedSecret: string;
+  cacheTtlMs: number;
+}
+
+// OAuth Types (Phase 3)
+
+export interface OAuthConfig {
+  issuer: string;
+  authorizeUrl: string;
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  mcpServerUrl: string;
+  supportedScopes: string[];
+}
+
+export interface OAuthMetadata {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  registration_endpoint: string;
+  response_types_supported: string[];
+  grant_types_supported: string[];
+  code_challenge_methods_supported: string[];
+  scopes_supported: string[];
+  token_endpoint_auth_methods_supported: string[];
+}
+
+export interface TokenRequest {
+  grant_type: 'authorization_code' | 'refresh_token';
+  code?: string;
+  redirect_uri?: string;
+  code_verifier?: string;
+  refresh_token?: string;
+  client_id?: string;
+  client_secret?: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token?: string;
+  scope?: string;
+}
+
+export interface TokenErrorResponse {
+  error: string;
+  error_description?: string;
+}
+
+export interface ClientRegistrationRequest {
+  client_name: string;
+  redirect_uris: string[];
+  grant_types?: string[];
+  response_types?: string[];
+  scope?: string;
+  token_endpoint_auth_method?: string;
+}
+
+export interface ClientRegistrationResponse {
+  client_id: string;
+  client_secret?: string;
+  client_name: string;
+  redirect_uris: string[];
+  grant_types: string[];
+  response_types: string[];
+  scope: string;
+  token_endpoint_auth_method: string;
+  client_id_issued_at: number;
+  client_secret_expires_at: number;
+}

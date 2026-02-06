@@ -11,10 +11,9 @@
     "build": "tsc",
     "build:configure": "node scripts/build-and-configure.js",
     "start": "node dist/index.js",
+    "start:production": "node dist/index.js --production",
     "dev": "tsc && node dist/index.js",
-    "test": "tsc && node test-server.mjs",
-    "test:variants": "tsc && node scripts/test-prompt-variants.mjs",
-    "test:variants:summary": "node scripts/test-prompt-variants.mjs --summary"
+    "dev:production": "tsc && node dist/index.js --production"
   },
   "keywords": [
     "mcp",
@@ -25,10 +24,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4"
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.3"
   }
 }

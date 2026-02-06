@@ -99,6 +99,11 @@ Or manually build only:
 ```bash
 npm run build
 ```
+     
+test
+
+
+
 
 4. Set up environment variables:
 ```bash
@@ -239,7 +244,6 @@ Once configured, you can use HISE MCP server tools directly in Opencode:
 #### Relative vs Absolute Paths
 
 - **Opencode:** Can use relative paths (`["node", "./dist/index.js"]`) if running from `hise_mcp` directory
-- **Claude Desktop:** Requires absolute paths (`D:\development\projekte\hise_mcp\dist\index.js`)
 
 ### Example Queries
 
@@ -354,11 +358,43 @@ For code snippets, use a two-step process:
 
 This keeps responses lightweight and allows AI agents to select only relevant examples.
 
+## Production Deployment
+
+The server can run in two modes:
+1. **Local mode (stdio)** - For use with Claude Desktop / Opencode
+2. **Production mode (HTTP/SSE)** - For deployment on a server
+
+### Production Mode
+
+Production mode uses Express + SSE (Server-Sent Events) transport, allowing the MCP server to be deployed on a remote server.
+
+#### Running in Production Mode
+
+```bash
+# Build and start in production mode
+npm run build
+npm run start:production
+
+# Or with a custom port
+PORT=8080 npm run start:production
+```
+
+The server will start on port 3003 by default (configurable via `PORT` environment variable).
+
+#### Endpoints
+
+- `GET /health` - Health check endpoint
+- `POST /mcp` - SSE endpoint for MCP connections
+
+
 ## Development
 
 ### Development mode (with auto-rebuild):
 ```bash
 npm run dev
+
+# Or in production mode for testing
+npm run dev:production
 ```
 
 ### TypeScript compilation:
