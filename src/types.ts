@@ -78,3 +78,29 @@ export interface EnrichedResult<T> {
   result: T;
   related: string[];
 }
+
+export interface ServerStatus {
+  server: {
+    name: string;
+    version: string;
+  };
+  runtime: {
+    nodeVersion: string;
+    platform: string;
+  };
+  data: {
+    loaded: boolean;
+    cachedAt: string | null;
+    cacheAgeMinutes: number | null;
+    snippetsLoaded: boolean;
+  };
+  statistics: {
+    uiComponents: number;
+    uiProperties: number;
+    scriptingNamespaces: number;
+    scriptingMethods: number;
+    moduleTypes: number;
+    moduleParameters: number;
+    codeSnippets: number;
+  };
+}

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -10,10 +13,17 @@ import {
 import { HISEDataLoader } from './data-loader.js';
 import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain } from './types.js';
 
+// Read package.json for version info
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+const SERVER_NAME = packageJson.name;
+const SERVER_VERSION = packageJson.version;
+
 const server = new Server(
   {
-    name: 'hise-mcp-server',
-    version: '1.0.0',
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
   },
   {
     capabilities: {
@@ -228,6 +238,24 @@ RETURNS: Complete snippet including:
   {
     name: 'list_module_types',
     description: 'List all module/processor types (SimpleEnvelope, HardcodedSynth, SimpleGain, etc.) that have documented parameters.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+
+  // SERVER INFO TOOL
+  {
+    name: 'server_status',
+    description: `Get server version, runtime information, and data statistics.
+
+USE THIS TO:
+- Verify the server version matches expectations
+- Check if data is loaded and from cache
+- View statistics about available documentation
+- Debug connection issues
+
+RETURNS: Server name/version, Node.js version, platform, cache status, and counts for all data types.`,
     inputSchema: {
       type: 'object',
       properties: {},
@@ -451,6 +479,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               hint: 'Use query_module_parameter with "ModuleName.parameterId" to get parameter details, or search_hise to search by keyword.'
             }, null, 2)
           }],
+        };
+      }
+
+      // SERVER STATUS TOOL
+      case 'server_status': {
+        const status = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
         };
       }
 

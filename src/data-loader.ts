@@ -10,7 +10,8 @@ import {
   CodeSnippet,
   SearchDomain,
   SearchResult,
-  EnrichedResult
+  EnrichedResult,
+  ServerStatus
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +41,9 @@ export class HISEDataLoader {
 
   // Lazy-loading flag for snippets
   private snippetsLoaded = false;
+
+  // Cache timestamp for status reporting
+  private cacheLoadedAt: string | null = null;
 
   // Static stopwords set (optimization #3)
   private static readonly STOPWORDS = new Set([
@@ -123,6 +127,7 @@ export class HISEDataLoader {
       // Restore data and rebuild indexes (fast operation)
       this.data = cache.data;
       this.snippetsLoaded = false;
+      this.cacheLoadedAt = cache.cachedAt || null;
       this.buildIndexes();
 
       return true;
@@ -138,13 +143,16 @@ export class HISEDataLoader {
       const cachePath = join(dataDir, '.cache.json');
 
       // Only cache the transformed data, not the indexes (they're quick to rebuild)
+      const cachedAt = new Date().toISOString();
       const cache = {
         version: '1.1',
+        cachedAt,
         uiMtime: this.getFileMtime(join(dataDir, 'ui_component_properties.json')),
         apiMtime: this.getFileMtime(join(dataDir, 'scripting_api.json')),
         procMtime: this.getFileMtime(join(dataDir, 'processors.json')),
         data: this.data
       };
+      this.cacheLoadedAt = cachedAt;
 
       writeFileSync(cachePath, JSON.stringify(cache));
     } catch (error) {
@@ -830,6 +838,44 @@ export class HISEDataLoader {
       tags: snippet.tags,
       difficulty: snippet.difficulty
     }));
+  }
+
+  getServerStatus(name: string, version: string): ServerStatus {
+    const data = this.data;
+    
+    // Calculate cache age in minutes
+    let cacheAgeMinutes: number | null = null;
+    if (this.cacheLoadedAt) {
+      const cacheDate = new Date(this.cacheLoadedAt);
+      const now = new Date();
+      cacheAgeMinutes = Math.round((now.getTime() - cacheDate.getTime()) / (1000 * 60));
+    }
+
+    return {
+      server: {
+        name,
+        version
+      },
+      runtime: {
+        nodeVersion: process.version,
+        platform: process.platform
+      },
+      data: {
+        loaded: !!data,
+        cachedAt: this.cacheLoadedAt,
+        cacheAgeMinutes,
+        snippetsLoaded: this.snippetsLoaded
+      },
+      statistics: {
+        uiComponents: data ? new Set(data.uiComponentProperties.map(p => p.componentType)).size : 0,
+        uiProperties: data?.uiComponentProperties.length || 0,
+        scriptingNamespaces: data ? new Set(data.scriptingAPI.map(m => m.namespace)).size : 0,
+        scriptingMethods: data?.scriptingAPI.length || 0,
+        moduleTypes: data ? new Set(data.moduleParameters.map(p => p.moduleType)).size : 0,
+        moduleParameters: data?.moduleParameters.length || 0,
+        codeSnippets: data?.codeSnippets.length || 0
+      }
+    };
   }
 
   getAllData(): HISEData | null {
