@@ -497,6 +497,100 @@ RETURNS: Image dimensions and either base64 imageData or filePath.`,
     },
   },
   {
+    name: 'hise_runtime_edit_script',
+    description: `Edit specific lines in a HISE script without sending the entire script.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+Uses cached script when available - very efficient for the fix-error-compile cycle.
+Provide exactly ONE operation per call (line numbers shift after insert/delete).
+
+OPERATIONS:
+- edits: Replace specific lines by line number
+- replaceRange: Replace a range of lines (startLine to endLine inclusive)
+- insertAfter: Insert new lines after a specific line (use 0 for beginning)
+- deleteLines: Remove specific lines
+
+All line numbers are 1-based (matching error messages).
+
+EXAMPLES:
+
+Fix single line:
+  { "edits": [{ "line": 16, "content": "  g.fillRect([0, 0, 100, 50]);" }] }
+
+Fix multiple lines (same call):
+  { "edits": [{ "line": 16, "content": "..." }, { "line": 20, "content": "..." }] }
+
+Replace lines 10-15 with new content:
+  { "replaceRange": { "startLine": 10, "endLine": 15, "content": "// new code\\nhere" } }
+
+Insert after line 5:
+  { "insertAfter": { "line": 5, "content": "const x = 5;" } }
+
+Delete lines:
+  { "deleteLines": [20, 21, 22] }
+
+TOKEN SAVINGS: ~99% compared to sending full script (50 vs 10,000 tokens for large files).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'The script processor module ID',
+        },
+        callback: {
+          type: 'string',
+          description: 'Specific callback to edit (e.g., "onInit")',
+        },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              line: { type: 'number', description: 'Line number (1-based)' },
+              content: { type: 'string', description: 'New content for this line' },
+            },
+            required: ['line', 'content'],
+          },
+          description: 'Replace specific lines by line number',
+        },
+        replaceRange: {
+          type: 'object',
+          properties: {
+            startLine: { type: 'number', description: 'First line to replace (1-based)' },
+            endLine: { type: 'number', description: 'Last line to replace (1-based, inclusive)' },
+            content: { type: 'string', description: 'Replacement content (can include \\n for multiple lines)' },
+          },
+          required: ['startLine', 'endLine', 'content'],
+          description: 'Replace a range of lines',
+        },
+        insertAfter: {
+          type: 'object',
+          properties: {
+            line: { type: 'number', description: 'Insert after this line (0 for beginning)' },
+            content: { type: 'string', description: 'Content to insert (can include \\n for multiple lines)' },
+          },
+          required: ['line', 'content'],
+          description: 'Insert new lines after a specific line',
+        },
+        deleteLines: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Line numbers to delete (1-based)',
+        },
+        compile: {
+          type: 'boolean',
+          description: 'Compile after editing (default: true)',
+        },
+        errorContextLines: {
+          type: 'number',
+          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
+        },
+      },
+      required: ['moduleId'],
+    },
+  },
+  {
     name: 'hise_runtime_list_components',
     description: `List all UI components in a HISE script processor.
 
@@ -1032,8 +1126,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             { moduleId, script, callback, compile },
             errorContextLines ?? 1
           );
-          // Enrich errors with suggestions if compilation failed
-          if (!result.success && result.errors?.length) {
+          // Enrich errors with suggestions (runtime errors can occur even when success=true)
+          if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
           return {
@@ -1058,8 +1152,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const hiseClient = getHiseClient();
         try {
           const result = await hiseClient.recompile(moduleId, errorContextLines ?? 1);
-          // Enrich errors with suggestions if compilation failed
-          if (!result.success && result.errors?.length) {
+          // Enrich errors with suggestions (runtime errors can occur even when success=true)
+          if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
           return {
@@ -1086,6 +1180,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const hiseClient = getHiseClient();
         try {
           const result = await hiseClient.screenshot({ moduleId, id, scale, outputPath });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_edit_script': {
+        const { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile, errorContextLines } = args as {
+          moduleId: string;
+          callback?: string;
+          edits?: { line: number; content: string }[];
+          replaceRange?: { startLine: number; endLine: number; content: string };
+          insertAfter?: { line: number; content: string };
+          deleteLines?: number[];
+          compile?: boolean;
+          errorContextLines?: number;
+        };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.editScript(
+            { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile },
+            errorContextLines ?? 1
+          );
+          // Enrich errors with suggestions (runtime errors can occur even when success=true)
+          if (result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };

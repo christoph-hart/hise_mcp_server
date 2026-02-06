@@ -7,6 +7,7 @@
  * @see ADDING_RUNTIME_BRIDGES.md for documentation on adding new bridge tools
  */
 
+import { createHash } from 'crypto';
 import {
   HiseStatusResponse,
   HiseScriptResponse,
@@ -26,7 +27,16 @@ import {
   GetComponentPropertiesOptions,
   HiseError,
   ErrorCodeContext,
+  CachedScript,
+  EditScriptParams,
 } from './types.js';
+
+/**
+ * Compute a short hash of script content for cache validation
+ */
+function computeScriptHash(script: string): string {
+  return createHash('sha256').update(script).digest('hex').slice(0, 16);
+}
 
 // ============================================================================
 // Callstack Parsing Utilities
@@ -100,6 +110,7 @@ const DEFAULT_CONFIG: HiseClientConfig = {
 export class HiseClient {
   private config: HiseClientConfig;
   private cachedCompileTimeout: number | null = null;
+  private scriptCache: Map<string, CachedScript> = new Map();
 
   constructor(config?: Partial<HiseClientConfig>) {
     this.config = {
@@ -124,6 +135,48 @@ export class HiseClient {
    */
   getBaseUrl(): string {
     return this.config.baseUrl;
+  }
+
+  // ==========================================================================
+  // Script Cache Management
+  // ==========================================================================
+
+  /**
+   * Get cache key for a script
+   */
+  private getScriptCacheKey(moduleId: string, callback?: string): string {
+    return callback ? `${moduleId}:${callback}` : moduleId;
+  }
+
+  /**
+   * Cache a script
+   */
+  private cacheScript(moduleId: string, callback: string | undefined, script: string): void {
+    const key = this.getScriptCacheKey(moduleId, callback);
+    this.scriptCache.set(key, {
+      script,
+      lines: script.split('\n'),
+      timestamp: Date.now(),
+      hash: computeScriptHash(script),
+    });
+  }
+
+  /**
+   * Get a cached script
+   */
+  private getCachedScript(moduleId: string, callback?: string): CachedScript | null {
+    return this.scriptCache.get(this.getScriptCacheKey(moduleId, callback)) || null;
+  }
+
+  /**
+   * Invalidate all cached scripts for a module
+   */
+  invalidateScriptCache(moduleId: string): void {
+    for (const key of this.scriptCache.keys()) {
+      if (key === moduleId || key.startsWith(`${moduleId}:`)) {
+        this.scriptCache.delete(key);
+      }
+    }
   }
 
   /**
@@ -188,6 +241,11 @@ export class HiseClient {
       this.getCompileTimeout()
     );
 
+    // Cache the full script (only if no line range filtering requested)
+    if (result.success && result.script && !options?.startLine) {
+      this.cacheScript(moduleId, callback, result.script);
+    }
+
     // Apply line range filtering if requested
     if (result.success && result.script && options?.startLine !== undefined) {
       const lines = result.script.split('\n');
@@ -235,8 +293,8 @@ export class HiseClient {
       this.getCompileTimeout()
     );
 
-    // Enrich errors with code context if compilation failed
-    if (!result.success && result.errors?.length && errorContextLines > 0) {
+    // Enrich errors with code context (runtime errors can occur even when success=true)
+    if (result.errors?.length && errorContextLines > 0) {
       await this.enrichErrorsWithCodeContext(params.moduleId, result.errors, errorContextLines);
     }
 
@@ -257,10 +315,93 @@ export class HiseClient {
       this.getCompileTimeout()
     );
 
-    // Enrich errors with code context if compilation failed
-    if (!result.success && result.errors?.length && errorContextLines > 0) {
+    // Enrich errors with code context (runtime errors can occur even when success=true)
+    if (result.errors?.length && errorContextLines > 0) {
       await this.enrichErrorsWithCodeContext(moduleId, result.errors, errorContextLines);
     }
+
+    return result;
+  }
+
+  /**
+   * Edit script by line operations without sending the entire script
+   * 
+   * Uses cached script when available, fetches if needed.
+   * Exactly ONE operation must be provided: edits, replaceRange, insertAfter, or deleteLines.
+   * 
+   * @param params - Edit parameters including operation and compile flag
+   * @param errorContextLines - Lines of context around errors (default: 1)
+   */
+  async editScript(params: EditScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile } = params;
+
+    // Validate exactly one operation is provided
+    const operations = [edits, replaceRange, insertAfter, deleteLines].filter(Boolean);
+    if (operations.length === 0) {
+      throw new Error("At least one operation required: edits, replaceRange, insertAfter, or deleteLines");
+    }
+    if (operations.length > 1) {
+      throw new Error("Only one operation allowed per call: edits, replaceRange, insertAfter, or deleteLines");
+    }
+
+    // Always fetch fresh script to ensure cache is current
+    // (User may have edited script in HISE IDE since last fetch)
+    const scriptResult = await this.getScript(moduleId, callback);
+    if (!scriptResult.success || !scriptResult.script) {
+      throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
+    }
+
+    // getScript already caches, so get from cache
+    const cached = this.getCachedScript(moduleId, callback);
+    if (!cached) {
+      throw new Error("Failed to cache script");
+    }
+
+    // Clone lines array for modification
+    let lines = [...cached.lines];
+
+    // Apply the operation
+    if (edits) {
+      for (const edit of edits) {
+        if (edit.line < 1 || edit.line > lines.length) {
+          throw new Error(`Line ${edit.line} out of range (1-${lines.length})`);
+        }
+        lines[edit.line - 1] = edit.content;
+      }
+    } else if (replaceRange) {
+      const { startLine, endLine, content } = replaceRange;
+      if (startLine < 1 || endLine < startLine || endLine > lines.length) {
+        throw new Error(`Invalid range: ${startLine}-${endLine} (valid: 1-${lines.length})`);
+      }
+      const newLines = content.split('\n');
+      lines.splice(startLine - 1, endLine - startLine + 1, ...newLines);
+    } else if (insertAfter) {
+      const { line, content } = insertAfter;
+      if (line < 0 || line > lines.length) {
+        throw new Error(`Line ${line} out of range for insert (0-${lines.length})`);
+      }
+      const newLines = content.split('\n');
+      lines.splice(line, 0, ...newLines);
+    } else if (deleteLines) {
+      // Sort descending to delete from bottom up (preserves line numbers during deletion)
+      const toDelete = [...deleteLines].sort((a, b) => b - a);
+      for (const line of toDelete) {
+        if (line < 1 || line > lines.length) {
+          throw new Error(`Line ${line} out of range for delete (1-${lines.length})`);
+        }
+        lines.splice(line - 1, 1);
+      }
+    }
+
+    // Build new script and send to HISE
+    const newScript = lines.join('\n');
+    const result = await this.setScript(
+      { moduleId, script: newScript, callback, compile: compile ?? true },
+      errorContextLines
+    );
+
+    // Update cache with the new script (regardless of success/failure)
+    this.cacheScript(moduleId, callback, newScript);
 
     return result;
   }
