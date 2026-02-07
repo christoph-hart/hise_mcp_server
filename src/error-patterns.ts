@@ -39,28 +39,12 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     suggestion: "Console.assertTrue(condition) only takes one argument. Use Console.assertWithMessage(condition, \"message\") for a custom error message"
   },
 
-  // Can't use 'var' inside inline functions - use 'local'
-  {
-    id: "var-in-inline",
-    pattern: /Can't declare var statement in inline function/i,
-    codePattern: null,
-    suggestion: "Use 'local' instead of 'var' inside inline functions: local x = 90;"
-  },
-
   // Can't use 'const' inside inline functions - must be global
   {
     id: "const-in-inline",
     pattern: /const var declaration must be on global level/i,
     codePattern: null,
-    suggestion: "const/reg/global can only be declared at the top level. Inside inline functions, use 'local' instead"
-  },
-
-  // Can't use 'var' initializer in for loops inside inline functions
-  {
-    id: "var-in-for-loop",
-    pattern: /Can't use var initialiser inside inline function/i,
-    codePattern: /for\s*\(\s*var\s+/,
-    suggestion: "Omit 'var' in for loops inside inline functions: for(i = 0; i < 100; i++) not for(var i = 0; ...)"
+    suggestion: "const/reg/global can only be declared at the top level. Inside inline functions, use 'var' instead"
   },
 ];
 

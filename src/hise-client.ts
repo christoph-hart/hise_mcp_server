@@ -23,7 +23,6 @@ import {
   HiseGetSelectedComponentsResponse,
   SetComponentPropertiesParams,
   SetComponentValueParams,
-  GetScriptOptions,
   GetComponentPropertiesOptions,
   HiseError,
   ErrorCodeContext,
@@ -226,9 +225,8 @@ export class HiseClient {
    * 
    * @param moduleId - The script processor's module ID (e.g., "Interface")
    * @param callback - Optional: specific callback name (e.g., "onInit")
-   * @param options - Optional: line range filtering options
    */
-  async getScript(moduleId: string, callback?: string, options?: GetScriptOptions): Promise<HiseScriptResponse> {
+  async getScript(moduleId: string, callback?: string): Promise<HiseScriptResponse> {
     const params = new URLSearchParams({ moduleId });
     if (callback) {
       params.append('callback', callback);
@@ -241,34 +239,11 @@ export class HiseClient {
       this.getCompileTimeout()
     );
 
-    // Cache the full script (only if no line range filtering requested)
-    if (result.success && result.script && !options?.startLine) {
-      this.cacheScript(moduleId, callback, result.script);
-    }
-
-    // Apply line range filtering if requested
-    if (result.success && result.script && options?.startLine !== undefined) {
-      const lines = result.script.split('\n');
-      const totalLines = lines.length;
-      
-      // Convert to 0-based index, clamp to valid range
-      const startIdx = Math.max(0, Math.min(options.startLine - 1, totalLines - 1));
-      const endIdx = options.endLine !== undefined 
-        ? Math.min(totalLines, options.endLine)
-        : totalLines;
-      
-      // Ensure end is not before start
-      const actualEndIdx = Math.max(startIdx + 1, endIdx);
-      
-      // Extract the requested lines
-      result.script = lines.slice(startIdx, actualEndIdx).join('\n');
-      
-      // Add metadata about the line range
-      result.lineRange = {
-        start: startIdx + 1,  // Back to 1-based
-        end: Math.min(actualEndIdx, totalLines),  // 1-based, clamped to actual lines
-        total: totalLines,
-      };
+    // Cache each callback individually
+    if (result.success && result.callbacks) {
+      for (const [callbackName, script] of Object.entries(result.callbacks)) {
+        this.cacheScript(moduleId, callbackName, script);
+      }
     }
 
     return result;
@@ -277,7 +252,7 @@ export class HiseClient {
   /**
    * Set script content and optionally compile
    * 
-   * @param params - Script parameters including moduleId, script, callback, and compile flag
+   * @param params - Script parameters including moduleId, callbacks object, and compile flag
    * @param errorContextLines - Lines of context around errors (default: 1)
    */
   async setScript(params: SetScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
@@ -286,8 +261,7 @@ export class HiseClient {
       'POST',
       {
         moduleId: params.moduleId,
-        script: params.script,
-        callback: params.callback,
+        callbacks: params.callbacks,
         compile: params.compile ?? true,
       },
       this.getCompileTimeout()
@@ -296,6 +270,16 @@ export class HiseClient {
     // Enrich errors with code context (runtime errors can occur even when success=true)
     if (result.errors?.length && errorContextLines > 0) {
       await this.enrichErrorsWithCodeContext(params.moduleId, result.errors, errorContextLines);
+    }
+
+    // Update cache for each updated callback
+    if (result.success && result.updatedCallbacks) {
+      for (const callbackName of result.updatedCallbacks) {
+        const script = params.callbacks[callbackName];
+        if (script !== undefined) {
+          this.cacheScript(params.moduleId, callbackName, script);
+        }
+      }
     }
 
     return result;
@@ -344,10 +328,15 @@ export class HiseClient {
       throw new Error("Only one operation allowed per call: edits, replaceRange, insertAfter, or deleteLines");
     }
 
+    // callback is required for editScript since we need to know which callback to edit
+    if (!callback) {
+      throw new Error("callback parameter is required for editScript");
+    }
+
     // Always fetch fresh script to ensure cache is current
     // (User may have edited script in HISE IDE since last fetch)
     const scriptResult = await this.getScript(moduleId, callback);
-    if (!scriptResult.success || !scriptResult.script) {
+    if (!scriptResult.success || !scriptResult.callbacks[callback]) {
       throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
     }
 
@@ -396,7 +385,7 @@ export class HiseClient {
     // Build new script and send to HISE
     const newScript = lines.join('\n');
     const result = await this.setScript(
-      { moduleId, script: newScript, callback, compile: compile ?? true },
+      { moduleId, callbacks: { [callback]: newScript }, compile: compile ?? true },
       errorContextLines
     );
 
@@ -426,21 +415,24 @@ export class HiseClient {
       if (!location || location.moduleId !== moduleId) continue;
 
       try {
-        // Fetch lines around the error
-        const startLine = Math.max(1, location.line - contextLines);
-        const endLine = location.line + contextLines;
+        // For anonymous functions (callback === "function"), try onInit as default
+        const callbackToFetch = location.callback === 'function' ? 'onInit' : location.callback;
+        const scriptResult = await this.getScript(moduleId, callbackToFetch);
 
-        // For anonymous functions (callback === "function"), fetch without specifying callback
-        // This gets the merged script where we can find the line
-        const callbackToFetch = location.callback === 'function' ? undefined : location.callback;
-        const script = await this.getScript(moduleId, callbackToFetch, { startLine, endLine });
-
-        if (script.success && script.script && script.lineRange) {
+        if (scriptResult.success && scriptResult.callbacks[callbackToFetch]) {
+          const script = scriptResult.callbacks[callbackToFetch];
+          const lines = script.split('\n');
+          
+          // Extract lines around the error
+          const startLine = Math.max(1, location.line - contextLines);
+          const endLine = Math.min(lines.length, location.line + contextLines);
+          const extractedLines = lines.slice(startLine - 1, endLine).join('\n');
+          
           const codeContext: ErrorCodeContext = {
             callback: location.callback,
             line: location.line,
             column: location.column,
-            code: formatCodeWithLineNumbers(script.script, script.lineRange.start),
+            code: formatCodeWithLineNumbers(extractedLines, startLine),
           };
           error.codeContext = codeContext;
         }

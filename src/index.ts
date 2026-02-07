@@ -369,6 +369,65 @@ RETURNS: Resource content in markdown format (for workflows: steps, tools used, 
     },
   },
 
+  // LAF (LookAndFeel) TOOLS
+  {
+    name: 'list_laf_functions',
+    description: `List available LAF (LookAndFeel) functions for a component type.
+
+USE THIS TO:
+- Discover what LAF functions are available for styling a component
+- Works with ScriptComponents (ScriptButton, ScriptSlider, ScriptTable, etc.)
+- Works with FloatingTile ContentTypes (PresetBrowser, Keyboard, AHDSRGraph, etc.)
+- Works with Global UI elements (PopupMenu, AlertWindow, Scrollbar, etc.)
+
+WORKFLOW:
+1. Get component type from hise_runtime_get_selected_components or hise_runtime_list_components
+2. For ScriptFloatingTile, use the ContentType property value (e.g., "PresetBrowser")
+3. Call this tool with that type to get available LAF function names
+4. Call query_laf_function for each function you want to implement
+
+RETURNS: Component type, category, and array of LAF function names.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        componentType: {
+          type: 'string',
+          description: 'Component type or ContentType (e.g., "ScriptButton", "PresetBrowser", "PopupMenu")',
+        },
+      },
+      required: ['componentType'],
+    },
+  },
+  {
+    name: 'query_laf_function',
+    description: `Get detailed information about a specific LAF function.
+
+USE THIS TO:
+- Get the obj parameter properties for a LAF callback
+- Understand what data is available when drawing a component
+- Write correct LAF drawing code
+
+The obj parameter contains component state and properties. Common properties include:
+- obj.id: Component ID (use for branching in multi-component LAF)
+- obj.area: Bounds as [x, y, width, height]
+- obj.hover/obj.over: Mouse hover state
+- obj.down/obj.clicked: Mouse pressed state
+- obj.value: Current component value
+- obj.bgColour, obj.itemColour1, obj.textColour: Component colours
+
+RETURNS: Function name, component type, category, description, and all available obj properties with types.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        functionName: {
+          type: 'string',
+          description: 'LAF function name (e.g., "drawToggleButton", "drawRotarySlider", "drawPresetBrowserListItem")',
+        },
+      },
+      required: ['functionName'],
+    },
+  },
+
 ];
 
 // HISE Runtime tools - only available in local mode when HISE is connected
@@ -399,17 +458,13 @@ REQUIRES: HISE running locally with REST API enabled.
 
 PARAMETERS:
 - moduleId (required): The processor ID (e.g., "Interface")
-- callback (optional): Specific callback (e.g., "onInit"). If omitted, returns all callbacks merged.
-- startLine (optional): First line to return (1-based)
-- endLine (optional): Last line to return (1-based, inclusive)
+- callback (optional): Specific callback (e.g., "onInit"). If omitted, returns all callbacks.
 
-RESPONSE:
-- With lineRange: Returns script excerpt with {start, end, total} metadata
-- Without lineRange: Returns complete script
+RESPONSE: Returns a structured object with:
+- callbacks: Object mapping callback names to their script content
+- externalFiles: Array of {name, path} for any include() files
 
-USE lineRange when debugging errors - fetch only lines around the error location instead of the entire script.
-
-NOTE: onInit returns raw code (no function wrapper). Other callbacks include the function signature.`,
+NOTE: onInit returns raw code (no function wrapper). Other callbacks include the function signature (e.g., "function onNoteOn() { ... }").`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -420,14 +475,6 @@ NOTE: onInit returns raw code (no function wrapper). Other callbacks include the
         callback: {
           type: 'string',
           description: 'Optional: specific callback name (e.g., "onInit", "onNoteOn")',
-        },
-        startLine: {
-          type: 'number',
-          description: 'Optional: first line to return (1-based)',
-        },
-        endLine: {
-          type: 'number',
-          description: 'Optional: last line to return (1-based, inclusive)',
         },
       },
       required: ['moduleId'],
@@ -441,15 +488,17 @@ REQUIRES: HISE running locally with REST API enabled.
 
 PARAMETERS:
 - moduleId (required): The processor ID
-- script (required): The script content
-- callback (optional): Specific callback to update. If omitted, script is treated as merged content.
+- callbacks (required): Object mapping callback names to script content (e.g., {"onInit": "...", "onNoteOn": "..."})
 - compile (optional): Whether to compile after setting (default: true)
 - errorContextLines (optional): Lines of context around errors (default: 1)
 
-RETURNS: Compilation result with success status, console logs, and any errors with callstacks.
+Only the callbacks you specify are updated; others remain unchanged.
+You can update multiple callbacks at once - they are compiled together.
+
+RETURNS: Compilation result with success status, updatedCallbacks list, console logs, and any errors.
 Errors are auto-enriched with source code context and fix suggestions.
 
-NOTE: For onInit, provide raw code. For other callbacks, include the function wrapper.`,
+NOTE: For onInit, provide raw code. For other callbacks, include the function wrapper (e.g., "function onNoteOn() { ... }").`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -457,13 +506,10 @@ NOTE: For onInit, provide raw code. For other callbacks, include the function wr
           type: 'string',
           description: 'The script processor module ID',
         },
-        script: {
-          type: 'string',
-          description: 'The script content',
-        },
-        callback: {
-          type: 'string',
-          description: 'Optional: specific callback to update',
+        callbacks: {
+          type: 'object',
+          description: 'Object mapping callback names to script content',
+          additionalProperties: { type: 'string' },
         },
         compile: {
           type: 'boolean',
@@ -474,7 +520,7 @@ NOTE: For onInit, provide raw code. For other callbacks, include the function wr
           description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
         },
       },
-      required: ['moduleId', 'script'],
+      required: ['moduleId', 'callbacks'],
     },
   },
   {
@@ -583,7 +629,7 @@ TOKEN SAVINGS: ~99% compared to sending full script (50 vs 10,000 tokens for lar
         },
         callback: {
           type: 'string',
-          description: 'Specific callback to edit (e.g., "onInit")',
+          description: 'Callback to edit (required, e.g., "onInit", "onNoteOn")',
         },
         edits: {
           type: 'array',
@@ -630,7 +676,7 @@ TOKEN SAVINGS: ~99% compared to sending full script (50 vs 10,000 tokens for lar
           description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
         },
       },
-      required: ['moduleId'],
+      required: ['moduleId', 'callback'],
     },
   },
   {
@@ -839,6 +885,57 @@ USE THIS FOR AI-ASSISTED WORKFLOWS:
           description: 'The processor ID (default: "Interface")',
         },
       },
+    },
+  },
+  {
+    name: 'hise_verify_parameters',
+    description: 'Batch verify method signatures before writing code. Returns compact parameter info for multiple methods at once.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        methods: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of method names without namespace (e.g., ["fillRect", "print", "setTimerCallback"])'
+        }
+      },
+      required: ['methods']
+    }
+  },
+  {
+    name: 'hise_runtime_get_laf_functions',
+    description: `Get available LAF functions for components by their IDs.
+
+REQUIRES: HISE running locally with REST API enabled.
+
+USE THIS TO:
+- Query LAF functions for specific components in the current project
+- Automatically resolves ScriptFloatingTile ContentType to the correct LAF target
+- Handles multiple components at once, returning a flat list of all relevant functions
+
+WORKFLOW:
+1. Call hise_runtime_get_selected_components to get component IDs and types
+2. Pass the component IDs to this tool
+3. Receive a flat list of all LAF functions that apply to any of the components
+4. Call query_laf_function for details on specific functions
+
+REQUIRED: componentIds array - pass the IDs from get_selected_components (e.g., ["Button1", "Knob1"]). Do NOT pass only moduleId.
+
+RETURNS: Array of component IDs and flat array of unique LAF function names.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        componentIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of component IDs from the interface (e.g., ["Button1", "FloatingTile1"])',
+        },
+        moduleId: {
+          type: 'string',
+          description: 'Script processor ID (default: "Interface")',
+        },
+      },
+      required: ['componentIds'],
     },
   },
 ];
@@ -1185,7 +1282,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // SERVER STATUS TOOL
-      case 'server_status': {
+       case 'hise_verify_parameters': {
+         const { methods } = args as { methods: string[] };
+         const result = dataLoader.lookupMethodsByName(methods);
+         return {
+           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+         };
+       }
+
+       case 'server_status': {
         const baseStatus = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
         const hiseClient = getHiseClient();
         
@@ -1285,6 +1390,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // ========================================================================
+      // LAF (LookAndFeel) TOOLS
+      // ========================================================================
+
+      case 'list_laf_functions': {
+        const { componentType } = args as { componentType: string };
+        const result = await dataLoader.listLAFFunctions(componentType);
+
+        if (!result) {
+          return {
+            content: [{
+              type: 'text',
+              text: `No LAF functions found for component type "${componentType}". Check if the type name is correct (e.g., "ScriptButton", "PresetBrowser", "PopupMenu").`
+            }],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'query_laf_function': {
+        const { functionName } = args as { functionName: string };
+        const result = await dataLoader.queryLAFFunction(functionName);
+
+        if (!result) {
+          return {
+            content: [{
+              type: 'text',
+              text: `LAF function "${functionName}" not found. Use list_laf_functions to see available functions for a component type.`
+            }],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      // ========================================================================
       // HISE RUNTIME BRIDGE TOOLS
       // These tools are only available in local mode
       // ========================================================================
@@ -1308,18 +1455,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'hise_runtime_get_script': {
-        const { moduleId, callback, startLine, endLine } = args as { 
+        const { moduleId, callback } = args as { 
           moduleId: string; 
           callback?: string;
-          startLine?: number;
-          endLine?: number;
         };
         const hiseClient = getHiseClient();
         try {
-          const options = (startLine !== undefined || endLine !== undefined) 
-            ? { startLine, endLine } 
-            : undefined;
-          const result = await hiseClient.getScript(moduleId, callback, options);
+          const result = await hiseClient.getScript(moduleId, callback);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -1335,17 +1477,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'hise_runtime_set_script': {
-        const { moduleId, script, callback, compile, errorContextLines } = args as {
+        const { moduleId, callbacks, compile, errorContextLines } = args as {
           moduleId: string;
-          script: string;
-          callback?: string;
+          callbacks: Record<string, string>;
           compile?: boolean;
           errorContextLines?: number;
         };
         const hiseClient = getHiseClient();
         try {
           const result = await hiseClient.setScript(
-            { moduleId, script, callback, compile },
+            { moduleId, callbacks, compile },
             errorContextLines ?? 1
           );
           // Enrich errors with suggestions (runtime errors can occur even when success=true)
@@ -1435,6 +1576,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           compile?: boolean;
           errorContextLines?: number;
         };
+        
+        // Validate required parameters with helpful messages
+        const operations = [edits, replaceRange, insertAfter, deleteLines].filter(Boolean);
+        if (operations.length === 0) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: No edit operation provided. You must specify one of:
+- edits: [{"line": 5, "content": "new line content"}]
+- replaceRange: {"startLine": 5, "endLine": 10, "content": "replacement"}
+- insertAfter: {"line": 5, "content": "inserted line"}
+- deleteLines: [5, 6, 7]
+
+For writing new LAF code from scratch, use hise_runtime_set_script with callbacks instead:
+  hise_runtime_set_script({ moduleId: "Interface", callbacks: { "onInit": "your code" } })`
+            }],
+            isError: true,
+          };
+        }
+        
+        if (!callback) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: callback parameter is required. Specify which callback to edit (e.g., "onInit", "onNoteOn").
+
+Example: { moduleId: "Interface", callback: "onInit", edits: [{"line": 5, "content": "fixed code"}] }`
+            }],
+            isError: true,
+          };
+        }
+        
         const hiseClient = getHiseClient();
         try {
           const result = await hiseClient.editScript(
@@ -1580,6 +1753,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const result = await hiseClient.getSelectedComponents(moduleId);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_get_laf_functions': {
+        const { componentIds, moduleId } = args as { componentIds: string[]; moduleId?: string };
+        
+        // Validate required parameter
+        if (!componentIds || componentIds.length === 0) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Error: componentIds is required. Pass component IDs from hise_runtime_get_selected_components (e.g., componentIds=["Button1", "Button2"]). Do NOT pass only moduleId.'
+            }],
+            isError: true,
+          };
+        }
+        
+        const hiseClient = getHiseClient();
+        
+        try {
+          // Get component properties to determine types
+          const lafTargets: string[] = [];
+          
+          for (const componentId of componentIds) {
+            const propsResult = await hiseClient.getComponentProperties(
+              moduleId || 'Interface',
+              componentId,
+              { compact: false }
+            );
+            
+            if (propsResult.success && propsResult.type) {
+              // For ScriptFloatingTile, we need the ContentType property
+              if (propsResult.type === 'ScriptFloatingTile') {
+                const contentTypeProp = propsResult.properties?.find(p => p.id === 'ContentType');
+                if (contentTypeProp && typeof contentTypeProp.value === 'string') {
+                  lafTargets.push(contentTypeProp.value);
+                }
+              } else {
+                lafTargets.push(propsResult.type);
+              }
+            }
+          }
+          
+          // Get unique LAF targets and look up functions
+          const uniqueTargets = [...new Set(lafTargets)];
+          const functions = await dataLoader.getLAFFunctionsForTypes(uniqueTargets);
+          
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                componentIds,
+                functions,
+                note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns. Use hise_runtime_set_script with callbacks (e.g., callbacks: {\"onInit\": \"...\"}) to write and compile - do NOT just present code to the user without testing it."
+              }, null, 2)
+            }],
           };
         } catch (err) {
           return {

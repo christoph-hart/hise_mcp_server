@@ -11,7 +11,11 @@ import {
   SearchDomain,
   SearchResult,
   EnrichedResult,
-  ServerStatusBase
+  ServerStatusBase,
+  LAFStyleGuideData,
+  LAFListResult,
+  LAFQueryResult,
+  LAFCallbackProperty
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +34,7 @@ export class HISEDataLoader {
   private data: HISEData | null = null;
   private propertyIndex: Map<string, UIComponentProperty> = new Map();
   private apiMethodIndex: Map<string, ScriptingAPIMethod> = new Map();
+  private methodNameIndex: Map<string, ScriptingAPIMethod[]> = new Map();
   private parameterIndex: Map<string, ModuleParameter> = new Map();
   private snippetIndex: Map<string, CodeSnippet> = new Map();
 
@@ -44,6 +49,14 @@ export class HISEDataLoader {
 
   // Cache timestamp for status reporting
   private cacheLoadedAt: string | null = null;
+
+  // LAF data (loaded lazily)
+  private lafData: LAFStyleGuideData | null = null;
+  private lafLoaded = false;
+  // Index: componentType -> { category, functions[] }
+  private lafComponentIndex: Map<string, { category: 'ScriptComponents' | 'FloatingTileContentTypes' | 'Global'; functions: string[] }> = new Map();
+  // Index: functionName -> { componentType, category, description, properties }
+  private lafFunctionIndex: Map<string, LAFQueryResult> = new Map();
 
   // Static stopwords set (optimization #3)
   private static readonly STOPWORDS = new Set([
@@ -334,6 +347,7 @@ export class HISEDataLoader {
 
     this.propertyIndex.clear();
     this.apiMethodIndex.clear();
+    this.methodNameIndex.clear();
     this.parameterIndex.clear();
     this.snippetIndex.clear();
     this.keywordIndex.clear();
@@ -358,7 +372,12 @@ export class HISEDataLoader {
     // Index API methods
     for (const method of this.data.scriptingAPI) {
       const key = `${method.namespace}.${method.methodName}`.toLowerCase();
-      this.apiMethodIndex.set(key, method);
+this.apiMethodIndex.set(key, method);
+
+      // Build method-only index (for hise_verify_parameters)
+      const existing = this.methodNameIndex.get(method.methodName) || [];
+      existing.push(method);
+      this.methodNameIndex.set(method.methodName, existing);
 
       const keywords = this.extractKeywords(method.methodName, method.description, method.namespace);
       this.addToKeywordIndex(key, keywords);
@@ -873,12 +892,236 @@ export class HISEDataLoader {
         scriptingMethods: data?.scriptingAPI.length || 0,
         moduleTypes: data ? new Set(data.moduleParameters.map(p => p.moduleType)).size : 0,
         moduleParameters: data?.moduleParameters.length || 0,
-        codeSnippets: data?.codeSnippets.length || 0
+        codeSnippets: data?.codeSnippets.length || 0,
+        lafComponents: this.lafComponentIndex.size,
+        lafFunctions: this.lafFunctionIndex.size
       }
     };
   }
 
   getAllData(): HISEData | null {
     return this.data;
+  }
+
+  lookupMethodsByName(methodNames: string[]): Record<string, string[]> {
+    const result: Record<string, string[]> = {};
+
+    for (const name of methodNames) {
+      const methods = this.methodNameIndex.get(name) || [];
+      
+      result[name] = methods.map(method => {
+        const formattedParams = method.parameters.map(param => this.formatParam(param));
+        return `${method.namespace}.${method.methodName}(${formattedParams.join(', ')})`;
+      });
+    }
+
+    return result;
+  }
+
+  private formatParam(param: APIParameter): string {
+    const parts = param.name.split(' ');
+    const type = parts[0];
+    const name = parts.slice(1).join(' ');
+    const nameLower = name.toLowerCase();
+
+    // === Callbacks ===
+    if (nameLower.includes('callback') || nameLower.includes('function')) {
+      return 'function() {}';
+    }
+
+    // === Boolean ===
+    if (type === 'bool') {
+      return 'true';
+    }
+
+    // === Arrays (areas, rects, bounds) ===
+    if (nameLower.includes('area') || nameLower.includes('rect') || nameLower.includes('bounds')) {
+      return 'Rectangle(0, 0, 100, 100)';
+    }
+
+    // === Colours ===
+    if (nameLower.includes('colour') || nameLower.includes('color')) {
+      return '0xAARRGGBB';
+    }
+
+    // === Integers ===
+    if (type === 'int') {
+      if (nameLower.includes('channel')) return '1';
+      if (nameLower.includes('note')) return '60';
+      if (nameLower.includes('velocity')) return '100';
+      if (nameLower.includes('interval') || nameLower.includes('millisecond')) return '100';
+      if (nameLower.includes('timestamp') || nameLower.includes('sample')) return '0';
+      if (nameLower.includes('offset')) return '0';
+      if (nameLower === 'x' || nameLower === 'y') return '0';
+      return '0';
+    }
+
+    // === Strings ===
+    if (type === 'String') {
+      if (nameLower.includes('wildcard')) return '"*.txt"';
+      if (nameLower.includes('title')) return '"Title"';
+      if (nameLower.includes('message')) return '"Message"';
+      if (nameLower.includes('url') || nameLower.includes('suburl')) return '"/endpoint"';
+      if (nameLower.includes('address')) return '"/address"';
+      if (nameLower.includes('separator')) return '","';
+      if (nameLower.includes('name') || nameLower.includes('id')) return '"id"';
+      if (nameLower.includes('text')) return '"text"';
+      return '"string"';
+    }
+
+    // === Var (generic) ===
+    if (type === 'var') {
+      if (nameLower === 'x' || nameLower === 'y') return '0';
+      if (nameLower.includes('limit')) return '0.0';
+      if (nameLower.includes('parameter') || nameLower.includes('default') || nameLower.includes('values')) return '{}';
+      if (nameLower.includes('folder')) return 'FileSystem.Desktop';
+      if (nameLower.includes('value')) return 'value';
+      if (nameLower.includes('element')) return 'element';
+    }
+
+    // === Fallback: just use the parameter name ===
+    return name || param.name;
+  }
+
+  // ============================================================================
+  // LAF (LookAndFeel) Methods
+  // ============================================================================
+
+  /**
+   * Ensure LAF data is loaded (lazy loading)
+   */
+  private async ensureLAFLoaded(): Promise<void> {
+    if (this.lafLoaded) return;
+
+    try {
+      const lafPath = join(__dirname, '..', 'data', 'laf_style_guide.json');
+      const lafDataRaw = readFileSync(lafPath, 'utf8');
+      this.lafData = JSON.parse(lafDataRaw) as LAFStyleGuideData;
+      
+      this.buildLAFIndexes();
+      this.lafLoaded = true;
+      console.error('Loaded LAF style guide data');
+    } catch (error) {
+      console.error('Failed to load LAF data:', error);
+      throw new Error(`Failed to load LAF data: ${error}`);
+    }
+  }
+
+  /**
+   * Build indexes for fast LAF lookups
+   */
+  private buildLAFIndexes(): void {
+    if (!this.lafData) return;
+
+    this.lafComponentIndex.clear();
+    this.lafFunctionIndex.clear();
+
+    // Index ScriptComponents
+    const scriptComponents = this.lafData.categories.ScriptComponents.components;
+    for (const [componentType, component] of Object.entries(scriptComponents)) {
+      const functions = Object.keys(component.lafFunctions);
+      this.lafComponentIndex.set(componentType, { category: 'ScriptComponents', functions });
+
+      // Index each function
+      for (const [funcName, funcData] of Object.entries(component.lafFunctions)) {
+        this.lafFunctionIndex.set(funcName, {
+          functionName: funcName,
+          componentType,
+          category: 'ScriptComponents',
+          description: funcData.description,
+          properties: funcData.callbackProperties
+        });
+      }
+    }
+
+    // Index FloatingTileContentTypes
+    const floatingTypes = this.lafData.categories.FloatingTileContentTypes.contentTypes;
+    for (const [contentType, component] of Object.entries(floatingTypes)) {
+      const functions = Object.keys(component.lafFunctions);
+      this.lafComponentIndex.set(contentType, { category: 'FloatingTileContentTypes', functions });
+
+      // Index each function
+      for (const [funcName, funcData] of Object.entries(component.lafFunctions)) {
+        this.lafFunctionIndex.set(funcName, {
+          functionName: funcName,
+          componentType: contentType,
+          category: 'FloatingTileContentTypes',
+          description: funcData.description,
+          properties: funcData.callbackProperties
+        });
+      }
+    }
+
+    // Index Global categories
+    const globalCategories = this.lafData.categories.Global.categories;
+    for (const [categoryName, component] of Object.entries(globalCategories)) {
+      const functions = Object.keys(component.lafFunctions);
+      this.lafComponentIndex.set(categoryName, { category: 'Global', functions });
+
+      // Index each function
+      for (const [funcName, funcData] of Object.entries(component.lafFunctions)) {
+        this.lafFunctionIndex.set(funcName, {
+          functionName: funcName,
+          componentType: categoryName,
+          category: 'Global',
+          description: funcData.description,
+          properties: funcData.callbackProperties
+        });
+      }
+    }
+
+    console.error(`Indexed ${this.lafComponentIndex.size} LAF components, ${this.lafFunctionIndex.size} LAF functions`);
+  }
+
+  /**
+   * List LAF functions for a given component type
+   * @param componentType - e.g., "ScriptButton", "PresetBrowser", "PopupMenu"
+   */
+  async listLAFFunctions(componentType: string): Promise<LAFListResult | null> {
+    await this.ensureLAFLoaded();
+
+    const entry = this.lafComponentIndex.get(componentType);
+    if (!entry) {
+      return null;
+    }
+
+    return {
+      componentType,
+      category: entry.category,
+      functions: entry.functions,
+      note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns."
+    };
+  }
+
+  /**
+   * Query details for a specific LAF function
+   * @param functionName - e.g., "drawToggleButton", "drawRotarySlider"
+   */
+  async queryLAFFunction(functionName: string): Promise<LAFQueryResult | null> {
+    await this.ensureLAFLoaded();
+
+    return this.lafFunctionIndex.get(functionName) || null;
+  }
+
+  /**
+   * Get LAF functions for multiple component types (used by runtime tool)
+   * Returns a flat, deduplicated list of function names
+   * @param componentTypes - Array of component types or ContentTypes
+   */
+  async getLAFFunctionsForTypes(componentTypes: string[]): Promise<string[]> {
+    await this.ensureLAFLoaded();
+
+    const functions = new Set<string>();
+
+    for (const componentType of componentTypes) {
+      const entry = this.lafComponentIndex.get(componentType);
+      if (entry) {
+        for (const func of entry.functions) {
+          functions.add(func);
+        }
+      }
+    }
+
+    return Array.from(functions);
   }
 }

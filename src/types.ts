@@ -102,6 +102,8 @@ export interface ServerStatusBase {
     moduleTypes: number;
     moduleParameters: number;
     codeSnippets: number;
+    lafComponents: number;
+    lafFunctions: number;
   };
 }
 
@@ -203,28 +205,24 @@ export interface HiseStatusResponse {
 }
 
 /**
+ * External file reference from include() statements
+ */
+export interface HiseExternalFile {
+  name: string;        // e.g., "ExternalStuff.js"
+  path: string;        // Full path to the file
+}
+
+/**
  * Response from GET /api/get_script
+ * Now returns structured callbacks object instead of merged script
  */
 export interface HiseScriptResponse {
   success: boolean;
   moduleId: string;
-  callback?: string;
-  script: string;
-  lineRange?: {        // Present when startLine/endLine filtering is used
-    start: number;     // First line returned (1-based)
-    end: number;       // Last line returned (1-based)
-    total: number;     // Total lines in full script
-  };
+  callbacks: Record<string, string>;  // e.g., { "onInit": "...", "onNoteOn": "function onNoteOn() {...}" }
+  externalFiles: HiseExternalFile[];  // Files referenced via include()
   logs: string[];
   errors: HiseError[];
-}
-
-/**
- * Options for getScript - allows fetching a range of lines
- */
-export interface GetScriptOptions {
-  startLine?: number;  // First line to return (1-based)
-  endLine?: number;    // Last line to return (1-based, inclusive)
 }
 
 /**
@@ -232,6 +230,8 @@ export interface GetScriptOptions {
  */
 export interface HiseCompileResponse {
   success: boolean;
+  moduleId?: string;
+  updatedCallbacks?: string[];  // Which callbacks were updated
   result?: string;
   logs: string[];
   errors: HiseError[];
@@ -255,11 +255,11 @@ export interface HiseScreenshotResponse {
 
 /**
  * Parameters for set_script
+ * Now uses structured callbacks object instead of single script string
  */
 export interface SetScriptParams {
   moduleId: string;
-  script: string;
-  callback?: string;
+  callbacks: Record<string, string>;  // e.g., { "onInit": "...", "onNoteOn": "..." }
   compile?: boolean;
 }
 
@@ -468,6 +468,84 @@ export interface SetComponentValueParams {
   id: string;
   value: number;
   validateRange?: boolean;
+}
+
+// ============================================================================
+// LAF (LookAndFeel) Types
+// ============================================================================
+
+/**
+ * A single property available in the LAF callback's obj parameter
+ */
+export interface LAFCallbackProperty {
+  type: string;
+  description: string;
+}
+
+/**
+ * A LAF function definition with its callback properties
+ */
+export interface LAFFunction {
+  description: string;
+  callbackProperties: Record<string, LAFCallbackProperty>;
+}
+
+/**
+ * A component that has LAF functions
+ */
+export interface LAFComponent {
+  lafFunctions: Record<string, LAFFunction>;
+}
+
+/**
+ * Root structure of the LAF style guide data
+ */
+export interface LAFStyleGuideData {
+  version: string;
+  generated: string;
+  categories: {
+    ScriptComponents: {
+      description: string;
+      components: Record<string, LAFComponent>;
+    };
+    FloatingTileContentTypes: {
+      description: string;
+      contentTypes: Record<string, LAFComponent>;
+    };
+    Global: {
+      description: string;
+      categories: Record<string, LAFComponent>;
+    };
+  };
+}
+
+/**
+ * Result from list_laf_functions
+ */
+export interface LAFListResult {
+  componentType: string;
+  category: 'ScriptComponents' | 'FloatingTileContentTypes' | 'Global';
+  functions: string[];
+  note?: string;
+}
+
+/**
+ * Result from query_laf_function
+ */
+export interface LAFQueryResult {
+  functionName: string;
+  componentType: string;
+  category: 'ScriptComponents' | 'FloatingTileContentTypes' | 'Global';
+  description: string;
+  properties: Record<string, LAFCallbackProperty>;
+}
+
+/**
+ * Result from hise_runtime_get_laf_functions
+ */
+export interface LAFRuntimeResult {
+  componentIds: string[];
+  functions: string[];
 }
 
 // Auth Types (Phase 1-2)
