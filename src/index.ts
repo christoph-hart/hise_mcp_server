@@ -109,37 +109,22 @@ const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
   {
     name: 'search_hise',
-    description: `Search across all HISE documentation: API methods, UI properties, module parameters, and code snippets.
-
-USE THIS WHEN:
-- You don't know the exact name of what you're looking for
-- You want to find items by keyword or concept (e.g., "midi", "filter", "envelope")
-- You want to see all methods in a namespace (e.g., "Synth.*")
-- You want to discover related functionality
-
-SUPPORTS:
-- Keyword search: "midi note" finds items about MIDI notes
-- Prefix patterns: "Synth.*" lists all Synth methods, "*.setValue" finds all setValue methods
-- Fuzzy matching: Finds similar items even with typos
-
-RETURNS: Array of matches with id, domain, name, description, and relevance score.
-
-After finding items, use the specific query tools to get full details.`,
+    description: `Search HISE docs by keyword or pattern (e.g., "midi", "Synth.*"). Returns matches with relevance score. Use query_* tools for full details.`,
     inputSchema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query. Can be keywords, Namespace.method format, or wildcard patterns like "Synth.*"',
+          description: 'Keywords or pattern (e.g., "Synth.*")',
         },
         domain: {
           type: 'string',
           enum: ['all', 'api', 'ui', 'modules', 'snippets'],
-          description: 'Optional: Limit search to specific domain. Default: "all"',
+          description: 'Filter by domain (default: all)',
         },
         limit: {
           type: 'number',
-          description: 'Optional: Maximum results to return (1-50). Default: 10',
+          description: 'Max results (default: 10)',
         },
       },
       required: ['query'],
@@ -149,27 +134,13 @@ After finding items, use the specific query tools to get full details.`,
   // EXACT QUERY TOOLS - Use after search or when you know exact names
   {
     name: 'query_scripting_api',
-    description: `Get full details for a HISE Scripting API method by exact name.
-
-USE THIS FOR:
-- Method calls with () like: Synth.addNoteOn, Math.round, Engine.getSampleRate
-- Object methods like: Knob.setValue, ScriptButton.getValue, Panel.repaint
-- Any function/method you call in HiseScript code
-
-FORMAT: "Namespace.methodName" (parentheses optional, will be stripped)
-EXAMPLES: "Synth.addNoteOn", "Math.round()", "Console.print"
-
-DO NOT USE FOR:
-- UI properties (filmstripImage, text, enabled) -> use query_ui_property
-- Module parameters (Gain, Attack, Release) -> use query_module_parameter
-
-RETURNS: Method signature, parameters, return type, description, example code, and related methods.`,
+    description: `Get API method details. Format: "Namespace.method" (e.g., "Synth.addNoteOn"). Returns signature, parameters, examples.`,
     inputSchema: {
       type: 'object',
       properties: {
         apiCall: {
           type: 'string',
-          description: 'The API method in "Namespace.method" format. Examples: "Synth.addNoteOn", "Math.round", "Engine.getSampleRate"',
+          description: '"Namespace.method" (e.g., "Synth.addNoteOn")',
         },
       },
       required: ['apiCall'],
@@ -177,27 +148,13 @@ RETURNS: Method signature, parameters, return type, description, example code, a
   },
   {
     name: 'query_ui_property',
-    description: `Get full details for a HISE UI component property by exact name.
-
-USE THIS FOR:
-- Properties accessed via Content.getComponent("name").get("property")
-- Properties accessed via Content.getComponent("name").set("property", value)
-- Visual/behavior properties: filmstripImage, text, enabled, visible, itemColour, bgColour
-
-FORMAT: "ComponentType.propertyName"
-EXAMPLES: "ScriptButton.filmstripImage", "ScriptSlider.mode", "ScriptLabel.text"
-
-DO NOT USE FOR:
-- Method calls with () like setValue(), getValue() -> use query_scripting_api
-- Module parameters like Gain, Attack -> use query_module_parameter
-
-RETURNS: Property type, default value, description, possible values, and related properties.`,
+    description: `Get UI component property details. Format: "Component.property" (e.g., "ScriptButton.filmstripImage"). Returns type, default, possible values.`,
     inputSchema: {
       type: 'object',
       properties: {
         componentProperty: {
           type: 'string',
-          description: 'The property in "Component.property" format. Examples: "ScriptButton.filmstripImage", "ScriptSlider.mode"',
+          description: '"Component.property" (e.g., "ScriptSlider.mode")',
         },
       },
       required: ['componentProperty'],
@@ -205,27 +162,13 @@ RETURNS: Property type, default value, description, possible values, and related
   },
   {
     name: 'query_module_parameter',
-    description: `Get full details for a HISE module/processor parameter by exact name.
-
-USE THIS FOR:
-- DSP module parameters: Gain, Attack, Release, Frequency, Q
-- Processor settings accessed via setAttribute()
-- Sound generator parameters: HardcodedSynth.Gain, SimpleEnvelope.Attack
-
-FORMAT: "ModuleType.ParameterId"
-EXAMPLES: "SimpleEnvelope.Attack", "HardcodedSynth.Gain", "SimpleGain.Gain"
-
-DO NOT USE FOR:
-- Scripting methods with () -> use query_scripting_api
-- UI component properties -> use query_ui_property
-
-RETURNS: Min/max values, step size, default value, description, and related parameters.`,
+    description: `Get module parameter details. Format: "Module.param" (e.g., "SimpleEnvelope.Attack"). Returns min/max, default, description.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleParameter: {
           type: 'string',
-          description: 'The parameter in "Module.parameterId" format. Examples: "SimpleEnvelope.Attack", "HardcodedSynth.Gain"',
+          description: '"Module.param" (e.g., "SimpleGain.Gain")',
         },
       },
       required: ['moduleParameter'],
@@ -235,54 +178,36 @@ RETURNS: Min/max values, step size, default value, description, and related para
   // SNIPPET TOOLS
   {
     name: 'list_snippets',
-    description: `Browse available HISE code snippets with optional filtering.
-
-USE THIS TO:
-- Discover example code for learning
-- Find snippets by category: Modules, MIDI, Scripting, Scriptnode, UI
-- Filter by difficulty: beginner, intermediate, advanced
-- Search by tags
-
-WORKFLOW: Use this to browse -> find relevant snippet ID -> use get_snippet to get full code.
-
-RETURNS: Array of snippet summaries (id, title, description, category, tags, difficulty).`,
+    description: `Browse HISE code snippets. Filter by category/difficulty/tags. Use get_snippet for full code.`,
     inputSchema: {
       type: 'object',
       properties: {
         category: {
           type: 'string',
-          description: 'Optional: Filter by category (All, Modules, MIDI, Scripting, Scriptnode, UI)',
+          description: 'Category filter',
         },
         difficulty: {
           type: 'string',
           enum: ['beginner', 'intermediate', 'advanced'],
-          description: 'Optional: Filter by difficulty level',
+          description: 'Difficulty filter',
         },
         tags: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Optional: Filter by tags (e.g., ["Best Practice", "Featured"])',
+          description: 'Tag filter',
         },
       },
     },
   },
   {
     name: 'get_snippet',
-    description: `Get complete code snippet with full source code and metadata.
-
-USE AFTER list_snippets to retrieve the actual code.
-
-RETURNS: Complete snippet including:
-- Full source code
-- Related API methods
-- Related UI components
-- Category and tags`,
+    description: `Get snippet source code and metadata.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: {
           type: 'string',
-          description: 'The snippet ID from list_snippets (e.g., "basicsynth", "midi-cc-control")',
+          description: 'Snippet ID',
         },
       },
       required: ['id'],
@@ -292,7 +217,7 @@ RETURNS: Complete snippet including:
   // LISTING TOOLS - For browsing available items
   {
     name: 'list_ui_components',
-    description: 'List all UI component types (ScriptButton, ScriptSlider, ScriptPanel, etc.) that have documented properties.',
+    description: 'List UI component types with documented properties.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -300,7 +225,7 @@ RETURNS: Complete snippet including:
   },
   {
     name: 'list_scripting_namespaces',
-    description: 'List all Scripting API namespaces (Synth, Engine, Math, Console, etc.).',
+    description: 'List Scripting API namespaces.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -308,7 +233,7 @@ RETURNS: Complete snippet including:
   },
   {
     name: 'list_module_types',
-    description: 'List all module/processor types (SimpleEnvelope, HardcodedSynth, SimpleGain, etc.) that have documented parameters.',
+    description: 'List module types with documented parameters.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -318,16 +243,7 @@ RETURNS: Complete snippet including:
   // SERVER INFO TOOL
   {
     name: 'server_status',
-    description: `Get server version, runtime information, data statistics, and HISE runtime availability.
-
-USE THIS TO:
-- Verify the server version matches expectations
-- Check if data is loaded and from cache
-- View statistics about available documentation
-- Check if HISE runtime bridge is available (requires local HISE instance)
-- Debug connection issues
-
-RETURNS: Server name/version, Node.js version, platform, cache status, counts for all data types, and HISE runtime status.`,
+    description: `Get server status, data statistics, and HISE runtime availability.`,
     inputSchema: {
       type: 'object',
       properties: {},
@@ -337,14 +253,7 @@ RETURNS: Server name/version, Node.js version, platform, cache status, counts fo
   // RESOURCE TOOLS - Access static documentation resources
   {
     name: 'list_resources',
-    description: `List all available HISE static resources (workflows, guides, documentation).
-
-Returns categorized list with IDs that can be passed to get_resource.
-
-Current resource categories:
-- workflows: Step-by-step guides for common development tasks
-
-Use get_resource with a specific ID to retrieve the full content.`,
+    description: `List available HISE resources (workflows, guides). Use get_resource for full content.`,
     inputSchema: {
       type: 'object',
       properties: {},
@@ -352,17 +261,13 @@ Use get_resource with a specific ID to retrieve the full content.`,
   },
   {
     name: 'get_resource',
-    description: `Get the content of a specific HISE resource by ID.
-
-USE AFTER list_resources to retrieve full content for workflows, guides, or documentation.
-
-RETURNS: Resource content in markdown format (for workflows: steps, tools used, tips).`,
+    description: `Get a HISE resource by ID. Returns markdown content.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: {
           type: 'string',
-          description: 'The resource ID from list_resources (e.g., "fix-errors", "ui-layout")',
+          description: 'Resource ID (e.g., "laf-functions-style")',
         },
       },
       required: ['id'],
@@ -372,27 +277,13 @@ RETURNS: Resource content in markdown format (for workflows: steps, tools used, 
   // LAF (LookAndFeel) TOOLS
   {
     name: 'list_laf_functions',
-    description: `List available LAF (LookAndFeel) functions for a component type.
-
-USE THIS TO:
-- Discover what LAF functions are available for styling a component
-- Works with ScriptComponents (ScriptButton, ScriptSlider, ScriptTable, etc.)
-- Works with FloatingTile ContentTypes (PresetBrowser, Keyboard, AHDSRGraph, etc.)
-- Works with Global UI elements (PopupMenu, AlertWindow, Scrollbar, etc.)
-
-WORKFLOW:
-1. Get component type from hise_runtime_get_selected_components or hise_runtime_list_components
-2. For ScriptFloatingTile, use the ContentType property value (e.g., "PresetBrowser")
-3. Call this tool with that type to get available LAF function names
-4. Call query_laf_function for each function you want to implement
-
-RETURNS: Component type, category, and array of LAF function names.`,
+    description: `List LAF functions for a component type. IMPORTANT: Load get_resource("laf-functions-style") before writing LAF code.`,
     inputSchema: {
       type: 'object',
       properties: {
         componentType: {
           type: 'string',
-          description: 'Component type or ContentType (e.g., "ScriptButton", "PresetBrowser", "PopupMenu")',
+          description: 'e.g., "ScriptButton", "PresetBrowser"',
         },
       },
       required: ['componentType'],
@@ -400,28 +291,13 @@ RETURNS: Component type, category, and array of LAF function names.`,
   },
   {
     name: 'query_laf_function',
-    description: `Get detailed information about a specific LAF function.
-
-USE THIS TO:
-- Get the obj parameter properties for a LAF callback
-- Understand what data is available when drawing a component
-- Write correct LAF drawing code
-
-The obj parameter contains component state and properties. Common properties include:
-- obj.id: Component ID (use for branching in multi-component LAF)
-- obj.area: Bounds as [x, y, width, height]
-- obj.hover/obj.over: Mouse hover state
-- obj.down/obj.clicked: Mouse pressed state
-- obj.value: Current component value
-- obj.bgColour, obj.itemColour1, obj.textColour: Component colours
-
-RETURNS: Function name, component type, category, description, and all available obj properties with types.`,
+    description: `Get LAF function details including obj properties for drawing code.`,
     inputSchema: {
       type: 'object',
       properties: {
         functionName: {
           type: 'string',
-          description: 'LAF function name (e.g., "drawToggleButton", "drawRotarySlider", "drawPresetBrowserListItem")',
+          description: 'e.g., "drawToggleButton"',
         },
       },
       required: ['functionName'],
@@ -434,17 +310,7 @@ RETURNS: Function name, component type, category, description, and all available
 const RUNTIME_TOOLS: Tool[] = [
   {
     name: 'hise_runtime_status',
-    description: `Get status of the running HISE instance.
-
-REQUIRES: HISE running locally with REST API enabled (default port 1900).
-
-RETURNS: Project info, script processors, callbacks, and external files.
-
-USE THIS TO:
-- Verify HISE is running and accessible
-- Discover available script processors and their moduleIds
-- Find which callbacks have content (empty: false)
-- Get the scriptsFolder path for external files`,
+    description: `Get HISE runtime status. Returns project info, processors, callbacks.`,
     inputSchema: {
       type: 'object',
       properties: {},
@@ -452,29 +318,17 @@ USE THIS TO:
   },
   {
     name: 'hise_runtime_get_script',
-    description: `Read script content from a HISE processor.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID (e.g., "Interface")
-- callback (optional): Specific callback (e.g., "onInit"). If omitted, returns all callbacks.
-
-RESPONSE: Returns a structured object with:
-- callbacks: Object mapping callback names to their script content
-- externalFiles: Array of {name, path} for any include() files
-
-NOTE: onInit returns raw code (no function wrapper). Other callbacks include the function signature (e.g., "function onNoteOn() { ... }").`,
+    description: `Read script from a processor. Returns {callbacks: {...}, externalFiles: [...]}.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID (e.g., "Interface")',
+          description: 'Processor ID (e.g., "Interface")',
         },
         callback: {
           type: 'string',
-          description: 'Optional: specific callback name (e.g., "onInit", "onNoteOn")',
+          description: 'Specific callback (optional)',
         },
       },
       required: ['moduleId'],
@@ -482,42 +336,26 @@ NOTE: onInit returns raw code (no function wrapper). Other callbacks include the
   },
   {
     name: 'hise_runtime_set_script',
-    description: `Update and compile script content in a HISE processor.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID
-- callbacks (required): Object mapping callback names to script content (e.g., {"onInit": "...", "onNoteOn": "..."})
-- compile (optional): Whether to compile after setting (default: true)
-- errorContextLines (optional): Lines of context around errors (default: 1)
-
-Only the callbacks you specify are updated; others remain unchanged.
-You can update multiple callbacks at once - they are compiled together.
-
-RETURNS: Compilation result with success status, updatedCallbacks list, console logs, and any errors.
-Errors are auto-enriched with source code context and fix suggestions.
-
-NOTE: For onInit, provide raw code. For other callbacks, include the function wrapper (e.g., "function onNoteOn() { ... }").`,
+    description: `Set and compile script. Pass callbacks object (e.g., {"onInit": "..."}). Only specified callbacks are updated.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         callbacks: {
           type: 'object',
-          description: 'Object mapping callback names to script content',
+          description: '{"callbackName": "code", ...}',
           additionalProperties: { type: 'string' },
         },
         compile: {
           type: 'boolean',
-          description: 'Whether to compile after setting (default: true)',
+          description: 'Compile after setting (default: true)',
         },
         errorContextLines: {
           type: 'number',
-          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
+          description: 'Error context lines (default: 1)',
         },
       },
       required: ['moduleId', 'callbacks'],
@@ -525,26 +363,17 @@ NOTE: For onInit, provide raw code. For other callbacks, include the function wr
   },
   {
     name: 'hise_runtime_recompile',
-    description: `Recompile a HISE processor without changing its script.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-USE THIS:
-- After editing external .js files directly on disk
-- To re-run initialization code
-- To check current compile state
-
-RETURNS: Compilation result with success status, logs, and errors auto-enriched with source code context.`,
+    description: `Recompile a processor without changing script. Use after editing external .js files.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         errorContextLines: {
           type: 'number',
-          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
+          description: 'Error context lines (default: 1)',
         },
       },
       required: ['moduleId'],
@@ -552,128 +381,86 @@ RETURNS: Compilation result with success status, logs, and errors auto-enriched 
   },
   {
     name: 'hise_runtime_screenshot',
-    description: `Capture a screenshot of the HISE interface or a specific component.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (optional): Processor ID (default: "Interface")
-- id (optional): Component ID to capture (omit for full interface)
-- scale (optional): Scale factor - 0.5 or 1.0 (default: 1.0)
-- outputPath (optional): File path to save PNG. If provided, saves to file. If omitted, returns base64.
-
-RETURNS: Image dimensions and either base64 imageData or filePath.`,
+    description: `Screenshot the interface or a component. Returns base64 or saves to file.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'Processor ID (default: "Interface")',
+          description: 'Processor ID (e.g., "Interface")',
         },
         id: {
           type: 'string',
-          description: 'Component ID to capture (omit for full interface)',
+          description: 'Component ID (omit for full interface)',
         },
         scale: {
           type: 'number',
-          description: 'Scale factor: 0.5 or 1.0 (default: 1.0)',
+          description: '0.5 or 1.0',
         },
         outputPath: {
           type: 'string',
-          description: 'File path to save PNG (must end with .png)',
+          description: 'Save path (.png)',
         },
       },
     },
   },
   {
     name: 'hise_runtime_edit_script',
-    description: `Edit specific lines in a HISE script without sending the entire script.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-Uses cached script when available - very efficient for the fix-error-compile cycle.
-Provide exactly ONE operation per call (line numbers shift after insert/delete).
-
-OPERATIONS:
-- edits: Replace specific lines by line number
-- replaceRange: Replace a range of lines (startLine to endLine inclusive)
-- insertAfter: Insert new lines after a specific line (use 0 for beginning)
-- deleteLines: Remove specific lines
-
-All line numbers are 1-based (matching error messages).
-
-EXAMPLES:
-
-Fix single line:
-  { "edits": [{ "line": 16, "content": "  g.fillRect([0, 0, 100, 50]);" }] }
-
-Fix multiple lines (same call):
-  { "edits": [{ "line": 16, "content": "..." }, { "line": 20, "content": "..." }] }
-
-Replace lines 10-15 with new content:
-  { "replaceRange": { "startLine": 10, "endLine": 15, "content": "// new code\\nhere" } }
-
-Insert after line 5:
-  { "insertAfter": { "line": 5, "content": "const x = 5;" } }
-
-Delete lines:
-  { "deleteLines": [20, 21, 22] }
-
-TOKEN SAVINGS: ~99% compared to sending full script (50 vs 10,000 tokens for large files).`,
+    description: `Edit script lines. Use edits, replaceRange, insertAfter, or deleteLines. One operation per call. Line numbers are 1-based.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         callback: {
           type: 'string',
-          description: 'Callback to edit (required, e.g., "onInit", "onNoteOn")',
+          description: 'Callback name (e.g., "onInit")',
         },
         edits: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              line: { type: 'number', description: 'Line number (1-based)' },
-              content: { type: 'string', description: 'New content for this line' },
+              line: { type: 'number', description: 'Line number' },
+              content: { type: 'string', description: 'New content' },
             },
             required: ['line', 'content'],
           },
-          description: 'Replace specific lines by line number',
+          description: 'Replace lines',
         },
         replaceRange: {
           type: 'object',
           properties: {
-            startLine: { type: 'number', description: 'First line to replace (1-based)' },
-            endLine: { type: 'number', description: 'Last line to replace (1-based, inclusive)' },
-            content: { type: 'string', description: 'Replacement content (can include \\n for multiple lines)' },
+            startLine: { type: 'number', description: 'Start line' },
+            endLine: { type: 'number', description: 'End line' },
+            content: { type: 'string', description: 'New content' },
           },
           required: ['startLine', 'endLine', 'content'],
-          description: 'Replace a range of lines',
+          description: 'Replace range',
         },
         insertAfter: {
           type: 'object',
           properties: {
-            line: { type: 'number', description: 'Insert after this line (0 for beginning)' },
-            content: { type: 'string', description: 'Content to insert (can include \\n for multiple lines)' },
+            line: { type: 'number', description: 'Insert after line' },
+            content: { type: 'string', description: 'Content' },
           },
           required: ['line', 'content'],
-          description: 'Insert new lines after a specific line',
+          description: 'Insert lines',
         },
         deleteLines: {
           type: 'array',
           items: { type: 'number' },
-          description: 'Line numbers to delete (1-based)',
+          description: 'Lines to delete',
         },
         compile: {
           type: 'boolean',
-          description: 'Compile after editing (default: true)',
+          description: 'Compile after (default: true)',
         },
         errorContextLines: {
           type: 'number',
-          description: 'Lines of context around errors: 1 (default), 5, 10, or 0 to disable',
+          description: 'Error context lines',
         },
       },
       required: ['moduleId', 'callback'],
@@ -681,25 +468,17 @@ TOKEN SAVINGS: ~99% compared to sending full script (50 vs 10,000 tokens for lar
   },
   {
     name: 'hise_runtime_list_components',
-    description: `List all UI components in a HISE script processor.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID (e.g., "Interface")
-- hierarchy (optional): If true, returns nested tree with layout properties (x, y, width, height, visible, enabled)
-
-RETURNS: Array of components with id and type. If hierarchy=true, includes layout properties and childComponents.`,
+    description: `List UI components. Use hierarchy=true for layout tree.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID (e.g., "Interface")',
+          description: 'Processor ID (e.g., "Interface")',
         },
         hierarchy: {
           type: 'boolean',
-          description: 'If true, returns nested tree with layout properties (default: false)',
+          description: 'Include layout tree',
         },
       },
       required: ['moduleId'],
@@ -707,46 +486,26 @@ RETURNS: Array of components with id and type. If hierarchy=true, includes layou
   },
   {
     name: 'hise_runtime_get_component_properties',
-    description: `Get properties for a UI component.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID
-- id (required): The component's ID (e.g., "Button1", "Knob1")
-- compact (optional): Only return non-default properties (default: true)
-- properties (optional): Array of specific property names to return
-
-RESPONSE:
-- With compact=true (default): Returns only modified properties, or just id/type if all are default
-- With properties=[...]: Returns only the requested properties
-- With compact=false: Returns all 45+ properties (use sparingly)
-
-USE THIS TO:
-- Check which properties have been modified from defaults
-- Query specific properties like position (x, y, width, height)
-- Get full property list only when discovering available options
-
-AVOID calling this just to verify a set operation succeeded.`,
+    description: `Get component properties. compact=true returns only non-defaults.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         id: {
           type: 'string',
-          description: 'The component ID (e.g., "Button1", "Knob1")',
+          description: 'Component ID',
         },
         compact: {
           type: 'boolean',
-          description: 'Only return non-default properties (default: true)',
+          description: 'Only non-defaults (default: true)',
         },
         properties: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Optional: array of specific property names to return',
+          description: 'Specific properties to return',
         },
       },
       required: ['moduleId', 'id'],
@@ -754,40 +513,29 @@ AVOID calling this just to verify a set operation succeeded.`,
   },
   {
     name: 'hise_runtime_set_component_properties',
-    description: `Set properties on one or more UI components (like Interface Designer).
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID
-- changes (required): Array of {id, properties: {...}} objects
-- force (optional): If true, bypasses script-lock check (default: false)
-
-RETURNS: Applied changes and recompileRequired flag. If properties are locked by script, returns error with locked list.
-
-NOTE: When recompileRequired is true (parentComponent changed), call hise_runtime_recompile to apply.`,
+    description: `Set component properties. Pass changes array: [{id, properties: {...}}].`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         changes: {
           type: 'array',
-          description: 'Array of {id, properties: {...}} objects',
+          description: '[{id, properties}]',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', description: 'Component ID' },
-              properties: { type: 'object', description: 'Properties to set' },
+              id: { type: 'string' },
+              properties: { type: 'object' },
             },
             required: ['id', 'properties'],
           },
         },
         force: {
           type: 'boolean',
-          description: 'Bypass script-lock check (default: false)',
+          description: 'Bypass lock check',
         },
       },
       required: ['moduleId', 'changes'],
@@ -795,30 +543,17 @@ NOTE: When recompileRequired is true (parentComponent changed), call hise_runtim
   },
   {
     name: 'hise_runtime_get_component_value',
-    description: `Get the current runtime value of a UI component.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID
-- id (required): The component's ID
-
-RETURNS: Component type, current value, and min/max range.
-
-USE THIS TO:
-- Verify component state during testing
-- Read current knob/slider position
-- Check button toggle state`,
+    description: `Get component's runtime value.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         id: {
           type: 'string',
-          description: 'The component ID',
+          description: 'Component ID',
         },
       },
       required: ['moduleId', 'id'],
@@ -826,37 +561,25 @@ USE THIS TO:
   },
   {
     name: 'hise_runtime_set_component_value',
-    description: `Set the runtime value of a UI component (triggers control callback).
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (required): The processor ID
-- id (required): The component's ID
-- value (required): The value to set
-- validateRange (optional): If true, validates value is within min/max range (default: false)
-
-RETURNS: Success status. Console.print() output from callbacks appears in logs array.
-
-NOTE: This triggers the component's control callback, simulating user interaction.`,
+    description: `Set component's runtime value. Triggers control callback.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The script processor module ID',
+          description: 'Processor ID (e.g., "Interface")',
         },
         id: {
           type: 'string',
-          description: 'The component ID',
+          description: 'Component ID',
         },
         value: {
           type: 'number',
-          description: 'The value to set',
+          description: 'Value to set',
         },
         validateRange: {
           type: 'boolean',
-          description: 'Validate value is within min/max range (default: false)',
+          description: 'Validate range',
         },
       },
       required: ['moduleId', 'id', 'value'],
@@ -864,39 +587,27 @@ NOTE: This triggers the component's control callback, simulating user interactio
   },
   {
     name: 'hise_runtime_get_selected_components',
-    description: `Get the currently selected UI components from HISE's Interface Designer.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-PARAMETERS:
-- moduleId (optional): The processor ID (default: "Interface")
-
-RETURNS: Selection count and array of selected components with all their properties.
-
-USE THIS FOR AI-ASSISTED WORKFLOWS:
-- User selects components in HISE, asks AI to align/resize them
-- Batch property changes on selected components
-- Generate code for selected components`,
+    description: `Get selected components from Interface Designer.`,
     inputSchema: {
       type: 'object',
       properties: {
         moduleId: {
           type: 'string',
-          description: 'The processor ID (default: "Interface")',
+          description: 'Processor ID (e.g., "Interface")',
         },
       },
     },
   },
   {
     name: 'hise_verify_parameters',
-    description: 'Batch verify method signatures before writing code. Returns compact parameter info for multiple methods at once.',
+    description: 'Verify method signatures. Returns parameter info for multiple methods.',
     inputSchema: {
       type: 'object',
       properties: {
         methods: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Array of method names without namespace (e.g., ["fillRect", "print", "setTimerCallback"])'
+          description: 'Method names (e.g., ["fillRect", "print"])'
         }
       },
       required: ['methods']
@@ -904,35 +615,18 @@ USE THIS FOR AI-ASSISTED WORKFLOWS:
   },
   {
     name: 'hise_runtime_get_laf_functions',
-    description: `Get available LAF functions for components by their IDs.
-
-REQUIRES: HISE running locally with REST API enabled.
-
-USE THIS TO:
-- Query LAF functions for specific components in the current project
-- Automatically resolves ScriptFloatingTile ContentType to the correct LAF target
-- Handles multiple components at once, returning a flat list of all relevant functions
-
-WORKFLOW:
-1. Call hise_runtime_get_selected_components to get component IDs and types
-2. Pass the component IDs to this tool
-3. Receive a flat list of all LAF functions that apply to any of the components
-4. Call query_laf_function for details on specific functions
-
-REQUIRED: componentIds array - pass the IDs from get_selected_components (e.g., ["Button1", "Knob1"]). Do NOT pass only moduleId.
-
-RETURNS: Array of component IDs and flat array of unique LAF function names.`,
+    description: `Get LAF functions for specific components. IMPORTANT: Load get_resource("laf-functions-style") before writing LAF code.`,
     inputSchema: {
       type: 'object',
       properties: {
         componentIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Array of component IDs from the interface (e.g., ["Button1", "FloatingTile1"])',
+          description: 'Component IDs (e.g., ["Button1"])',
         },
         moduleId: {
           type: 'string',
-          description: 'Script processor ID (default: "Interface")',
+          description: 'Processor ID (e.g., "Interface")',
         },
       },
       required: ['componentIds'],
