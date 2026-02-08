@@ -29,10 +29,12 @@ import {
   CachedScript,
   FixScriptLineParams,
   PatchScriptParams,
+  EditScriptParams,
 } from './types.js';
 import {
   applyPatchToScript,
   fixLineInScript,
+  editStringInScript,
   shouldAllowSetScript,
   getSetScriptMaxLines,
 } from './script-utils.js';
@@ -392,7 +394,7 @@ export class HiseClient {
    * @param params - Parameters including moduleId, callback, patch (unified diff format), and fuzzFactor
    * @param errorContextLines - Lines of context around errors (default: 1)
    */
-  async patchScript(params: PatchScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+  async patchScript(params: PatchScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse & { appliedPatch?: string }> {
     const { moduleId, callback, patch, fuzzFactor, compile } = params;
 
     // Fetch current script
@@ -413,6 +415,7 @@ export class HiseClient {
     }
 
     const newScript = patchResult.script!;
+    const appliedPatch = patchResult.appliedPatch;
 
     // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
     const result = await this.setScriptInternal(
@@ -422,6 +425,48 @@ export class HiseClient {
 
     // Update cache
     this.cacheScript(moduleId, callback, newScript);
+
+    // Return result with the applied patch for display
+    return { ...result, appliedPatch };
+  }
+
+  /**
+   * Edit a script by replacing oldString with newString (similar to mcp_edit)
+   * 
+   * This is simpler than patch_script and doesn't require understanding unified diff format.
+   * Use this for straightforward text replacements.
+   * 
+   * @param params - Parameters including moduleId, callback, oldString, newString, replaceAll
+   * @param errorContextLines - Lines of context around errors (default: 1)
+   */
+  async editScript(params: EditScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const { moduleId, callback, oldString, newString, replaceAll, compile } = params;
+
+    // Fetch current script
+    const scriptResult = await this.getScript(moduleId, callback);
+    if (!scriptResult.success || !scriptResult.callbacks[callback]) {
+      throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
+    }
+
+    const currentScript = scriptResult.callbacks[callback];
+
+    // Apply the edit using pure function
+    const editResult = editStringInScript(currentScript, oldString, newString, replaceAll);
+
+    if (!editResult.success) {
+      throw new Error(editResult.error);
+    }
+
+    const newScriptContent = editResult.script!;
+
+    // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
+    const result = await this.setScriptInternal(
+      { moduleId, callbacks: { [callback]: newScriptContent }, compile: compile ?? true },
+      errorContextLines
+    );
+
+    // Update cache
+    this.cacheScript(moduleId, callback, newScriptContent);
 
     return result;
   }

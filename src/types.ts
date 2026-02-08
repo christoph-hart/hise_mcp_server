@@ -291,7 +291,19 @@ export interface PatchScriptParams {
   moduleId: string;
   callback: string;
   patch: string;       // Unified diff format patch
-  fuzzFactor?: number; // Allow context mismatch tolerance (default: 0)
+  fuzzFactor?: number; // Allow context mismatch tolerance (default: 2)
+  compile?: boolean;   // Default: true
+}
+
+/**
+ * Parameters for edit_script (string replacement, similar to mcp_edit)
+ */
+export interface EditScriptParams {
+  moduleId: string;
+  callback: string;
+  oldString: string;   // Exact string to find and replace
+  newString: string;   // Replacement string
+  replaceAll?: boolean; // Replace all occurrences (default: false)
   compile?: boolean;   // Default: true
 }
 

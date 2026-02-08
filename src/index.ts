@@ -419,7 +419,7 @@ const RUNTIME_TOOLS: Tool[] = [
         },
         fuzzFactor: {
           type: 'number',
-          description: 'Context mismatch tolerance (default: 0)',
+          description: 'Context mismatch tolerance (default: 2)',
         },
         compile: {
           type: 'boolean',
@@ -431,6 +431,44 @@ const RUNTIME_TOOLS: Tool[] = [
         },
       },
       required: ['moduleId', 'callback', 'patch'],
+    },
+  },
+  {
+    name: 'hise_runtime_edit_script',
+    description: `Edit script by replacing oldString with newString. Simpler than patch_script - no diff format needed. Use for straightforward replacements.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'Processor ID (e.g., "Interface")',
+        },
+        callback: {
+          type: 'string',
+          description: 'Callback name (e.g., "onInit")',
+        },
+        oldString: {
+          type: 'string',
+          description: 'Exact string to find and replace',
+        },
+        newString: {
+          type: 'string',
+          description: 'Replacement string',
+        },
+        replaceAll: {
+          type: 'boolean',
+          description: 'Replace all occurrences (default: false)',
+        },
+        compile: {
+          type: 'boolean',
+          description: 'Compile after (default: true)',
+        },
+        errorContextLines: {
+          type: 'number',
+          description: 'Error context lines (default: 1)',
+        },
+      },
+      required: ['moduleId', 'callback', 'oldString', 'newString'],
     },
   },
   {
@@ -1365,6 +1403,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           const result = await hiseClient.patchScript(
             { moduleId, callback, patch, fuzzFactor, compile },
+            errorContextLines ?? 1
+          );
+          // Enrich errors with suggestions
+          if (result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
+          
+          // Extract appliedPatch for formatted display, exclude from JSON response
+          const { appliedPatch, ...restResult } = result;
+          const response = restResult.errors?.length
+            ? { ...restResult, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
+            : restResult;
+          
+          // Build response with formatted diff for syntax highlighting
+          const content: Array<{ type: 'text'; text: string }> = [
+            { type: 'text', text: JSON.stringify(response, null, 2) }
+          ];
+          
+          // Add formatted diff if patch was applied successfully
+          if (appliedPatch && !result.errors?.length) {
+            content.push({
+              type: 'text',
+              text: `\n**Applied changes:**\n\`\`\`diff\n${appliedPatch}\n\`\`\``
+            });
+          }
+          
+          return { content };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_edit_script': {
+        const { moduleId, callback, oldString, newString, replaceAll, compile, errorContextLines } = args as {
+          moduleId: string;
+          callback: string;
+          oldString: string;
+          newString: string;
+          replaceAll?: boolean;
+          compile?: boolean;
+          errorContextLines?: number;
+        };
+        
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.editScript(
+            { moduleId, callback, oldString, newString, replaceAll, compile },
             errorContextLines ?? 1
           );
           // Enrich errors with suggestions

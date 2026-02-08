@@ -11,6 +11,7 @@ import { applyPatch } from 'diff';
 export interface PatchResult {
   success: boolean;
   script?: string;
+  appliedPatch?: string;  // The (header-fixed) patch that was applied
   error?: string;
   details?: {
     reason: string;
@@ -26,6 +27,62 @@ export interface PatchOptions {
 }
 
 /**
+ * Fix line counts in unified diff hunk headers.
+ * 
+ * LLMs frequently miscalculate the line counts in headers like @@ -X,Y +X,Z @@.
+ * This function parses the patch content and recalculates the correct counts
+ * based on the actual number of context, added, and removed lines.
+ * 
+ * @param patch - The unified diff patch (possibly with incorrect line counts)
+ * @returns The patch with corrected hunk headers
+ */
+export function fixPatchHeaders(patch: string): string {
+  const lines = patch.split('\n');
+  const result: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Match hunk header: @@ -oldStart[,oldCount] +newStart[,newCount] @@[suffix]
+    const headerMatch = line.match(/^@@\s*-(\d+)(?:,\d+)?\s*\+(\d+)(?:,\d+)?\s*@@(.*)$/);
+    
+    if (headerMatch) {
+      const oldStart = parseInt(headerMatch[1]);
+      const newStart = parseInt(headerMatch[2]);
+      const suffix = headerMatch[3] || '';
+      
+      // Count actual lines in this hunk until next header or end
+      let oldLines = 0;
+      let newLines = 0;
+      let j = i + 1;
+      
+      while (j < lines.length && !lines[j].startsWith('@@')) {
+        const l = lines[j];
+        if (l.startsWith('-')) {
+          // Removed line - only counts for old side
+          oldLines++;
+        } else if (l.startsWith('+')) {
+          // Added line - only counts for new side
+          newLines++;
+        } else if (l.startsWith(' ') || l === '') {
+          // Context line - counts for both sides
+          oldLines++;
+          newLines++;
+        }
+        j++;
+      }
+      
+      // Emit corrected header
+      result.push(`@@ -${oldStart},${oldLines} +${newStart},${newLines} @@${suffix}`);
+    } else {
+      result.push(line);
+    }
+  }
+  
+  return result.join('\n');
+}
+
+/**
  * Apply a unified diff patch to a script
  * 
  * @param script - The original script content
@@ -38,7 +95,7 @@ export function applyPatchToScript(
   patch: string,
   options: PatchOptions = {}
 ): PatchResult {
-  const { fuzzFactor = 0 } = options;
+  const { fuzzFactor = 2 } = options;
 
   // Handle empty patch
   if (!patch || patch.trim() === '') {
@@ -64,8 +121,11 @@ export function applyPatchToScript(
     };
   }
 
+  // Fix line counts in hunk headers (LLMs often get these wrong)
+  const fixedPatch = fixPatchHeaders(patch);
+
   try {
-    const result = applyPatch(script, patch, {
+    const result = applyPatch(script, fixedPatch, {
       fuzzFactor
     });
 
@@ -82,7 +142,8 @@ export function applyPatchToScript(
 
     return {
       success: true,
-      script: result
+      script: result,
+      appliedPatch: fixedPatch
     };
   } catch (err) {
     return {
@@ -118,6 +179,60 @@ export function fixLineInScript(
   
   lines[line - 1] = content;
   return lines.join('\n');
+}
+
+/**
+ * Result of editing a string in a script
+ */
+export interface EditResult {
+  success: boolean;
+  script?: string;
+  error?: string;
+}
+
+/**
+ * Replace a string in a script (similar to mcp_edit's oldString/newString approach)
+ * 
+ * @param script - The original script content
+ * @param oldString - The exact string to find and replace
+ * @param newString - The replacement string
+ * @param replaceAll - If true, replace all occurrences; if false, fail on multiple matches
+ * @returns EditResult with success status and either new script or error
+ */
+export function editStringInScript(
+  script: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean = false
+): EditResult {
+  // Check if oldString exists in script
+  if (!script.includes(oldString)) {
+    return {
+      success: false,
+      error: 'oldString not found in script'
+    };
+  }
+
+  // Count occurrences
+  const occurrences = script.split(oldString).length - 1;
+
+  // If multiple occurrences and not replaceAll, fail
+  if (occurrences > 1 && !replaceAll) {
+    return {
+      success: false,
+      error: `oldString found ${occurrences} times - use replaceAll to replace all occurrences, or provide more context to make it unique`
+    };
+  }
+
+  // Perform the replacement
+  const newScript = replaceAll 
+    ? script.split(oldString).join(newString)
+    : script.replace(oldString, newString);
+
+  return {
+    success: true,
+    script: newScript
+  };
 }
 
 /**

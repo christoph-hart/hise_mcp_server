@@ -67,3 +67,47 @@ export const PATCH_MULTI_HUNK = `@@ -1,2 +1,2 @@
  Component.setValue(value);
 -Component.repaint();
 +Component.repaintImmediately();`;
+
+// ============================================================
+// Patches with WRONG line counts (for testing auto-fix feature)
+// ============================================================
+
+// Wrong old count: header says 999 but actual is 4 (3 context + 1 removed)
+export const PATCH_WRONG_OLD_COUNT = `@@ -1,999 +1,4 @@
+ const Component = Content.getComponent("Panel");
+-const value = 123;
++const value = 456;
+ const name = "test";
+ Component.setValue(value);`;
+
+// Wrong new count: header says 999 but actual is 5 (4 context + 1 added)
+export const PATCH_WRONG_NEW_COUNT = `@@ -2,4 +2,999 @@
+ const value = 123;
++const extra = "inserted";
+ const name = "test";
+ Component.setValue(value);
+ Component.repaint();`;
+
+// Both counts wrong
+export const PATCH_WRONG_BOTH_COUNTS = `@@ -1,100 +1,200 @@
+ const Component = Content.getComponent("Panel");
+-const value = 123;
++const value = 456;
+ const name = "test";`;
+
+// Multi-hunk with wrong counts
+export const PATCH_MULTI_HUNK_WRONG_COUNTS = `@@ -1,999 +1,999 @@
+-const Component = Content.getComponent("Panel");
++const Component = Content.getComponent("MainPanel");
+ const value = 123;
+@@ -4,888 +4,777 @@
+ Component.setValue(value);
+-Component.repaint();
++Component.repaintImmediately();`;
+
+// Minimal header without counts (e.g., @@ -1 +1 @@)
+export const PATCH_MINIMAL_HEADER = `@@ -2 +2 @@
+ const value = 123;
+-const name = "test";
++const name = "updated";
+ Component.setValue(value);`;

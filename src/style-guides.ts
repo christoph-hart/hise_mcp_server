@@ -480,6 +480,31 @@ this.get("itemColour2")   // Item colour 2
 this.get("textColour")    // Text colour
 \`\`\`
 
+## Screenshot Best Practices
+
+When verifying graphics changes with \`hise_runtime_screenshot\`:
+
+| Scenario | Parameters | Token Cost |
+|----------|------------|------------|
+| Routine verification | \`id: "ComponentId", scale: 0.5\` | ~750-1,000 |
+| Detailed inspection | \`id: "ComponentId", scale: 1.0\` | ~2,000-3,000 |
+| Layout verification | \`scale: 0.5\` (full interface) | ~15,000-20,000 |
+| Full interface | \`scale: 1.0\` | ~50,000-80,000 |
+
+**Recommendations:**
+- **Always target specific components** when verifying drawing code changes
+- **Use \`scale: 0.5\`** for routine verification (4x fewer tokens than 1.0)
+- **Reserve full interface screenshots** only for layout or positioning tasks
+- **Verify iteratively** - screenshot after each significant change, not at the end
+
+\`\`\`javascript
+// Efficient: target component at half scale
+hise_runtime_screenshot({ id: "Knob1", scale: 0.5 })
+
+// Expensive: full interface at full scale
+hise_runtime_screenshot({ scale: 1.0 })
+\`\`\`
+
 ## What Doesn't Exist (Common LLM Errors)
 
 | LLM Invents | Use Instead |
