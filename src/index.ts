@@ -12,6 +12,8 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   Tool,
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -21,6 +23,7 @@ import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
+import { PROMPTS, generateStyleSelectedComponentPrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -42,6 +45,7 @@ const server = new Server(
     capabilities: {
       tools: {},
       resources: {},
+      prompts: {},
     },
   }
 );
@@ -748,6 +752,50 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   }
 
   throw new Error(`Resource not found: ${uri}`);
+});
+
+// ============================================================================
+// MCP Prompt Handlers
+// ============================================================================
+
+/**
+ * List available prompts
+ * Prompts are only available in local mode (require HISE runtime)
+ */
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  // Only expose prompts in local mode (requires HISE runtime)
+  if (isProductionMode) {
+    return { prompts: [] };
+  }
+
+  return {
+    prompts: PROMPTS.map(p => ({
+      name: p.name,
+      title: p.title,
+      description: p.description,
+      arguments: p.arguments,
+    })),
+  };
+});
+
+/**
+ * Get a specific prompt with generated content
+ */
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  // Guard: prompts only available in local mode
+  if (isProductionMode) {
+    throw new Error('Prompts are not available in production mode. They require a local HISE runtime connection.');
+  }
+
+  switch (name) {
+    case 'style_selected_component':
+      return await generateStyleSelectedComponentPrompt(args, dataLoader);
+
+    default:
+      throw new Error(`Unknown prompt: ${name}. Available prompts: ${PROMPTS.map(p => p.name).join(', ')}`);
+  }
 });
 
 // ============================================================================
