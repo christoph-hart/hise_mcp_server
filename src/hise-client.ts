@@ -27,13 +27,9 @@ import {
   HiseError,
   ErrorCodeContext,
   CachedScript,
-  FixScriptLineParams,
-  PatchScriptParams,
   EditScriptParams,
 } from './types.js';
 import {
-  applyPatchToScript,
-  fixLineInScript,
   editStringInScript,
   shouldAllowSetScript,
   getSetScriptMaxLines,
@@ -281,12 +277,12 @@ export class HiseClient {
           const lineCount = existingContent.split('\n').length;
           throw new Error(
             `Callback '${callbackName}' has ${lineCount} lines (>${maxLines}). ` +
-            `Use patch_script for changes to large callbacks, or fix_script_line for single-line fixes.`
+            `Use edit_script to modify existing code instead of replacing it entirely.`
           );
         }
       } catch (err) {
         // If it's our guard error, re-throw it
-        if (err instanceof Error && err.message.includes('Use patch_script')) {
+        if (err instanceof Error && err.message.includes('Use edit_script')) {
           throw err;
         }
         // Otherwise, the callback might not exist yet (new callback) - allow it
@@ -353,88 +349,10 @@ export class HiseClient {
   }
 
   /**
-   * Fix a single line in a script callback
+   * Edit a script by replacing oldString with newString (works like native mcp_edit)
    * 
-   * Use this for fixing compile errors one at a time.
-   * 
-   * @param params - Parameters including moduleId, callback, line number, and new content
-   * @param errorContextLines - Lines of context around errors (default: 1)
-   */
-  async fixScriptLine(params: FixScriptLineParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
-    const { moduleId, callback, line, content, compile } = params;
-
-    // Fetch current script
-    const scriptResult = await this.getScript(moduleId, callback);
-    if (!scriptResult.success || !scriptResult.callbacks[callback]) {
-      throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
-    }
-
-    const currentScript = scriptResult.callbacks[callback];
-
-    // Apply the line fix using pure function
-    const newScript = fixLineInScript(currentScript, line, content);
-
-    // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
-    const result = await this.setScriptInternal(
-      { moduleId, callbacks: { [callback]: newScript }, compile: compile ?? true },
-      errorContextLines
-    );
-
-    // Update cache
-    this.cacheScript(moduleId, callback, newScript);
-
-    return result;
-  }
-
-  /**
-   * Apply a unified diff patch to a script callback
-   * 
-   * Use this for multi-line changes, refactoring, and complex edits.
-   * 
-   * @param params - Parameters including moduleId, callback, patch (unified diff format), and fuzzFactor
-   * @param errorContextLines - Lines of context around errors (default: 1)
-   */
-  async patchScript(params: PatchScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse & { appliedPatch?: string }> {
-    const { moduleId, callback, patch, fuzzFactor, compile } = params;
-
-    // Fetch current script
-    const scriptResult = await this.getScript(moduleId, callback);
-    if (!scriptResult.success || !scriptResult.callbacks[callback]) {
-      throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
-    }
-
-    const currentScript = scriptResult.callbacks[callback];
-
-    // Apply the patch using pure function
-    const patchResult = applyPatchToScript(currentScript, patch, { fuzzFactor });
-
-    if (!patchResult.success) {
-      throw new Error(
-        `${patchResult.error}${patchResult.details?.suggestion ? '. ' + patchResult.details.suggestion : ''}`
-      );
-    }
-
-    const newScript = patchResult.script!;
-    const appliedPatch = patchResult.appliedPatch;
-
-    // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
-    const result = await this.setScriptInternal(
-      { moduleId, callbacks: { [callback]: newScript }, compile: compile ?? true },
-      errorContextLines
-    );
-
-    // Update cache
-    this.cacheScript(moduleId, callback, newScript);
-
-    // Return result with the applied patch for display
-    return { ...result, appliedPatch };
-  }
-
-  /**
-   * Edit a script by replacing oldString with newString (similar to mcp_edit)
-   * 
-   * This is simpler than patch_script and doesn't require understanding unified diff format.
-   * Use this for straightforward text replacements.
+   * This is the primary tool for editing existing scripts. Uses string matching
+   * instead of line numbers, which is more reliable with AI agents.
    * 
    * @param params - Parameters including moduleId, callback, oldString, newString, replaceAll
    * @param errorContextLines - Lines of context around errors (default: 1)

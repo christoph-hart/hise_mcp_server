@@ -31,4 +31,8 @@ export const SCRIPT_30_LINES = Array(30).fill('const x = 1;').join('\n');
 
 export const SCRIPT_31_LINES = Array(31).fill('const x = 1;').join('\n');
 
+export const SCRIPT_50_LINES = Array(50).fill('const x = 1;').join('\n');
+
+export const SCRIPT_51_LINES = Array(51).fill('const x = 1;').join('\n');
+
 export const SCRIPT_100_LINES = Array(100).fill('const x = 1;').join('\n');

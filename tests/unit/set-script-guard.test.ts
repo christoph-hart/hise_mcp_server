@@ -4,15 +4,15 @@ import { shouldAllowSetScript } from '../../src/script-utils.ts';
 import {
   EMPTY_SCRIPT,
   SIMPLE_SCRIPT,
-  SCRIPT_30_LINES,
-  SCRIPT_31_LINES,
+  SCRIPT_50_LINES,
+  SCRIPT_51_LINES,
   SCRIPT_100_LINES
 } from '../fixtures/sample-scripts.ts';
 
 describe('shouldAllowSetScript', () => {
-  const DEFAULT_MAX_LINES = 30;
+  const DEFAULT_MAX_LINES = 50;
 
-  describe('with default threshold (30 lines)', () => {
+  describe('with default threshold (50 lines)', () => {
     it('should allow empty script', () => {
       assert.strictEqual(shouldAllowSetScript(EMPTY_SCRIPT, DEFAULT_MAX_LINES), true);
     });
@@ -25,12 +25,12 @@ describe('shouldAllowSetScript', () => {
       assert.strictEqual(shouldAllowSetScript(SIMPLE_SCRIPT, DEFAULT_MAX_LINES), true);
     });
 
-    it('should allow script with exactly 30 lines', () => {
-      assert.strictEqual(shouldAllowSetScript(SCRIPT_30_LINES, DEFAULT_MAX_LINES), true);
+    it('should allow script with exactly 50 lines', () => {
+      assert.strictEqual(shouldAllowSetScript(SCRIPT_50_LINES, DEFAULT_MAX_LINES), true);
     });
 
-    it('should block script with 31 lines', () => {
-      assert.strictEqual(shouldAllowSetScript(SCRIPT_31_LINES, DEFAULT_MAX_LINES), false);
+    it('should block script with 51 lines', () => {
+      assert.strictEqual(shouldAllowSetScript(SCRIPT_51_LINES, DEFAULT_MAX_LINES), false);
     });
 
     it('should block script with 100 lines', () => {
@@ -43,13 +43,13 @@ describe('shouldAllowSetScript', () => {
       // 5-line script should pass with threshold 10
       assert.strictEqual(shouldAllowSetScript(SIMPLE_SCRIPT, 10), true);
       
-      // 31-line script should fail with threshold 10
-      assert.strictEqual(shouldAllowSetScript(SCRIPT_31_LINES, 10), false);
+      // 51-line script should fail with threshold 10
+      assert.strictEqual(shouldAllowSetScript(SCRIPT_51_LINES, 10), false);
     });
 
     it('should respect threshold of 50', () => {
-      // 31-line script should pass with threshold 50
-      assert.strictEqual(shouldAllowSetScript(SCRIPT_31_LINES, 50), true);
+      // 50-line script should pass with threshold 50
+      assert.strictEqual(shouldAllowSetScript(SCRIPT_50_LINES, 50), true);
       
       // 100-line script should fail with threshold 50
       assert.strictEqual(shouldAllowSetScript(SCRIPT_100_LINES, 50), false);

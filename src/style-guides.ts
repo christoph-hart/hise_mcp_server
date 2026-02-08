@@ -204,8 +204,7 @@ hise_runtime_set_script({
 })
 \`\`\`
 
-Use \`hise_runtime_fix_script_line\` for fixing specific lines (e.g., compile errors).
-Use \`hise_runtime_patch_script\` for multi-line changes (unified diff format).
+Use \`hise_runtime_edit_script\` to modify existing code - it works like the native mcp_edit tool (find exact string, replace with new string). For multiple edits, use \`compile: false\` on all but the last call.
 
 ## The obj Parameter
 

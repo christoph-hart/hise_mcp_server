@@ -274,29 +274,7 @@ export interface CachedScript {
 }
 
 /**
- * Parameters for fix_script_line (single line replacement)
- */
-export interface FixScriptLineParams {
-  moduleId: string;
-  callback: string;
-  line: number;       // 1-based line number
-  content: string;    // New content for this line
-  compile?: boolean;  // Default: true
-}
-
-/**
- * Parameters for patch_script (unified diff patch)
- */
-export interface PatchScriptParams {
-  moduleId: string;
-  callback: string;
-  patch: string;       // Unified diff format patch
-  fuzzFactor?: number; // Allow context mismatch tolerance (default: 2)
-  compile?: boolean;   // Default: true
-}
-
-/**
- * Parameters for edit_script (string replacement, similar to mcp_edit)
+ * Parameters for edit_script (string replacement, works like native mcp_edit)
  */
 export interface EditScriptParams {
   moduleId: string;
