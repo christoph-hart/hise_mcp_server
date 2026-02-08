@@ -340,7 +340,7 @@ const RUNTIME_TOOLS: Tool[] = [
   },
   {
     name: 'hise_runtime_set_script',
-    description: `Set and compile script. Pass callbacks object (e.g., {"onInit": "..."}). Only specified callbacks are updated.`,
+    description: `Set and compile script. RESTRICTION: Only for NEW (empty) callbacks OR callbacks with <30 lines. For larger scripts, use fix_script_line or patch_script.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -363,6 +363,74 @@ const RUNTIME_TOOLS: Tool[] = [
         },
       },
       required: ['moduleId', 'callbacks'],
+    },
+  },
+  {
+    name: 'hise_runtime_fix_script_line',
+    description: `Fix a single line in a script. Use for compile error fixes. Line numbers are 1-based.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'Processor ID (e.g., "Interface")',
+        },
+        callback: {
+          type: 'string',
+          description: 'Callback name (e.g., "onInit")',
+        },
+        line: {
+          type: 'number',
+          description: 'Line number (1-based)',
+        },
+        content: {
+          type: 'string',
+          description: 'New content for the line',
+        },
+        compile: {
+          type: 'boolean',
+          description: 'Compile after (default: true)',
+        },
+        errorContextLines: {
+          type: 'number',
+          description: 'Error context lines (default: 1)',
+        },
+      },
+      required: ['moduleId', 'callback', 'line', 'content'],
+    },
+  },
+  {
+    name: 'hise_runtime_patch_script',
+    description: `Apply unified diff patch to a script. Use for multi-line changes. Patch format: @@ -line,count +line,count @@ with context (space prefix), deletions (-), additions (+).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'Processor ID (e.g., "Interface")',
+        },
+        callback: {
+          type: 'string',
+          description: 'Callback name (e.g., "onInit")',
+        },
+        patch: {
+          type: 'string',
+          description: 'Unified diff patch (e.g., "@@ -1,3 +1,3 @@\\n context\\n-old\\n+new")',
+        },
+        fuzzFactor: {
+          type: 'number',
+          description: 'Context mismatch tolerance (default: 0)',
+        },
+        compile: {
+          type: 'boolean',
+          description: 'Compile after (default: true)',
+        },
+        errorContextLines: {
+          type: 'number',
+          description: 'Error context lines (default: 1)',
+        },
+      },
+      required: ['moduleId', 'callback', 'patch'],
     },
   },
   {
@@ -408,68 +476,7 @@ const RUNTIME_TOOLS: Tool[] = [
       },
     },
   },
-  {
-    name: 'hise_runtime_edit_script',
-    description: `Edit script lines. Use edits, replaceRange, insertAfter, or deleteLines. One operation per call. Line numbers are 1-based.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        callback: {
-          type: 'string',
-          description: 'Callback name (e.g., "onInit")',
-        },
-        edits: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              line: { type: 'number', description: 'Line number' },
-              content: { type: 'string', description: 'New content' },
-            },
-            required: ['line', 'content'],
-          },
-          description: 'Replace lines',
-        },
-        replaceRange: {
-          type: 'object',
-          properties: {
-            startLine: { type: 'number', description: 'Start line' },
-            endLine: { type: 'number', description: 'End line' },
-            content: { type: 'string', description: 'New content' },
-          },
-          required: ['startLine', 'endLine', 'content'],
-          description: 'Replace range',
-        },
-        insertAfter: {
-          type: 'object',
-          properties: {
-            line: { type: 'number', description: 'Insert after line' },
-            content: { type: 'string', description: 'Content' },
-          },
-          required: ['line', 'content'],
-          description: 'Insert lines',
-        },
-        deleteLines: {
-          type: 'array',
-          items: { type: 'number' },
-          description: 'Lines to delete',
-        },
-        compile: {
-          type: 'boolean',
-          description: 'Compile after (default: true)',
-        },
-        errorContextLines: {
-          type: 'number',
-          description: 'Error context lines',
-        },
-      },
-      required: ['moduleId', 'callback'],
-    },
-  },
+
   {
     name: 'hise_runtime_list_components',
     description: `List UI components. Use hierarchy=true for layout tree.`,
@@ -1307,60 +1314,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      case 'hise_runtime_edit_script': {
-        const { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile, errorContextLines } = args as {
+      case 'hise_runtime_fix_script_line': {
+        const { moduleId, callback, line, content, compile, errorContextLines } = args as {
           moduleId: string;
-          callback?: string;
-          edits?: { line: number; content: string }[];
-          replaceRange?: { startLine: number; endLine: number; content: string };
-          insertAfter?: { line: number; content: string };
-          deleteLines?: number[];
+          callback: string;
+          line: number;
+          content: string;
           compile?: boolean;
           errorContextLines?: number;
         };
         
-        // Validate required parameters with helpful messages
-        const operations = [edits, replaceRange, insertAfter, deleteLines].filter(Boolean);
-        if (operations.length === 0) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Error: No edit operation provided. You must specify one of:
-- edits: [{"line": 5, "content": "new line content"}]
-- replaceRange: {"startLine": 5, "endLine": 10, "content": "replacement"}
-- insertAfter: {"line": 5, "content": "inserted line"}
-- deleteLines: [5, 6, 7]
-
-For writing new LAF code from scratch, use hise_runtime_set_script with callbacks instead:
-  hise_runtime_set_script({ moduleId: "Interface", callbacks: { "onInit": "your code" } })`
-            }],
-            isError: true,
-          };
-        }
-        
-        if (!callback) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Error: callback parameter is required. Specify which callback to edit (e.g., "onInit", "onNoteOn").
-
-Example: { moduleId: "Interface", callback: "onInit", edits: [{"line": 5, "content": "fixed code"}] }`
-            }],
-            isError: true,
-          };
-        }
-        
         const hiseClient = getHiseClient();
         try {
-          const result = await hiseClient.editScript(
-            { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile },
+          const result = await hiseClient.fixScriptLine(
+            { moduleId, callback, line, content, compile },
             errorContextLines ?? 1
           );
-          // Enrich errors with suggestions (runtime errors can occur even when success=true)
+          // Enrich errors with suggestions
           if (result.errors?.length) {
             await enrichErrorsWithSuggestions(result.errors);
           }
-          // Add hint for style guide when errors occur
+          const response = result.errors?.length
+            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
+            : result;
+          return {
+            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_patch_script': {
+        const { moduleId, callback, patch, fuzzFactor, compile, errorContextLines } = args as {
+          moduleId: string;
+          callback: string;
+          patch: string;
+          fuzzFactor?: number;
+          compile?: boolean;
+          errorContextLines?: number;
+        };
+        
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.patchScript(
+            { moduleId, callback, patch, fuzzFactor, compile },
+            errorContextLines ?? 1
+          );
+          // Enrich errors with suggestions
+          if (result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
           const response = result.errors?.length
             ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
             : result;
@@ -1557,7 +1567,7 @@ Example: { moduleId: "Interface", callback: "onInit", edits: [{"line": 5, "conte
               text: JSON.stringify({
                 componentIds,
                 functions,
-                note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns. Use hise_runtime_set_script with callbacks (e.g., callbacks: {\"onInit\": \"...\"}) to write and compile - do NOT just present code to the user without testing it."
+                note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns. Use hise_runtime_set_script for new code, fix_script_line for error fixes, or patch_script for multi-line changes."
               }, null, 2)
             }],
           };

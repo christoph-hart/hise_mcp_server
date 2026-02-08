@@ -330,8 +330,9 @@ ${panelGuide}
 4. **Iterate** on any errors using the style guides as reference
 
 **Important:** 
-- Use \`hise_runtime_set_script\` to compile - do NOT just present code to the user
-- If there are errors, fix them and recompile
+- Use \`hise_runtime_set_script\` to compile new code - do NOT just present code to the user
+- If there are errors, use \`hise_runtime_fix_script_line\` to fix them and recompile
+- For multi-line changes, use \`hise_runtime_patch_script\` with unified diff format
 
 Begin by analyzing the existing code structure and planning your approach.`;
 
@@ -498,8 +499,9 @@ ${lafGuide}
 4. **Iterate** on any errors using the style guides as reference
 
 **Important:**
-- Use \`hise_runtime_set_script\` to compile - do NOT just present code to the user
-- If there are errors, fix them and recompile
+- Use \`hise_runtime_set_script\` to compile new code - do NOT just present code to the user
+- If there are errors, use \`hise_runtime_fix_script_line\` to fix them and recompile
+- For multi-line changes, use \`hise_runtime_patch_script\` with unified diff format
 
 Begin by analyzing the existing code structure and planning your approach.`;
 

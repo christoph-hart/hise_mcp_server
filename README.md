@@ -140,8 +140,9 @@ Requires HISE running with REST Server enabled.
 |------|-------------|
 | `hise_runtime_status` | Get HISE project info |
 | `hise_runtime_get_script` | Read script content |
-| `hise_runtime_set_script` | Update and compile scripts |
-| `hise_runtime_edit_script` | Edit specific lines |
+| `hise_runtime_set_script` | Create new/small scripts (<30 lines) |
+| `hise_runtime_fix_script_line` | Fix a single line (for compile errors) |
+| `hise_runtime_patch_script` | Apply unified diff patch (multi-line changes) |
 | `hise_runtime_recompile` | Recompile without changing script |
 | `hise_runtime_screenshot` | Capture UI screenshots |
 | `hise_runtime_list_components` | List UI components |

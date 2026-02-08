@@ -204,7 +204,8 @@ hise_runtime_set_script({
 })
 \`\`\`
 
-Use \`hise_runtime_edit_script\` only for fixing specific lines in existing code (e.g., after a compile error).
+Use \`hise_runtime_fix_script_line\` for fixing specific lines (e.g., compile errors).
+Use \`hise_runtime_patch_script\` for multi-line changes (unified diff format).
 
 ## The obj Parameter
 

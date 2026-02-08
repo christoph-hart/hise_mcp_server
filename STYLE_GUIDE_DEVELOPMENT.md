@@ -55,7 +55,7 @@ When script-related tools encounter errors, they include a hint:
 }
 ```
 
-Affected tools: `hise_runtime_set_script`, `hise_runtime_edit_script`, `hise_runtime_recompile`
+Affected tools: `hise_runtime_set_script`, `hise_runtime_fix_script_line`, `hise_runtime_patch_script`, `hise_runtime_recompile`
 
 ## Adding a New Style Guide
 

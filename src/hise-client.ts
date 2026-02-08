@@ -27,8 +27,15 @@ import {
   HiseError,
   ErrorCodeContext,
   CachedScript,
-  EditScriptParams,
+  FixScriptLineParams,
+  PatchScriptParams,
 } from './types.js';
+import {
+  applyPatchToScript,
+  fixLineInScript,
+  shouldAllowSetScript,
+  getSetScriptMaxLines,
+} from './script-utils.js';
 
 /**
  * Compute a short hash of script content for cache validation
@@ -252,10 +259,46 @@ export class HiseClient {
   /**
    * Set script content and optionally compile
    * 
+   * RESTRICTION: Only works for NEW (empty) callbacks OR callbacks with <30 lines.
+   * For editing existing scripts with 30+ lines, use patchScript or fixScriptLine.
+   * 
    * @param params - Script parameters including moduleId, callbacks object, and compile flag
    * @param errorContextLines - Lines of context around errors (default: 1)
    */
   async setScript(params: SetScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const maxLines = getSetScriptMaxLines();
+
+    // Check each callback against the guard
+    for (const [callbackName, _newContent] of Object.entries(params.callbacks)) {
+      // Try to get existing content
+      try {
+        const existing = await this.getScript(params.moduleId, callbackName);
+        const existingContent = existing.callbacks?.[callbackName] || '';
+
+        if (!shouldAllowSetScript(existingContent, maxLines)) {
+          const lineCount = existingContent.split('\n').length;
+          throw new Error(
+            `Callback '${callbackName}' has ${lineCount} lines (>${maxLines}). ` +
+            `Use patch_script for changes to large callbacks, or fix_script_line for single-line fixes.`
+          );
+        }
+      } catch (err) {
+        // If it's our guard error, re-throw it
+        if (err instanceof Error && err.message.includes('Use patch_script')) {
+          throw err;
+        }
+        // Otherwise, the callback might not exist yet (new callback) - allow it
+      }
+    }
+
+    return this.setScriptInternal(params, errorContextLines);
+  }
+
+  /**
+   * Internal method to set script without guard check
+   * Used by fixScriptLine and patchScript which have already validated the edit
+   */
+  private async setScriptInternal(params: SetScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
     const result = await this.fetchWithTimeout<HiseCompileResponse>(
       '/api/set_script',
       'POST',
@@ -308,88 +351,76 @@ export class HiseClient {
   }
 
   /**
-   * Edit script by line operations without sending the entire script
+   * Fix a single line in a script callback
    * 
-   * Uses cached script when available, fetches if needed.
-   * Exactly ONE operation must be provided: edits, replaceRange, insertAfter, or deleteLines.
+   * Use this for fixing compile errors one at a time.
    * 
-   * @param params - Edit parameters including operation and compile flag
+   * @param params - Parameters including moduleId, callback, line number, and new content
    * @param errorContextLines - Lines of context around errors (default: 1)
    */
-  async editScript(params: EditScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
-    const { moduleId, callback, edits, replaceRange, insertAfter, deleteLines, compile } = params;
+  async fixScriptLine(params: FixScriptLineParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const { moduleId, callback, line, content, compile } = params;
 
-    // Validate exactly one operation is provided
-    const operations = [edits, replaceRange, insertAfter, deleteLines].filter(Boolean);
-    if (operations.length === 0) {
-      throw new Error("At least one operation required: edits, replaceRange, insertAfter, or deleteLines");
-    }
-    if (operations.length > 1) {
-      throw new Error("Only one operation allowed per call: edits, replaceRange, insertAfter, or deleteLines");
-    }
-
-    // callback is required for editScript since we need to know which callback to edit
-    if (!callback) {
-      throw new Error("callback parameter is required for editScript");
-    }
-
-    // Always fetch fresh script to ensure cache is current
-    // (User may have edited script in HISE IDE since last fetch)
+    // Fetch current script
     const scriptResult = await this.getScript(moduleId, callback);
     if (!scriptResult.success || !scriptResult.callbacks[callback]) {
       throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
     }
 
-    // getScript already caches, so get from cache
-    const cached = this.getCachedScript(moduleId, callback);
-    if (!cached) {
-      throw new Error("Failed to cache script");
-    }
+    const currentScript = scriptResult.callbacks[callback];
 
-    // Clone lines array for modification
-    let lines = [...cached.lines];
+    // Apply the line fix using pure function
+    const newScript = fixLineInScript(currentScript, line, content);
 
-    // Apply the operation
-    if (edits) {
-      for (const edit of edits) {
-        if (edit.line < 1 || edit.line > lines.length) {
-          throw new Error(`Line ${edit.line} out of range (1-${lines.length})`);
-        }
-        lines[edit.line - 1] = edit.content;
-      }
-    } else if (replaceRange) {
-      const { startLine, endLine, content } = replaceRange;
-      if (startLine < 1 || endLine < startLine || endLine > lines.length) {
-        throw new Error(`Invalid range: ${startLine}-${endLine} (valid: 1-${lines.length})`);
-      }
-      const newLines = content.split('\n');
-      lines.splice(startLine - 1, endLine - startLine + 1, ...newLines);
-    } else if (insertAfter) {
-      const { line, content } = insertAfter;
-      if (line < 0 || line > lines.length) {
-        throw new Error(`Line ${line} out of range for insert (0-${lines.length})`);
-      }
-      const newLines = content.split('\n');
-      lines.splice(line, 0, ...newLines);
-    } else if (deleteLines) {
-      // Sort descending to delete from bottom up (preserves line numbers during deletion)
-      const toDelete = [...deleteLines].sort((a, b) => b - a);
-      for (const line of toDelete) {
-        if (line < 1 || line > lines.length) {
-          throw new Error(`Line ${line} out of range for delete (1-${lines.length})`);
-        }
-        lines.splice(line - 1, 1);
-      }
-    }
-
-    // Build new script and send to HISE
-    const newScript = lines.join('\n');
-    const result = await this.setScript(
+    // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
+    const result = await this.setScriptInternal(
       { moduleId, callbacks: { [callback]: newScript }, compile: compile ?? true },
       errorContextLines
     );
 
-    // Update cache with the new script (regardless of success/failure)
+    // Update cache
+    this.cacheScript(moduleId, callback, newScript);
+
+    return result;
+  }
+
+  /**
+   * Apply a unified diff patch to a script callback
+   * 
+   * Use this for multi-line changes, refactoring, and complex edits.
+   * 
+   * @param params - Parameters including moduleId, callback, patch (unified diff format), and fuzzFactor
+   * @param errorContextLines - Lines of context around errors (default: 1)
+   */
+  async patchScript(params: PatchScriptParams, errorContextLines: number = 1): Promise<HiseCompileResponse> {
+    const { moduleId, callback, patch, fuzzFactor, compile } = params;
+
+    // Fetch current script
+    const scriptResult = await this.getScript(moduleId, callback);
+    if (!scriptResult.success || !scriptResult.callbacks[callback]) {
+      throw new Error(`Failed to get script: ${scriptResult.errors?.[0]?.errorMessage || 'Unknown error'}`);
+    }
+
+    const currentScript = scriptResult.callbacks[callback];
+
+    // Apply the patch using pure function
+    const patchResult = applyPatchToScript(currentScript, patch, { fuzzFactor });
+
+    if (!patchResult.success) {
+      throw new Error(
+        `${patchResult.error}${patchResult.details?.suggestion ? '. ' + patchResult.details.suggestion : ''}`
+      );
+    }
+
+    const newScript = patchResult.script!;
+
+    // Send to HISE (bypasses the guard since we're doing an edit, not a full replacement)
+    const result = await this.setScriptInternal(
+      { moduleId, callbacks: { [callback]: newScript }, compile: compile ?? true },
+      errorContextLines
+    );
+
+    // Update cache
     this.cacheScript(moduleId, callback, newScript);
 
     return result;

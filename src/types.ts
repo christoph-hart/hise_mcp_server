@@ -274,42 +274,25 @@ export interface CachedScript {
 }
 
 /**
- * Single line edit operation
+ * Parameters for fix_script_line (single line replacement)
  */
-export interface LineEdit {
-  line: number;      // 1-based line number
-  content: string;   // New content for this line
-}
-
-/**
- * Replace a range of lines
- */
-export interface ReplaceRange {
-  startLine: number;  // 1-based, inclusive
-  endLine: number;    // 1-based, inclusive
-  content: string;    // Replacement content (can be multi-line with \n)
-}
-
-/**
- * Insert content after a specific line
- */
-export interface InsertAfter {
-  line: number;       // 1-based, insert after this line (0 = insert at beginning)
-  content: string;    // Content to insert (can be multi-line with \n)
-}
-
-/**
- * Parameters for edit_script
- */
-export interface EditScriptParams {
+export interface FixScriptLineParams {
   moduleId: string;
-  callback?: string;
-  // Only ONE of these should be provided:
-  edits?: LineEdit[];           // Replace specific lines
-  replaceRange?: ReplaceRange;  // Replace a range of lines
-  insertAfter?: InsertAfter;    // Insert new lines after a line
-  deleteLines?: number[];       // Delete specific lines (1-based)
-  compile?: boolean;            // Default: true
+  callback: string;
+  line: number;       // 1-based line number
+  content: string;    // New content for this line
+  compile?: boolean;  // Default: true
+}
+
+/**
+ * Parameters for patch_script (unified diff patch)
+ */
+export interface PatchScriptParams {
+  moduleId: string;
+  callback: string;
+  patch: string;       // Unified diff format patch
+  fuzzFactor?: number; // Allow context mismatch tolerance (default: 0)
+  compile?: boolean;   // Default: true
 }
 
 /**
