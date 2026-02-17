@@ -579,17 +579,20 @@ ${issue ? `**Starting from:** ${issue}` : '**No issue provided — ask the contr
 
 # PHASE 0: Prerequisites
 
-Execute each command and verify before proceeding.
+Execute each step in order.
 
-1. **HISE repo check:** \`git remote -v\` — must contain \`christophhart/HISE\`
-2. **GitHub CLI auth:** \`gh auth status\` — must show authenticated account
-3. **Mode detection:**
-   \`\`\`
-   gh api user --jq .login
-   gh repo view --json owner --jq .owner.login
-   \`\`\`
-   If they match -> **maintainer mode** (skip fork setup, branch directly in main repo).
-   If they differ -> **contributor mode** (fork required before Phase 3).
+1. **HISE repo check:** Run \`ls hi_core hi_scripting hi_components\` — all three directories must exist in the current working directory.
+   **If they do NOT:** STOP IMMEDIATELY. Tell the user: "This is not a HISE repository. Please cd into your local HISE checkout and start again." Do NOT search for HISE folders on disk. Do NOT continue with any other phase. This is a fatal error.
+
+2. **GitHub interaction mode:** Ask the user: "Do you want me to use the GitHub CLI (gh) to create issues and pull requests automatically, or would you prefer to do that manually on GitHub? If manual, I'll provide the exact text to paste."
+   Remember this choice — it applies to ALL GitHub interactions in this session.
+   **If manual mode:** Skip steps 3-4. You are in **contributor mode** with **manual GitHub interaction**. Proceed to Phase 1.
+
+3. **GitHub CLI auth (gh mode only):** \`gh auth status\` — must show authenticated account. If not installed or not authenticated, guide the user through \`gh auth login\` setup before continuing.
+
+4. **Mode detection (gh mode only):** Run \`gh api user --jq .login\`.
+   If the result is \`christophhart\` -> **maintainer mode** (skip fork setup, can branch directly in main repo).
+   Otherwise -> **contributor mode** (fork required before Phase 3).
 
 Fork & branch setup is deferred to Phase 3.
 
@@ -598,8 +601,12 @@ Fork & branch setup is deferred to Phase 3.
 # PHASE 1: Understand
 
 ${issue ? `**Issue provided — fetch context first:**
-- If this looks like a GitHub issue number or URL, run: \`gh issue view <number> --comments\`
-- Check for comments from the repo owner (identified in Phase 0)
+- Extract the issue number from the URL or argument
+- Fetch the issue and comments:
+  - **gh mode:** \`gh issue view <number> --comments\`
+  - **manual mode:** Use WebFetch on \`https://github.com/christophhart/HISE/issues/<number>\`, or fetch the unauthenticated GitHub API endpoints: \`https://api.github.com/repos/christophhart/HISE/issues/<number>\` (issue body) and \`https://api.github.com/repos/christophhart/HISE/issues/<number>/comments\` (comments as JSON). No authentication is needed for public repos.
+- Reading issues works in BOTH modes — the gh/manual distinction only matters for write operations (creating issues, creating PRs).
+- Check for comments from the repo owner (\`christophhart\`)
 - If the repo owner has commented with guidance -> skip to **Phase 2.5**
 - If no owner comments -> inform contributor to wait, or proceed to assess independently
 ` : `Ask the contributor for:
@@ -607,6 +614,10 @@ ${issue ? `**Issue provided — fetch context first:**
 2. Is there a forum thread or GitHub issue with context?
 3. Do you have any debugger output? (stack traces, variable values at crash site)
 `}
+**Crash shortcut:** If the contributor mentions a crash, has a stack trace ready, or says they are already in a debug session, skip the description questions. Ask them to paste the full stack trace and any relevant variable values. The stack trace IS the description — proceed directly to analyzing it using the debugger-assisted workflow from the contributor-agent-guide.
+
+**Issue number tracking:** If the issue argument is a GitHub issue number or URL, extract the issue number (e.g., \`769\` from \`https://github.com/christophhart/HISE/issues/769\`). Remember this number — it will be used as \`Fixes #NNN\` in commit messages and PR descriptions to auto-close the issue on GitHub. If the issue argument was a free-text description (not a GitHub issue), there is no issue number to reference.
+
 Search the codebase (grep, glob, file reads) to locate the relevant code. Present findings before proceeding.
 
 ---
@@ -635,8 +646,14 @@ For all other red flags, consult the full list in the contributor-agent-guide re
 
 # RED PATH: Create Issue
 
-Generate a structured issue and create it via \`gh issue create\`:
+Generate the issue content with this structure:
+- **Contribution Proposal** header with contributor username, AI-assisted flag
+- **Bug / Feature Description** — symptoms, reproduction, links
+- **Investigation Findings** — relevant file:line references, root cause analysis
+- **Risk Assessment** — which red flags triggered, evidence found/not found, consumers identified
+- **Proposed Approach** — how this could be fixed, confidence level, specific guidance needed
 
+**If gh mode (chosen in Phase 0):**
 \`\`\`
 gh issue create \\
   --repo christophhart/HISE \\
@@ -646,12 +663,7 @@ gh issue create \\
   --body "BODY"
 \`\`\`
 
-**Issue body structure:**
-- **Contribution Proposal** header with contributor username, AI-assisted flag
-- **Bug / Feature Description** — symptoms, reproduction, links
-- **Investigation Findings** — relevant file:line references, root cause analysis
-- **Risk Assessment** — which red flags triggered, evidence found/not found, consumers identified
-- **Proposed Approach** — how this could be fixed, confidence level, specific guidance needed
+**If manual mode (chosen in Phase 0):** Present the title and body as copyable text blocks. Tell the user to create the issue at https://github.com/christophhart/HISE/issues/new and paste the content. Remind them to add the \`contribution-proposal\` label and assign to \`christophhart\`.
 
 **Maintainer mode:** "Issue created. Continue directly or test resume flow by re-invoking with the issue URL."
 **Contributor mode:** "Issue #NNN created. When the maintainer responds, re-invoke: \`contribute(issue: 'NNN')\`"
@@ -664,21 +676,29 @@ Stop here in contributor mode.
 
 (Only when issue has maintainer comments.)
 
-1. Extract the maintainer's instructions from issue comments
-2. For each instruction, search the codebase to understand WHY — find existing usage of the suggested pattern/class, show findings to contributor
-3. Incorporate guidance into the fix approach, proceed to Phase 3
+1. Fetch the issue and comments using the same method as Phase 1 (gh mode: \`gh issue view <number> --comments\`; manual mode: WebFetch or unauthenticated GitHub API). Reading always works regardless of mode.
+2. Extract the maintainer's instructions from issue comments
+3. For each instruction, search the codebase to understand WHY — find existing usage of the suggested pattern/class, show findings to contributor
+4. Incorporate guidance into the fix approach, proceed to Phase 3
 
 ---
 
 # PHASE 3: Fix
 
 **3a. Fork & branch setup:**
-- Contributor mode: \`gh repo fork christophhart/HISE --remote=true\` then \`git checkout -b fix/DESCRIPTION upstream/develop\`
-- Maintainer mode: \`git checkout -b fix/DESCRIPTION origin/develop\`
+- **Contributor mode (gh mode):**
+  1. Run \`git remote -v\` to check current remote configuration
+  2. If no \`upstream\` remote pointing to \`christophhart/HISE\`: run \`gh repo fork christophhart/HISE --remote=true\` (this adds the upstream remote and creates the fork if needed)
+  3. \`git fetch upstream develop\`
+  4. \`git checkout -b fix/DESCRIPTION upstream/develop\`
+- **Contributor mode (manual mode):** Tell the user to ensure they have a fork, an \`upstream\` remote pointing to \`christophhart/HISE\`, and a branch from \`upstream/develop\`. Wait for confirmation before proceeding.
+- **Maintainer mode:** Ask: "Do you want to create a separate branch for this fix (with PR at the end), or work directly on \`develop\` and push the changes yourself?"
+  - If direct commit on develop: skip branch creation and skip Phase 4 entirely. After the fix is tested, suggest a commit message: \`Fix #NNN: [short description]\` (if an issue number was tracked in Phase 1) or just \`[short description]\` (if no issue). Say "Changes ready on develop. Push when ready."
+  - If branch+PR: \`git checkout -b fix/DESCRIPTION origin/develop\` and continue to Phase 4.
 
 **3b. Propose the fix** following patterns identified in Phase 2. Show the diff. Keep it minimal.
 
-**3c. Wait** for the contributor to build (Debug), reproduce the bug, apply the fix, and confirm it works.
+**3c. NEVER attempt to build HISE from the CLI.** Do not run MSBuild, make, cmake, xcodebuild, or any build command. This applies in BOTH contributor and maintainer mode. Tell the user to build in their IDE (Visual Studio, Xcode) and report the result. Wait for the user to confirm the build succeeded and the fix works before proceeding.
 
 ---
 
@@ -689,7 +709,7 @@ Stop here in contributor mode.
 \`\`\`markdown
 ## Summary
 [What was broken, what the fix does]
-[Relates to #ISSUE if applicable]
+Fixes #NNN (if an issue number was tracked in Phase 1, otherwise omit this line)
 
 ### Risk Assessment
 
@@ -714,9 +734,16 @@ Stop here in contributor mode.
 **AI Conversation:** [Link or N/A]
 \`\`\`
 
-**4b.** Ask: "Would you like to share this conversation link in the PR? (Optional but encouraged)"
+**4b. MANDATORY STEP — Conversation Link:** Before creating the PR, you MUST ask the contributor: "Would you like to include a link to this AI conversation in the PR description? This helps the maintainer understand the investigation process. (Optional but encouraged)" Wait for their response. Set the AI Conversation field in the PR description to the link if yes, or "N/A" if no. Do NOT skip this step.
 
-**4c.** Create PR: \`gh pr create --base develop --title "TITLE" --body "BODY"\`
+**4c. Submit the PR.** The PR title MUST include the issue reference if one was tracked in Phase 1: \`Fix #NNN: [short description]\`. Example: \`Fix #769: CSS border-size percentage not applied correctly\`. If no issue number, just use a descriptive title.
+
+**If gh mode (chosen in Phase 0):**
+\`\`\`
+gh pr create --base develop --label "verified-workflow" --title "Fix #NNN: DESCRIPTION" --body "BODY"
+\`\`\`
+
+**If manual mode (chosen in Phase 0):** Present the title, body, target branch (\`develop\`), and label (\`verified-workflow\`) as copyable text. Tell the user to create the PR at https://github.com/christophhart/HISE/compare/develop...BRANCH.
 
 Show the PR URL to the contributor.
 `;
