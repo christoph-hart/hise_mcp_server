@@ -23,7 +23,8 @@ import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
-import { PROMPTS, generateStyleSelectedComponentPrompt } from './prompts.js';
+import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
+import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt, generateReviewPrPrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -653,6 +654,18 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         description: s.description,
         mimeType: 'text/markdown',
       })),
+      {
+        uri: 'hise://contribution-guides',
+        name: 'HISE Contribution Guides',
+        description: 'Guides for the community contribution workflow',
+        mimeType: 'application/json',
+      },
+      ...CONTRIBUTION_GUIDES.map(g => ({
+        uri: `hise://contribution-guides/${g.id}`,
+        name: g.name,
+        description: g.description,
+        mimeType: 'text/markdown',
+      })),
     ],
   };
 });
@@ -728,6 +741,40 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     }
   }
 
+  // List all contribution guides
+  if (uri === 'hise://contribution-guides') {
+    return {
+      contents: [{
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          CONTRIBUTION_GUIDES.map(g => ({
+            id: g.id,
+            name: g.name,
+            description: g.description,
+          })),
+          null,
+          2
+        ),
+      }],
+    };
+  }
+
+  // Specific contribution guide
+  const guideMatch = uri.match(/^hise:\/\/contribution-guides\/(.+)$/);
+  if (guideMatch) {
+    const guide = CONTRIBUTION_GUIDES.find(g => g.id === guideMatch[1]);
+    if (guide) {
+      return {
+        contents: [{
+          uri,
+          mimeType: 'text/markdown',
+          text: formatContributionGuideAsMarkdown(guide),
+        }],
+      };
+    }
+  }
+
   throw new Error(`Resource not found: ${uri}`);
 });
 
@@ -737,16 +784,16 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 /**
  * List available prompts
- * Prompts are only available in local mode (require HISE runtime)
+ * Runtime prompts (e.g., style_selected_component) require local HISE connection.
+ * Contribution prompts (contribute, review_pr) are available in all modes.
  */
 server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  // Only expose prompts in local mode (requires HISE runtime)
-  if (isProductionMode) {
-    return { prompts: [] };
-  }
+  const available = isProductionMode
+    ? PROMPTS.filter(p => !RUNTIME_PROMPT_NAMES.has(p.name))
+    : PROMPTS;
 
   return {
-    prompts: PROMPTS.map(p => ({
+    prompts: available.map(p => ({
       name: p.name,
       title: p.title,
       description: p.description,
@@ -761,14 +808,20 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
 server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  // Guard: prompts only available in local mode
-  if (isProductionMode) {
-    throw new Error('Prompts are not available in production mode. They require a local HISE runtime connection.');
+  // Guard: runtime prompts only available in local mode
+  if (isProductionMode && RUNTIME_PROMPT_NAMES.has(name)) {
+    throw new Error(`Prompt "${name}" requires a local HISE runtime connection and is not available in production mode.`);
   }
 
   switch (name) {
     case 'style_selected_component':
       return await generateStyleSelectedComponentPrompt(args, dataLoader);
+
+    case 'contribute':
+      return generateContributePrompt(args);
+
+    case 'review_pr':
+      return generateReviewPrPrompt(args);
 
     default:
       throw new Error(`Unknown prompt: ${name}. Available prompts: ${PROMPTS.map(p => p.name).join(', ')}`);
@@ -1069,6 +1122,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: s.name,
             description: s.description,
           })),
+          contributionGuides: CONTRIBUTION_GUIDES.map(g => ({
+            id: g.id,
+            name: g.name,
+            description: g.description,
+          })),
         };
         return {
           content: [{ type: 'text', text: JSON.stringify(resources, null, 2) }],
@@ -1094,10 +1152,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
+        // Check contribution guides
+        const contribGuide = CONTRIBUTION_GUIDES.find(g => g.id === id);
+        if (contribGuide) {
+          return {
+            content: [{ type: 'text', text: formatContributionGuideAsMarkdown(contribGuide) }],
+          };
+        }
+
         // Not found
         const availableIds = [
           ...WORKFLOWS.map(w => w.id),
           ...STYLE_GUIDES.map(s => s.id),
+          ...CONTRIBUTION_GUIDES.map(g => g.id),
         ];
         return {
           content: [{
