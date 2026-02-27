@@ -3,7 +3,7 @@
  * 
  * Guides for the community contribution workflow.
  * These are exposed as MCP Resources alongside workflows and style guides,
- * and are loaded by the 'contribute' and 'review_pr' prompts.
+ * and are loaded by the 'contribute' prompt.
  */
 
 export interface ContributionGuide {
@@ -75,6 +75,8 @@ Ask yourself:
 
 If you cannot exhaustively trace all consumers, note this in the risk report. Untraced consumers are a risk signal.
 
+**Incomplete features create cascading problems.** If your change introduces a new concept (directory hierarchy, relative path scheme, new namespace), trace every system that would need to understand it. A fix that works for one part of the pipeline but breaks another (export, frontend loading, wildcard resolution) creates more problems than it solves. If you can't trace the full chain, describe what you've found and let the maintainer assess the rest.
+
 ### 3. Red Flags — Always Escalate
 
 Stop and recommend the contributor escalate to the maintainer if the change involves ANY of these:
@@ -104,6 +106,7 @@ Stop and recommend the contributor escalate to the maintainer if the change invo
 **Serialization format:**
 - \`exportAsValueTree\` / \`restoreFromValueTree\` — existing presets and projects depend on stable serialization
 - \`toDynamicObject\` / \`fromDynamicObject\` on floating tiles
+- **Distinction:** Changing what gets serialized (adding/removing/reordering properties) is high-risk. Adding resilience to malformed input during deserialization (null checks, fallback defaults for missing properties) is a defensive guard pattern — typically safe.
 
 **DSP and audio thread:**
 - Changes to \`renderNextBlock\`, \`processBlock\`, \`calculateBlock\`, or any audio callback
@@ -114,6 +117,13 @@ Stop and recommend the contributor escalate to the maintainer if the change invo
 - Changing how existing callbacks fire (control callbacks, timer callbacks, MIDI callbacks)
 - Changing established DSP behavior (filter curves, envelope shapes, gain staging)
 - Changing regex patterns or match criteria in parsers (broadening a regex can have unintended matches)
+
+### 3b. Needs Maintainer Discussion (YELLOW zone)
+
+These aren't automatic red flags but should be discussed alongside or before the PR:
+
+- **Scripting API feature additions** — Even if the implementation is small, new API methods extend the behavioral contract. Check the forum or open an issue to discuss the design first.
+- **DSP module changes with per-instance overhead** — Modules may be used at scale in ways you can't predict. Adding per-instance overhead to a module that's used 32 times in an additive synth patch is a form of breaking change.
 
 ### 4. Positive Signals — Likely Safe
 
@@ -137,6 +147,7 @@ These patterns indicate a change is likely contributor-fixable:
 **Defensive guards:**
 - Adding null checks, bounds checks, file-existence checks
 - Adding early returns that prevent crashes without changing normal behavior
+- **Caveat:** If a guard fires repeatedly during normal operation (not just edge cases), investigate the caller chain for an initialization or data flow defect. A guard that fires every project load is masking a root cause, not fixing one.
 
 **HISE IDE (backend-only) UI changes:**
 - Fixes to editor components, property panels, module tree views
@@ -171,6 +182,15 @@ With the runtime context from the contributor:
 
 - **Simple root cause** (null pointer, missing guard, off-by-one): Propose the fix and verify it follows established patterns
 - **Complex root cause** (lifecycle ordering, cross-module state, build-config divergence): Report your findings and recommend the contributor file them in the issue for the maintainer
+
+### Iterative debugging is expected
+
+Root cause fixes often require multiple iterations:
+1. Fix the crash symptom -> reveals assertions or repeated guard hits
+2. Add a targeted guard -> silences warnings but doesn't address the source
+3. Debugger reveals the actual data flow defect -> fix at the true root cause
+
+Each iteration narrows the problem. Revert intermediate fixes once the root cause is addressed to confirm it's sufficient on its own.
 
 ### Critical: Don't Guess at Runtime Behavior
 
@@ -274,152 +294,6 @@ If your change modifies data that could be accessed from the audio thread, use \
 2. Find why the pointer is null (missing initialization? wrong lifecycle order? component not in expected container?)
 3. If the fix is a simple guard (null check + early return), verify the null case is truly exceptional and won't silently swallow important errors
 4. If the fix requires understanding WHY the pointer should have been set, escalate — the null may be a symptom of a deeper issue
-`
-  },
-  {
-    id: 'contributing-guidelines',
-    name: 'HISE Contributing Guidelines',
-    description: 'Human-facing contribution guidelines: the Evidence Test, abstraction layers, good candidates for contribution, and the risk assessment checklist',
-    content: `# Contributing to HISE
-
-HISE is primarily maintained by one developer (Christoph), but community contributions are welcome and encouraged. Many HISE users are proficient with HISEScript and increasingly comfortable using AI coding tools to work with the C++ codebase. This guide helps you make contributions that are easy to review and safe to merge.
-
-## Using the MCP Workflow (Recommended)
-
-If you're using an AI coding tool (Claude Code, OpenCode, etc.) with the HISE MCP server, invoke the \`contribute\` prompt to start a guided workflow. The prompt walks your AI agent through:
-
-1. **Prerequisites** — Verifies your GitHub CLI auth, HISE repo, and fork setup
-2. **Assessment** — Searches the codebase for evidence, checks red flags, produces a risk verdict
-3. **Fix** — Proposes a fix following established patterns, waits for your build/test confirmation
-4. **Submission** — Generates the PR description with risk assessment, creates the PR via \`gh\`
-
-If the assessment triggers red flags, the agent will create a GitHub issue for maintainer discussion instead of proceeding directly. Once the maintainer responds with guidance, re-invoke the prompt with the issue URL to resume.
-
-## Getting Started
-
-### Prerequisites
-
-- **Build HISE yourself.** Fork the repo, clone it, and get a working build using Projucer-generated IDE projects. You'll need this to test your changes and, for crash bugs, to run the debugger.
-- **Understand the backend/frontend split.** HISE has two main build targets: the HISE IDE (\`USE_BACKEND=1\`) and exported plugins (\`USE_FRONTEND=1\`). Code that works in the IDE may behave differently — or not exist at all — in an exported plugin. See \`guidelines/development/build-configurations.md\` for details.
-- **Check the forum and issues first.** Many bugs have been discussed on the [HISE Forum](https://forum.hise.audio) before reaching GitHub. Context from those discussions is valuable.
-
-### Manual Workflow
-
-If you're not using the MCP prompt, follow this manual process:
-
-1. Fork the repository and create a feature/fix branch from \`develop\`
-2. Make your changes, build in Debug, and test
-3. Fill out the **Risk Assessment Checklist** (see below) in your PR description
-4. Submit the PR against \`develop\`
-5. Christoph reviews and merges, or provides feedback
-
-## Deciding What to Contribute
-
-Not every bug or feature is equally suited for community contribution. The key question isn't "how hard is the code?" — it's **"could this change affect existing HISE projects in unexpected ways?"**
-
-### The Evidence Test
-
-Before submitting a fix, ask yourself: **can I point to existing code in the HISE codebase that already does what my fix does?**
-
-- **Yes** — You're filling a gap in an established pattern. This is a strong signal that the fix is correct and safe. Proceed.
-- **No, but I can reason about why it should work this way** — You're making a design decision, not following a pattern. Flag this in your PR and expect discussion.
-
-This is the single most important guideline. "Link to the precedent, don't make the argument."
-
-### Where You Put the Change Matters
-
-The same feature can have drastically different risk profiles depending on which layer you implement it at:
-
-| Layer | Risk | Examples |
-|-------|------|----------|
-| UI / Editor / Floating Tile properties | Lower | Adding a property to a floating tile panel, forwarding LAF draw properties |
-| Scripting API (thin wrappers) | Lower | Exposing an existing C++ method to HISEScript |
-| Module parameters / attributes | Higher | Adding or reordering attributes changes index-based access for all scripts |
-| DSP / rendering pipeline | Higher | Changes here affect how every project sounds or performs |
-| Scripting engine internals | Higher | Parser, preprocessor, include system, compilation pipeline |
-
-### Good Candidates for Contribution
-
-**Pattern consistency fixes** — A function is missing something that all its sibling functions have.
-
-**Missing persistence** — A setting changes at runtime but isn't saved/loaded.
-
-**Defensive guards** — A null check, bounds check, or file-existence check that prevents a crash.
-
-**Scripting API wrappers** — An existing C++ method exposed to HISEScript via the established wrapper pattern.
-
-**UI-layer additions** — New floating tile properties, LAF property forwarding, editor improvements.
-
-**Pure additive features (opt-in)** — New functionality explicitly enabled via an API call or property, with zero impact on projects that don't use it.
-
-**HISE IDE improvements** — Minor UI fixes in the HISE application: keyboard shortcuts, visual glitches, layout fixes in backend-only panels.
-
-### Always Escalate to Maintainer
-
-- **Parameter index changes** — Any change that shifts or reorders module attribute indices
-- **Scripting API method signature changes** — HISE validates parameter count at compile time; adding a parameter breaks all existing callers
-- **Backend/frontend behavioral differences** — Code paths that differ between \`USE_BACKEND\` and \`USE_FRONTEND\`
-- **Scripting engine internals** — Parser, preprocessor, include resolution
-- **Serialization format changes** — \`exportAsValueTree\` / \`restoreFromValueTree\` modifications
-- **Audio routing architecture** — Send containers, channel counts, routing matrices, voice management
-- **Plugin/DAW contract** — Automation, parameter persistence, plugin lifecycle
-- **Established callback behavior** — Changes to when or how existing callbacks fire
-
-## Crash Bugs
-
-Crash severity does not determine who should fix the bug. A crash with a clear null pointer dereference is often *easier* to fix safely than a subtle behavioral change.
-
-Use the debugger: reproduce the crash in Debug, capture the call stack, share it with your AI tool. This closes the gap between "symptom fix" and "root cause fix."
-
-## The Risk Assessment Checklist
-
-Include this in your PR description:
-
-\`\`\`markdown
-### Risk Assessment
-
-**Change type:**
-- [ ] Bugfix (fixing obviously broken behavior)
-- [ ] Pattern consistency (filling a gap that sibling code already covers)
-- [ ] Feature addition (new behavior, opt-in)
-- [ ] Feature addition (modifies existing behavior)
-
-**Evidence:**
-- [ ] I can link to existing code that already does what my fix does: [link/reference]
-- [ ] This is a new pattern (no existing precedent in the codebase)
-
-**Impact check:**
-- [ ] Modifies DSP or audio rendering code
-- [ ] Modifies module parameter indices or attribute enums
-- [ ] Modifies serialization (exportAsValueTree / restoreFromValueTree)
-- [ ] Modifies code with USE_BACKEND / USE_FRONTEND guards
-- [ ] Modifies scripting engine (parser, preprocessor, include system)
-- [ ] Adds per-instance objects to a module (chains, processors, buffers)
-- [ ] Could change behavior of existing HISEScript projects
-- [ ] Could change how existing projects sound or perform
-
-**Testing:**
-- [ ] Tested in Debug build
-- [ ] Tested in Release build
-- [ ] Tested in exported plugin (if applicable)
-- [ ] Reproduced the original bug before applying fix
-
-**Files changed:** [number] files, [additions/deletions] lines
-\`\`\`
-
-## Submitting Imperfect Work
-
-It's better to submit a PR with honest caveats than to not submit at all. Closed PRs with good analysis are valuable contributions — they document attempted approaches and save future contributors from repeating the same investigation.
-
-## Code Style
-
-HISE uses C++17 with the JUCE framework: tabs for indentation, Allman brace style, 120-character max line width, PascalCase classes, camelCase methods, no member variable prefixes. See \`AGENTS.md\` and \`guidelines/\` for full details.
-
-## Using AI Tools
-
-AI-assisted contributions are welcome and expected. If using an AI coding tool with the HISE MCP server, the \`contribute\` prompt handles the full workflow. Otherwise, point your AI tool at \`guidelines/contributor-agent.md\` for HISE-specific risk assessment instructions.
-
-Tips: give the AI runtime context (debugger output), verify its reasoning, don't let it over-engineer, and be honest about AI involvement in the PR description.
 `
   },
 ];

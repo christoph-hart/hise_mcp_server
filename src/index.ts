@@ -24,7 +24,7 @@ import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
-import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt, generateReviewPrPrompt } from './prompts.js';
+import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
@@ -785,7 +785,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 /**
  * List available prompts
  * Runtime prompts (e.g., style_selected_component) require local HISE connection.
- * Contribution prompts (contribute, review_pr) are available in all modes.
+ * Contribution prompts (contribute) are available in all modes.
  */
 server.setRequestHandler(ListPromptsRequestSchema, async () => {
   const available = isProductionMode
@@ -818,10 +818,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
       return await generateStyleSelectedComponentPrompt(args, dataLoader);
 
     case 'contribute':
-      return generateContributePrompt(args);
-
-    case 'review_pr':
-      return generateReviewPrPrompt(args);
+      return generateContributePrompt(args, SERVER_VERSION);
 
     default:
       throw new Error(`Unknown prompt: ${name}. Available prompts: ${PROMPTS.map(p => p.name).join(', ')}`);

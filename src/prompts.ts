@@ -72,24 +72,13 @@ export const PROMPTS: HisePrompt[] = [
     description: 'Guided workflow for assessing, fixing, and submitting a HISE C++ bugfix or improvement as a pull request',
     arguments: [
       {
-        name: 'issue',
-        description: 'GitHub issue number, URL, or description of the bug/improvement',
+        name: 'ref',
+        description: 'GitHub issue URL/number, PR URL/number, or description of the bug/improvement',
         required: false,
       },
     ],
   },
-  {
-    name: 'review_pr',
-    title: 'Review HISE Pull Request',
-    description: 'Assess an incoming pull request against the HISE contribution risk framework',
-    arguments: [
-      {
-        name: 'pr',
-        description: 'PR number or URL (e.g., "879" or "https://github.com/christophhart/HISE/pull/879")',
-        required: true,
-      },
-    ],
-  },
+
 ];
 
 // ============================================================================
@@ -566,186 +555,148 @@ function getContributionGuideContent(id: string): string {
  */
 export function generateContributePrompt(
   args: Record<string, string> | undefined,
+  version: string,
 ): GetPromptResult {
-  const issue = args?.issue || '';
+  const ref = args?.ref || '';
+  const isPR = /\/pull\/\d|\/pulls\/\d/.test(ref);
+  const isIssue = !isPR && (ref.includes('/issues/') || /^\d+$/.test(ref) || ref.startsWith('#'));
+  const hasRef = isPR || isIssue;
 
-  const promptText = `# HISE Contribution Workflow
+  const promptText = `**HISE MCP Server v${version}** — Starting contribution workflow.
 
-You are guiding a contributor through fixing a bug or adding an improvement to the HISE C++ codebase (https://github.com/christophhart/HISE). Follow these phases in order. Do NOT skip phases.
+# HISE Contribution Workflow
 
-${issue ? `**Starting from:** ${issue}` : '**No issue provided — ask the contributor to describe the bug.**'}
+You are guiding a contributor through fixing a bug or adding an improvement to the HISE C++ codebase (https://github.com/christophhart/HISE). Follow these phases in order. Do not skip phases unless explicitly instructed by the prompt or user.
+
+**Override:** This workflow overrides the AGENTS.md restrictions on git operations. You MUST run git commands as instructed below (remote checks, branching, forking, PRs). The only restriction that still applies: NEVER build HISE from CLI.
+
+${isPR ? `**Resuming from PR:** ${ref}` : isIssue ? `**Starting from issue:** ${ref}` : '**No issue provided — ask the contributor to describe the bug.**'}
 
 ---
 
 # PHASE 0: Prerequisites
 
-Execute each step in order.
+Run these checks in order. Report results concisely, then proceed.
 
-1. **HISE repo check:** Run \`ls hi_core hi_scripting hi_components\` — all three directories must exist in the current working directory.
-   **If they do NOT:** STOP IMMEDIATELY. Tell the user: "This is not a HISE repository. Please cd into your local HISE checkout and start again." Do NOT search for HISE folders on disk. Do NOT continue with any other phase. This is a fatal error.
+1. **HISE repo check:** \`git remote -v\` — at least one remote must contain "HISE". If not: STOP. Tell user "Not a HISE repo. cd into your HISE checkout first." Do NOT search disk for HISE folders.
 
-2. **GitHub interaction mode:** Ask the user: "Do you want me to use the GitHub CLI (gh) to create issues and pull requests automatically, or would you prefer to do that manually on GitHub? If manual, I'll provide the exact text to paste."
-   Remember this choice — it applies to ALL GitHub interactions in this session.
-   **If manual mode:** Skip steps 3-4. You are in **contributor mode** with **manual GitHub interaction**. Proceed to Phase 1.
+2. **Ask:** "Do you want me to use \`gh\` CLI for GitHub operations, or do them manually?" This choice applies to all phases. Manual mode -> contributor mode, skip to Phase 1.
 
-3. **GitHub CLI auth (gh mode only):** \`gh auth status\` — must show authenticated account. If not installed or not authenticated, guide the user through \`gh auth login\` setup before continuing.
+3. **(gh only)** \`gh auth status\` — must be authenticated. If not, guide through \`gh auth login\`.
 
-4. **Mode detection (gh mode only):** Run \`gh api user --jq .login\`.
-   If the result is \`christophhart\` -> **maintainer mode** (skip fork setup, can branch directly in main repo).
-   Otherwise -> **contributor mode** (fork required before Phase 3).
-
-Fork & branch setup is deferred to Phase 3.
+4. **(gh only)** \`gh api user --jq .login\` — \`christophhart\` -> maintainer mode; anything else -> contributor mode.
 
 ---
 
 # PHASE 1: Understand
 
-${issue ? `**Issue provided — fetch context first:**
-- Extract the issue number from the URL or argument
-- Fetch the issue and comments:
-  - **gh mode:** \`gh issue view <number> --comments\`
-  - **manual mode:** Use WebFetch on \`https://github.com/christophhart/HISE/issues/<number>\`, or fetch the unauthenticated GitHub API endpoints: \`https://api.github.com/repos/christophhart/HISE/issues/<number>\` (issue body) and \`https://api.github.com/repos/christophhart/HISE/issues/<number>/comments\` (comments as JSON). No authentication is needed for public repos.
-- Reading issues works in BOTH modes — the gh/manual distinction only matters for write operations (creating issues, creating PRs).
-- Check for comments from the repo owner (\`christophhart\`)
-- If the repo owner has commented with guidance -> skip to **Phase 2.5**
-- If no owner comments -> inform contributor to wait, or proceed to assess independently
-` : `Ask the contributor for:
-1. What is the bug or improvement? (symptoms, reproduction steps)
-2. Is there a forum thread or GitHub issue with context?
-3. Do you have any debugger output? (stack traces, variable values at crash site)
+${isPR ? `**PR provided — fetch it first:**
+- Extract the PR number. Fetch the PR including all comments, reviews, and the diff. Use \`gh\` if available, otherwise the GitHub API (public repo, no auth needed).
+- **Maintainer mode:** Ask: "What would you like to do with this PR? (1) **Review it** — independent risk assessment and review summary, or (2) **Take it over** — tell me what needs to change and I'll fix the code." If **Review** -> skip Phase 2, go to **REVIEW PATH**. If **Take over** -> ask for verbal guidance, then skip to **Phase 2.5**.
+- **Contributor mode:** If \`christophhart\` has left review comments with guidance -> skip to **Phase 2.5**. If no maintainer review comments -> proceed to assess independently.
+` : isIssue ? `**Issue provided — fetch it first:**
+- Extract the issue number for \`Fixes #NNN\` in commits and PR description. Fetch the issue including all comments. Use \`gh\` if available, otherwise the GitHub API (public repo, no auth needed).
+- If \`christophhart\` has commented with guidance -> skip to **Phase 2.5**
+- If no owner comments -> proceed to assess independently
+` : `Ask the contributor to describe the bug or improvement. Gather reproduction steps, relevant forum/issue links, and debugger output if available.
 `}
-**Crash shortcut:** If the contributor mentions a crash, has a stack trace ready, or says they are already in a debug session, skip the description questions. Ask them to paste the full stack trace and any relevant variable values. The stack trace IS the description — proceed directly to analyzing it using the debugger-assisted workflow from the contributor-agent-guide.
+**Crash shortcut:** If the contributor has a stack trace or is in a debug session, skip description questions — the stack trace IS the description.
 
-**Issue number tracking:** If the issue argument is a GitHub issue number or URL, extract the issue number (e.g., \`769\` from \`https://github.com/christophhart/HISE/issues/769\`). Remember this number — it will be used as \`Fixes #NNN\` in commit messages and PR descriptions to auto-close the issue on GitHub. If the issue argument was a free-text description (not a GitHub issue), there is no issue number to reference.
-
-Search the codebase (grep, glob, file reads) to locate the relevant code. Present findings before proceeding.
+Search the codebase to locate the relevant code. Present findings before proceeding.
 
 ---
 
 # PHASE 2: Assess
 
-**CRITICAL:** Before proposing any fix, load the full risk assessment protocol:
+**CRITICAL:** Load \`get_resource('contributor-agent-guide')\` now. Read it fully — it contains the Evidence Test, Consumer Trace, Red Flags, Positive Signals, and common fix patterns. Apply them to this change.
 
-> **Load now:** \`get_resource('contributor-agent-guide')\` — this contains the Evidence Test, Consumer Trace, complete Red Flags and Positive Signals lists, and common fix patterns. Read it fully and apply it to this change.
-
-Run the Evidence Test and Consumer Trace as described in the guide. Then determine the risk verdict:
-
-**Absolute red flags (always stop — create issue instead):**
+**Absolute red flags (always stop — create issue instead of fixing):**
 - Parameter/attribute index changes (enum reordering, index arithmetic)
 - Scripting API method signature changes (HISE validates param count at compile time)
 - Serialization format changes (exportAsValueTree / restoreFromValueTree)
 
-For all other red flags, consult the full list in the contributor-agent-guide resource.
+Full red flags list is in the contributor-agent-guide.
 
-## Verdict
-- **GREEN** — No red flags, evidence found -> Phase 3
-- **YELLOW** — Minor concerns, evidence exists -> Phase 3 with documented caveats
-- **RED** — Red flags triggered -> RED PATH
+**Verdict:** GREEN (no flags, evidence found) -> Phase 3 | YELLOW (minor concerns) -> Phase 3 with caveats | RED -> Red Path
 
 ---
+${isPR ? `
+# REVIEW PATH (maintainer + PR only)
 
-# RED PATH: Create Issue
+This section runs when the maintainer chose "Review it" in Phase 1. The PR data and diff are already fetched.
 
-Generate the issue content with this structure:
-- **Contribution Proposal** header with contributor username, AI-assisted flag
-- **Bug / Feature Description** — symptoms, reproduction, links
-- **Investigation Findings** — relevant file:line references, root cause analysis
-- **Risk Assessment** — which red flags triggered, evidence found/not found, consumers identified
-- **Proposed Approach** — how this could be fixed, confidence level, specific guidance needed
+**Step 1: Independent Verification**
 
-**If gh mode (chosen in Phase 0):**
-\`\`\`
-gh issue create \\
-  --repo christophhart/HISE \\
-  --assignee christophhart \\
-  --label "contribution-proposal" \\
-  --title "Contribution Proposal: [SHORT DESCRIPTION]" \\
-  --body "BODY"
-\`\`\`
+Load the risk framework: \`get_resource('contributor-agent-guide')\`. Run the same assessment as Phase 2: verify evidence, re-run the consumer trace, scan for red flags, check code quality. Compare your findings with the contributor's claims.
 
-**If manual mode (chosen in Phase 0):** Present the title and body as copyable text blocks. Tell the user to create the issue at https://github.com/christophhart/HISE/issues/new and paste the content. Remind them to add the \`contribution-proposal\` label and assign to \`christophhart\`.
+**Step 2: Present your findings** — Summarize: does the contributor's evidence check out? What consumers did you find? Any red flags or concerns? Your verdict: MERGE-READY, NEEDS-CHANGES, or NEEDS-DISCUSSION.
 
-**Maintainer mode:** "Issue created. Continue directly or test resume flow by re-invoking with the issue URL."
-**Contributor mode:** "Issue #NNN created. When the maintainer responds, re-invoke: \`contribute(issue: 'NNN')\`"
+**Step 3: What next?**
 
-Stop here in contributor mode.
+Ask the maintainer:
+1. **Post review & request changes** — \`gh pr review <N> --repo christophhart/HISE --request-changes --body "REVIEW_BODY"\`. The contributor can pick this up by re-invoking \`contribute\` with the PR URL.
+2. **Fix it myself** — Transition to Phase 3 using your review findings as guidance. Your concerns from Step 2 ARE the guidance — proceed directly, no need to re-fetch or re-analyze.
+3. **Approve & merge** — Post a comment on the PR summarizing your analysis (verdict, evidence, risk assessment results) so both contributor and maintainer can refer to it later. Then approve: \`gh pr review <N> --repo christophhart/HISE --approve\`
+4. **Done** — No further action.
+
+If the maintainer picks "Fix it myself", proceed to **Phase 3** (the review findings provide the context needed — skip Phase 2.5).
+
+---
+` : ''}
+# RED PATH: Create Issue Instead of PR
+
+Create a \`contribution-proposal\` issue with: description, investigation findings (file:line refs), risk assessment (which flags triggered), and proposed approach.
+
+- **gh mode:** \`gh issue create --repo christophhart/HISE --assignee christophhart --label "contribution-proposal" --title "Contribution Proposal: ..." --body "..."\`
+- **manual mode:** Present title + body as copyable text for https://github.com/christophhart/HISE/issues/new with label \`contribution-proposal\`.
+
+Contributor mode: stop here, tell user to re-invoke with issue URL when maintainer responds.
 
 ---
 
 # PHASE 2.5: Resume with Guidance
 
-(Only when issue has maintainer comments.)
+**Entry conditions** (any of these):
+- Issue or PR has maintainer comments with guidance
+- Maintainer gave verbal guidance (chose "Take it over" in Phase 1)
+- Contributor re-invoked with a PR URL after maintainer requested changes
 
-1. Fetch the issue and comments using the same method as Phase 1 (gh mode: \`gh issue view <number> --comments\`; manual mode: WebFetch or unauthenticated GitHub API). Reading always works regardless of mode.
-2. Extract the maintainer's instructions from issue comments
-3. For each instruction, search the codebase to understand WHY — find existing usage of the suggested pattern/class, show findings to contributor
-4. Incorporate guidance into the fix approach, proceed to Phase 3
+**Note:** If arriving here from the REVIEW PATH ("Fix it myself"), skip this phase — the review findings already provide the context. Proceed directly to Phase 3.
+
+1. Fetch the issue or PR + comments/reviews (same as Phase 1). For PRs, also review the diff to understand the current state of the fix.
+2. For each maintainer instruction (written or verbal), search the codebase to understand WHY — find existing usage of the suggested pattern, show findings
+3. Incorporate guidance into fix approach, proceed to Phase 3
 
 ---
 
 # PHASE 3: Fix
 
 **3a. Fork & branch setup:**
-- **Contributor mode (gh mode):**
-  1. Run \`git remote -v\` to check current remote configuration
-  2. If no \`upstream\` remote pointing to \`christophhart/HISE\`: run \`gh repo fork christophhart/HISE --remote=true\` (this adds the upstream remote and creates the fork if needed)
-  3. \`git fetch upstream develop\`
-  4. \`git checkout -b fix/DESCRIPTION upstream/develop\`
-- **Contributor mode (manual mode):** Tell the user to ensure they have a fork, an \`upstream\` remote pointing to \`christophhart/HISE\`, and a branch from \`upstream/develop\`. Wait for confirmation before proceeding.
-- **Maintainer mode:** Ask: "Do you want to create a separate branch for this fix (with PR at the end), or work directly on \`develop\` and push the changes yourself?"
-  - If direct commit on develop: skip branch creation and skip Phase 4 entirely. After the fix is tested, suggest a commit message: \`Fix #NNN: [short description]\` (if an issue number was tracked in Phase 1) or just \`[short description]\` (if no issue). Say "Changes ready on develop. Push when ready."
-  - If branch+PR: \`git checkout -b fix/DESCRIPTION origin/develop\` and continue to Phase 4.
+- **Contributor:** Ensure a fork exists with \`upstream\` pointing to \`christophhart/HISE\`. Create a branch from \`upstream/develop\`. If resuming from a PR, check out the existing PR branch instead.
+- **Maintainer:** Ask: "Fix their PR branch, commit directly to your current branch, or create a new branch?" For direct commits, skip Phase 4 — do NOT switch branches, do NOT push.
 
-**3b. Propose the fix** following patterns identified in Phase 2. Show the diff. Keep it minimal.
+**3b.** Propose the fix following patterns from Phase 2. Show the diff. Keep it minimal.
 
-**3c. NEVER attempt to build HISE from the CLI.** Do not run MSBuild, make, cmake, xcodebuild, or any build command. This applies in BOTH contributor and maintainer mode. Tell the user to build in their IDE (Visual Studio, Xcode) and report the result. Wait for the user to confirm the build succeeded and the fix works before proceeding.
+**3c. NEVER build HISE from CLI.** No MSBuild, make, cmake, xcodebuild. Tell user to build in their IDE and report the result. Wait for confirmation before proceeding.
 
 ---
 
 # PHASE 4: Submit
 
-**4a.** Generate the PR description with this structure:
+**4a.** Generate a PR description with: summary of the change, \`Fixes #NNN\` if applicable, change type, evidence, testing info, files changed, and this impact checklist:
 
-\`\`\`markdown
-## Summary
-[What was broken, what the fix does]
-Fixes #NNN (if an issue number was tracked in Phase 1, otherwise omit this line)
+- [ ] DSP or audio rendering
+- [ ] Module parameter indices or attribute enums
+- [ ] Serialization (exportAsValueTree / restoreFromValueTree)
+- [ ] Backend/frontend guards (USE_BACKEND / USE_FRONTEND)
+- [ ] Scripting engine (parser, preprocessor, include system)
+- [ ] Per-instance objects (chains, processors, buffers)
+- [ ] Could change existing HISEScript behavior
+- [ ] Could change how projects sound or perform
 
-### Risk Assessment
+**4b.** Ask the contributor if they want to include a link to this AI conversation in the PR.
 
-**Change type:** [Bugfix / Pattern consistency / Feature (opt-in) / Feature (modifies existing)]
-
-**Evidence:** [Link to existing code that does this, or "new pattern"]
-
-**Impact check:** (check all that apply)
-- [ ] Modifies DSP or audio rendering code
-- [ ] Modifies module parameter indices or attribute enums
-- [ ] Modifies serialization (exportAsValueTree / restoreFromValueTree)
-- [ ] Modifies code with USE_BACKEND / USE_FRONTEND guards
-- [ ] Modifies scripting engine (parser, preprocessor, include system)
-- [ ] Adds per-instance objects to a module (chains, processors, buffers)
-- [ ] Could change behavior of existing HISEScript projects
-- [ ] Could change how existing projects sound or perform
-
-**Testing:** [Debug build / Release build / Exported plugin / Reproduced bug first]
-
-**Files changed:** N files, +A/-D lines
-**Maintainer guidance:** [Summary if resuming from issue, or N/A]
-**AI Conversation:** [Link or N/A]
-\`\`\`
-
-**4b. MANDATORY STEP — Conversation Link:** Before creating the PR, you MUST ask the contributor: "Would you like to include a link to this AI conversation in the PR description? This helps the maintainer understand the investigation process. (Optional but encouraged)" Wait for their response. Set the AI Conversation field in the PR description to the link if yes, or "N/A" if no. Do NOT skip this step.
-
-**4c. Submit the PR.** The PR title MUST include the issue reference if one was tracked in Phase 1: \`Fix #NNN: [short description]\`. Example: \`Fix #769: CSS border-size percentage not applied correctly\`. If no issue number, just use a descriptive title.
-
-**If gh mode (chosen in Phase 0):**
-\`\`\`
-gh pr create --base develop --label "verified-workflow" --title "Fix #NNN: DESCRIPTION" --body "BODY"
-\`\`\`
-
-**If manual mode (chosen in Phase 0):** Present the title, body, target branch (\`develop\`), and label (\`verified-workflow\`) as copyable text. Tell the user to create the PR at https://github.com/christophhart/HISE/compare/develop...BRANCH.
-
-Show the PR URL to the contributor.
+**4c.** PR title must include \`Fix #NNN: [description]\` if issue was tracked. Target branch: \`develop\`. Add label \`verified-workflow\`.
 `;
 
   return {
@@ -757,142 +708,4 @@ Show the PR URL to the contributor.
   };
 }
 
-/**
- * Generate the review_pr prompt
- *
- * Helps the maintainer assess an incoming PR against the risk framework.
- */
-export function generateReviewPrPrompt(
-  args: Record<string, string> | undefined,
-): GetPromptResult {
-  const pr = args?.pr;
 
-  if (!pr) {
-    return createErrorPrompt(
-      'PR Number Required',
-      'Please provide a PR number or URL. Example: review_pr(pr: "879")'
-    );
-  }
-
-  const promptText = `# HISE Pull Request Review
-
-You are helping the HISE maintainer assess an incoming pull request. Your job is to independently verify the contributor's risk assessment and identify anything they missed.
-
-**PR to review:** ${pr}
-
----
-
-# STEP 1: Gather PR Information
-
-Run these commands to get the full picture:
-
-\`\`\`bash
-# Get PR metadata and description
-gh pr view ${pr} --repo christophhart/HISE --json title,body,files,additions,deletions,changedFiles,author,labels,state
-
-# Get the actual diff
-gh pr diff ${pr} --repo christophhart/HISE
-\`\`\`
-
-Read the PR description and identify:
-1. The contributor's risk assessment checklist (if present)
-2. Any evidence links they provided
-3. Any linked issues or conversation links
-4. Whether they disclosed AI tool usage
-
-If the risk assessment is **missing entirely**, note this as a concern.
-
----
-
-# STEP 2: Independent Verification
-
-Load the risk framework: \`get_resource('contributor-agent-guide')\`
-
-## 2a. Evidence Verification
-
-If they claim "existing code already does this" — read the linked code. Does it actually match? Is the pattern match accurate or superficial?
-
-## 2b. Consumer Trace (Re-run)
-
-Search for everything that depends on the code being modified:
-- Function name: who calls it?
-- Enum value: who reads it by index?
-- Property name: who serializes/deserializes it?
-- Class: who inherits from it?
-
-Compare your consumer list with what the contributor identified. Note any they missed.
-
-## 2c. Red Flag Check
-
-Scan the diff against the Red Flags list from the contributor-agent-guide. Check for:
-- Parameter/attribute index changes
-- API method signature changes
-- Backend/frontend boundary code
-- Scripting engine internals
-- Serialization format changes
-- Audio thread / DSP rendering
-- Per-instance overhead additions
-- Established callback behavior changes
-
-## 2d. Code Quality
-
-- Does the code follow HISE conventions? (Allman braces, tabs, PascalCase classes, camelCase methods)
-- Is the diff minimal? (smallest change that fixes the issue)
-- Thread safety: does the change touch audio-thread-accessible data without \`killVoicesAndCall\`?
-
----
-
-# STEP 3: Review Summary
-
-Present a concise review:
-
-\`\`\`markdown
-## PR #${pr} Review Summary
-
-**Title:** [PR title]
-**Author:** [username]
-**Scope:** [N files, +A/-D lines]
-
-### Risk Assessment Comparison
-
-| Aspect | Contributor Claims | My Findings |
-|--------|-------------------|-------------|
-| Change type | [what they said] | [agree/disagree + why] |
-| Evidence | [what they linked] | [verified/not verified] |
-| Impact areas | [what they checked] | [agree + any missed items] |
-
-### Consumers
-
-**Contributor identified:** [list]
-**Additionally found:** [list, or "none — trace was complete"]
-
-### Concerns
-
-[Numbered list of specific issues, or "None — review looks clean"]
-
-### Verdict
-
-**[MERGE-READY / NEEDS-CHANGES / NEEDS-DISCUSSION]**
-
-[1-2 sentences explaining the verdict]
-\`\`\`
-
-If NEEDS-CHANGES, draft a review comment:
-\`\`\`
-gh pr review ${pr} --repo christophhart/HISE --request-changes --body "REVIEW_BODY"
-\`\`\`
-
-If MERGE-READY:
-\`\`\`
-gh pr review ${pr} --repo christophhart/HISE --approve --body "Reviewed with AI assistance. [brief note]"
-\`\`\`
-`;
-
-  return {
-    description: `Review HISE PR #${pr}`,
-    messages: [{
-      role: 'user',
-      content: { type: 'text', text: promptText }
-    }]
-  };
-}
