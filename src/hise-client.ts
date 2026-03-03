@@ -28,6 +28,11 @@ import {
   ErrorCodeContext,
   CachedScript,
   EditScriptParams,
+  ReplParams,
+  HiseReplResponse,
+  ProfileParams,
+  HiseProfileResponse,
+  ProfileEvent,
 } from './types.js';
 import {
   editStringInScript,
@@ -613,6 +618,137 @@ export class HiseClient {
       undefined,
       this.config.timeouts.status
     );
+  }
+
+  // ==========================================================================
+  // REPL and Profiling Methods
+  // ==========================================================================
+
+  /**
+   * Evaluate a HiseScript expression (REPL functionality)
+   * 
+   * WARNING: This can modify runtime state as a side effect.
+   * 
+   * @param params - Parameters including moduleId and expression
+   */
+  async repl(params: ReplParams): Promise<HiseReplResponse> {
+    const result = await this.fetchWithTimeout<HiseReplResponse>(
+      '/api/repl',
+      'POST',
+      {
+        moduleId: params.moduleId,
+        expression: params.expression,
+      },
+      this.getCompileTimeout()
+    );
+
+    // Token optimization: strip empty/redundant fields on success
+    if (result.success) {
+      if (result.logs?.length === 0) delete result.logs;
+      if (!result.errors?.length) delete result.errors;
+      // Remove echoed input fields from raw API response
+      const raw = result as unknown as Record<string, unknown>;
+      delete raw.moduleId;
+      delete raw.expression;
+    }
+
+    return result;
+  }
+
+  /**
+   * Start a profiling session or retrieve results
+   * 
+   * Two modes:
+   * - "record": Start a new profiling session (non-blocking, returns immediately)
+   * - "get": Retrieve last profiling results with optional filtering
+   * 
+   * Workflow: Call once with mode="record", then query with mode="get" 
+   * using different filters to analyze the same profiling data.
+   * 
+   * @param params - Profiling parameters (record or get mode)
+   */
+  async profile(params: ProfileParams): Promise<HiseProfileResponse> {
+    const body: Record<string, unknown> = { mode: params.mode };
+
+    if (params.mode === 'record') {
+      if (params.durationMs !== undefined) body.durationMs = params.durationMs;
+      if (params.threadFilter) body.threadFilter = params.threadFilter;
+      if (params.eventFilter) body.eventFilter = params.eventFilter;
+    } else {
+      // mode === 'get'
+      if (params.threadFilter) body.threadFilter = params.threadFilter;
+      if (params.summary !== undefined) body.summary = params.summary;
+      if (params.filter) body.filter = params.filter;
+      if (params.minDuration !== undefined) body.minDuration = params.minDuration;
+      if (params.sourceTypeFilter) body.sourceTypeFilter = params.sourceTypeFilter;
+      if (params.nested !== undefined) body.nested = params.nested;
+      if (params.limit !== undefined) body.limit = params.limit;
+      if (params.wait !== undefined) body.wait = params.wait;
+      // Note: maxDepth is client-side only, not sent to API
+    }
+
+    const result = await this.fetchWithTimeout<HiseProfileResponse>(
+      '/api/profile',
+      'POST',
+      body,
+      this.getCompileTimeout()
+    );
+
+    const maxDepth = params.mode === 'get' ? (params.maxDepth ?? 3) : 3;
+
+    // Token optimization: prune deep event trees in full thread data
+    if (result.success && result.threads) {
+      result.threads = result.threads.map(thread => ({
+        ...thread,
+        events: this.pruneProfileEvents(thread.events, maxDepth, 0),
+      }));
+    }
+
+    // Token optimization: prune children in filtered results too
+    if (result.success && result.results) {
+      result.results = result.results.map(item => {
+        if (item.children && item.children.length > 0) {
+          return { ...item, children: this.pruneProfileEvents(item.children, maxDepth, 0) };
+        }
+        return item;
+      });
+    }
+
+    // Strip empty arrays
+    if (result.logs?.length === 0) delete result.logs;
+    if (!result.errors?.length) delete result.errors;
+    if (result.flows && (result.flows as unknown[]).length === 0) delete result.flows;
+
+    return result;
+  }
+
+  /**
+   * Recursively prune profile events by depth.
+   * Limits nesting to reduce token usage for large event trees.
+   */
+  private pruneProfileEvents(
+    events: ProfileEvent[],
+    maxDepth: number,
+    currentDepth: number,
+  ): ProfileEvent[] {
+    return events.map(e => {
+      const pruned = { ...e };
+
+      if (e.children && e.children.length > 0) {
+        if (currentDepth < maxDepth) {
+          pruned.children = this.pruneProfileEvents(
+            e.children,
+            maxDepth,
+            currentDepth + 1,
+          );
+        } else {
+          // Exceeded depth: omit children entirely
+          delete pruned.children;
+        }
+      }
+
+      return pruned;
+    });
   }
 
   /**

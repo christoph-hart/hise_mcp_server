@@ -444,6 +444,120 @@ export interface SetComponentValueParams {
 }
 
 // ============================================================================
+// REPL Types
+// ============================================================================
+
+/**
+ * Parameters for evaluating a script expression (REPL)
+ */
+export interface ReplParams {
+  moduleId: string;
+  expression: string;
+}
+
+/**
+ * Response from POST /api/repl
+ * - value can be any JSON type (number, string, array, object, etc.)
+ * - result is a status message (e.g., "REPL Evaluation OK")
+ */
+export interface HiseReplResponse {
+  success: boolean;
+  result?: string;
+  value?: unknown;
+  logs?: string[];
+  errors?: HiseError[];
+}
+
+// ============================================================================
+// Profiling Types
+// ============================================================================
+
+/**
+ * Profiling event with timing information
+ */
+export interface ProfileEvent {
+  name: string;
+  sourceType: string;
+  duration: number;
+  start: number;
+  children?: ProfileEvent[];
+}
+
+/**
+ * Thread container in full profile data
+ */
+export interface ProfileThread {
+  thread: string;
+  events: ProfileEvent[];
+}
+
+/**
+ * Summary/filtered result item from profile API
+ */
+export interface ProfileResultItem {
+  name: string;
+  sourceType: string;
+  thread: string;
+  start?: number;
+  duration?: number;
+  children?: ProfileEvent[];
+  // Summary fields (when summary=true)
+  count?: number;
+  median?: number;
+  peak?: number;
+  min?: number;
+  total?: number;
+}
+
+/**
+ * Parameters for starting a profiling session (mode="record")
+ */
+export interface ProfileRecordParams {
+  mode: 'record';
+  durationMs?: number;
+  threadFilter?: string[];
+  eventFilter?: string[];
+}
+
+/**
+ * Parameters for retrieving profiling results (mode="get")
+ */
+export interface ProfileGetParams {
+  mode: 'get';
+  threadFilter?: string[];
+  summary?: boolean;
+  filter?: string;
+  minDuration?: number;
+  sourceTypeFilter?: string;
+  nested?: boolean;
+  limit?: number;
+  wait?: boolean;
+  maxDepth?: number;  // Client-side: limit event nesting depth (default: 3)
+}
+
+/**
+ * Union type for profile parameters
+ */
+export type ProfileParams = ProfileRecordParams | ProfileGetParams;
+
+/**
+ * Response from POST /api/profile
+ * - threads: full event tree (when no filter/summary)
+ * - results: filtered/summarized items
+ * - flows: additional flow data
+ */
+export interface HiseProfileResponse {
+  success: boolean;
+  recording?: boolean;
+  durationMs?: number;
+  threads?: ProfileThread[];
+  results?: ProfileResultItem[];
+  flows?: unknown[];
+  logs?: string[];
+  errors?: HiseError[];
+}
+
+// ============================================================================
 // LAF (LookAndFeel) Types
 // ============================================================================
 

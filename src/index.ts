@@ -18,7 +18,7 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError } from './types.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError, ProfileParams } from './types.js';
 import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
@@ -578,6 +578,85 @@ const RUNTIME_TOOLS: Tool[] = [
           description: 'Processor ID (e.g., "Interface")',
         },
       },
+    },
+  },
+  {
+    name: 'hise_runtime_repl',
+    description: `Evaluate a HiseScript expression with the current script engine. WARNING: Can modify runtime state as side effect. Use for testing expressions, inspecting variables, or calling functions interactively.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        moduleId: {
+          type: 'string',
+          description: 'Processor ID (e.g., "Interface")',
+        },
+        expression: {
+          type: 'string',
+          description: 'HiseScript expression to evaluate',
+        },
+      },
+      required: ['moduleId', 'expression'],
+    },
+  },
+  {
+    name: 'hise_runtime_profile',
+    description: `Start profiling session or retrieve results. Workflow: call with mode="record" to start, then mode="get" to retrieve. Supports filtering by thread, event type, duration, and wildcard patterns. Use summary=true for aggregated stats.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode: {
+          type: 'string',
+          enum: ['record', 'get'],
+          description: '"record" = start session (non-blocking), "get" = retrieve results',
+        },
+        durationMs: {
+          type: 'number',
+          description: '[record] Duration in ms (100-5000, default: 1000)',
+        },
+        threadFilter: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Threads to record/return. Valid: "Audio Thread", "Scripting Thread", "UI Thread", "Loading Thread"',
+        },
+        eventFilter: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '[record] Event types. Valid: "DSP", "Script", "Lock", "Callback", "Trace", "TimerCallback", "Scriptnode"',
+        },
+        summary: {
+          type: 'boolean',
+          description: '[get] Aggregate with count/median/peak/min/total (default: false)',
+        },
+        filter: {
+          type: 'string',
+          description: '[get] Wildcard pattern for event name (e.g., "slow*"). Case-insensitive.',
+        },
+        minDuration: {
+          type: 'number',
+          description: '[get] Only events with duration >= this value in ms',
+        },
+        sourceTypeFilter: {
+          type: 'string',
+          description: '[get] Wildcard pattern for sourceType (e.g., "Script"). Case-insensitive.',
+        },
+        nested: {
+          type: 'boolean',
+          description: '[get] Include children of matched events (default: false)',
+        },
+        limit: {
+          type: 'number',
+          description: '[get] Max results (1-100, default: 15)',
+        },
+        wait: {
+          type: 'boolean',
+          description: '[get] Wait for recording to finish (default: true)',
+        },
+        maxDepth: {
+          type: 'number',
+          description: '[get] Max nesting depth for events (default: 3). Reduces output size.',
+        },
+      },
+      required: ['mode'],
     },
   },
   {
@@ -1503,6 +1582,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const result = await hiseClient.getSelectedComponents(moduleId);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_repl': {
+        const { moduleId, expression } = args as { moduleId: string; expression: string };
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.repl({ moduleId, expression });
+
+          // Enrich errors with suggestions
+          if (!result.success && result.errors?.length) {
+            await enrichErrorsWithSuggestions(result.errors);
+          }
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            isError: !result.success,
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_profile': {
+        const profileArgs = args as unknown as ProfileParams;
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.profile(profileArgs);
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            isError: !result.success,
           };
         } catch (err) {
           return {
