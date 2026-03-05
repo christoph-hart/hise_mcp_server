@@ -558,6 +558,42 @@ export interface HiseProfileResponse {
 }
 
 // ============================================================================
+// Launch and Shutdown Types
+// ============================================================================
+
+/**
+ * Parameters for launching HISE with the REST server
+ */
+export interface LaunchParams {
+  projectFolder: string;
+  debug?: boolean;   // Use HISE Debug build (default: false)
+  port?: number;     // REST server port (default: 1900)
+  force?: boolean;   // Shut down existing HISE if running with different project (default: false)
+}
+
+/**
+ * Response from launching or connecting to HISE
+ */
+export interface HiseLaunchResponse {
+  success: boolean;
+  alreadyRunning: boolean;
+  project?: {
+    name: string;
+    projectFolder: string;
+  };
+  port?: number;
+  error?: string;
+}
+
+/**
+ * Response from shutting down HISE
+ */
+export interface HiseShutdownResponse {
+  success: boolean;
+  error?: string;
+}
+
+// ============================================================================
 // LAF (LookAndFeel) Types
 // ============================================================================
 

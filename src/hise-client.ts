@@ -8,6 +8,7 @@
  */
 
 import { createHash } from 'crypto';
+import { execFileSync, spawn } from 'child_process';
 import {
   HiseStatusResponse,
   HiseScriptResponse,
@@ -33,6 +34,9 @@ import {
   ProfileParams,
   HiseProfileResponse,
   ProfileEvent,
+  LaunchParams,
+  HiseLaunchResponse,
+  HiseShutdownResponse,
 } from './types.js';
 import {
   editStringInScript,
@@ -96,6 +100,29 @@ export interface HiseClientConfig {
     script: number;      // For script compilation (can be slow)
     screenshot: number;  // For screenshot capture
   };
+}
+
+/**
+ * Normalize a file path for case-insensitive comparison on Windows.
+ * Converts backslashes to forward slashes, removes trailing slashes, lowercases.
+ */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * Resolve an executable name on PATH.
+ * Returns the full path or null if not found.
+ */
+function resolveExecutable(name: string): string | null {
+  try {
+    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const result = execFileSync(cmd, [name], { encoding: 'utf8', timeout: 5000, stdio: 'pipe' });
+    const firstMatch = result.trim().split(/\r?\n/)[0];
+    return firstMatch || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -749,6 +776,202 @@ export class HiseClient {
 
       return pruned;
     });
+  }
+
+  // ==========================================================================
+  // Launch and Shutdown Methods
+  // ==========================================================================
+
+  /**
+   * Gracefully shut down the running HISE instance.
+   * Calls the shutdown endpoint and waits until the port stops responding.
+   */
+  async shutdown(): Promise<HiseShutdownResponse> {
+    // Call shutdown endpoint
+    try {
+      await this.fetchWithTimeout<{ success: boolean }>(
+        '/api/shutdown',
+        'POST',
+        undefined,
+        this.config.timeouts.status,
+      );
+    } catch {
+      // If we can't reach HISE, it's already down
+      return { success: true };
+    }
+
+    // Wait until HISE stops responding (reverse-poll)
+    const pollInterval = 500;
+    const maxWait = 10000;
+    let elapsed = 0;
+
+    while (elapsed < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      elapsed += pollInterval;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        await fetch(`${this.config.baseUrl}/api/status`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        // Still responding, keep waiting
+      } catch {
+        // Connection refused - shutdown complete
+        return { success: true };
+      }
+    }
+
+    return {
+      success: false,
+      error: `HISE did not shut down within ${maxWait / 1000}s`,
+    };
+  }
+
+  /**
+   * Launch HISE with the REST API server enabled.
+   *
+   * 1. Checks if HISE is already running (validates project folder)
+   * 2. Optionally shuts down existing instance (force=true)
+   * 3. Sets the project folder via CLI
+   * 4. Spawns HISE with start_server flag
+   * 5. Polls until the REST server is responsive
+   *
+   * @param params - Launch parameters including projectFolder, debug, port, force
+   */
+  async launch(params: LaunchParams): Promise<HiseLaunchResponse> {
+    const port = params.port ?? 1900;
+    const debug = params.debug ?? false;
+    const force = params.force ?? false;
+    const exeName = debug ? 'HISE Debug' : 'HISE';
+    const pollUrl = `http://localhost:${port}/api/status`;
+
+    // 1. Check if already running
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeouts.status);
+      const response = await fetch(pollUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const status = await response.json() as HiseStatusResponse;
+
+        if (status.success && status.project) {
+          const currentFolder = normalizePath(status.project.projectFolder);
+          const requestedFolder = normalizePath(params.projectFolder);
+
+          if (currentFolder === requestedFolder) {
+            // Same project - return success
+            return {
+              success: true,
+              alreadyRunning: true,
+              project: {
+                name: status.project.name,
+                projectFolder: status.project.projectFolder,
+              },
+              port,
+            };
+          }
+
+          // Different project
+          if (!force) {
+            return {
+              success: false,
+              alreadyRunning: true,
+              error: `HISE is already running with project "${status.project.name}" at ${status.project.projectFolder}. Use force=true to shut it down and switch projects.`,
+            };
+          }
+
+          // Force shutdown
+          const shutdownResult = await this.shutdown();
+          if (!shutdownResult.success) {
+            return {
+              success: false,
+              alreadyRunning: true,
+              error: `Failed to shut down existing HISE instance: ${shutdownResult.error}`,
+            };
+          }
+        }
+      }
+    } catch {
+      // Not running, continue to launch
+    }
+
+    // 2. Resolve executable on PATH
+    const exePath = resolveExecutable(exeName);
+    if (!exePath) {
+      return {
+        success: false,
+        alreadyRunning: false,
+        error: `"${exeName}" not found on PATH. Add the HISE executable directory to your system PATH.`,
+      };
+    }
+
+    // 3. Set project folder (blocking CLI command)
+    try {
+      execFileSync(exePath, ['set_project_folder', `-p:${params.projectFolder}`], {
+        encoding: 'utf8',
+        timeout: 10000,
+        stdio: 'pipe',
+      });
+    } catch (err) {
+      return {
+        success: false,
+        alreadyRunning: false,
+        error: `Failed to set project folder: ${err instanceof Error ? err.message : err}`,
+      };
+    }
+
+    // 4. Launch HISE with server (detached)
+    const launchArgs = ['start_server'];
+    if (port !== 1900) {
+      launchArgs.push(`-port:${port}`);
+    }
+
+    const child = spawn(exePath, launchArgs, {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+
+    // 5. Poll until ready (500ms interval, 10s timeout)
+    const pollInterval = 500;
+    const maxWait = 10000;
+    let elapsed = 0;
+
+    while (elapsed < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      elapsed += pollInterval;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const response = await fetch(pollUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const status = await response.json() as HiseStatusResponse;
+          if (status.success && status.project) {
+            return {
+              success: true,
+              alreadyRunning: false,
+              project: {
+                name: status.project.name,
+                projectFolder: status.project.projectFolder,
+              },
+              port,
+            };
+          }
+        }
+      } catch {
+        // Not ready yet, keep polling
+      }
+    }
+
+    return {
+      success: false,
+      alreadyRunning: false,
+      error: `HISE process started but REST server not responding on port ${port} after ${maxWait / 1000}s.`,
+    };
   }
 
   /**

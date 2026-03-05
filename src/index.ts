@@ -18,7 +18,7 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError, ProfileParams } from './types.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError, ProfileParams, LaunchParams } from './types.js';
 import { getHiseClient } from './hise-client.js';
 import { findPatternMatch } from './error-patterns.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
@@ -657,6 +657,40 @@ const RUNTIME_TOOLS: Tool[] = [
         },
       },
       required: ['mode'],
+    },
+  },
+  {
+    name: 'hise_runtime_launch',
+    description: `Launch HISE with REST API server. Sets project folder and waits for server readiness. Returns error if HISE is already running with a different project (use force to shut down and relaunch).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectFolder: {
+          type: 'string',
+          description: 'Absolute path to the HISE project folder',
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Use HISE Debug build (default: false)',
+        },
+        port: {
+          type: 'number',
+          description: 'REST server port (default: 1900)',
+        },
+        force: {
+          type: 'boolean',
+          description: 'Shut down existing HISE instance if running with a different project (default: false)',
+        },
+      },
+      required: ['projectFolder'],
+    },
+  },
+  {
+    name: 'hise_runtime_shutdown',
+    description: `Gracefully shut down the running HISE instance. Waits for confirmation that HISE has exited.`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
   {
@@ -1626,6 +1660,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           const result = await hiseClient.profile(profileArgs);
 
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            isError: !result.success,
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_launch': {
+        const launchArgs = args as unknown as LaunchParams;
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.launch(launchArgs);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            isError: !result.success,
+          };
+        } catch (err) {
+          return {
+            content: [{
+              type: 'text',
+              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'hise_runtime_shutdown': {
+        const hiseClient = getHiseClient();
+        try {
+          const result = await hiseClient.shutdown();
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
             isError: !result.success,
