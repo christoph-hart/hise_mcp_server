@@ -12,13 +12,9 @@ const __dirname = dirname(__filename);
 const projectRoot = resolve(__dirname, '..');
 
 function getConfigPath() {
-  const platform = process.platform;
-  
-  if (platform === 'win32') {
-    return join(homedir(), '.config', 'opencode', 'opencode.json');
-  } else {
-    return join(homedir(), '.local', 'share', 'opencode', 'opencode.json');
-  }
+  // OpenCode global config is always at ~/.config/opencode/opencode.json
+  // (not ~/.local/share/opencode/ — that's the runtime data directory)
+  return join(homedir(), '.config', 'opencode', 'opencode.json');
 }
 
 function getConfigDirectory() {

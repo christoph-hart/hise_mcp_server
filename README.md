@@ -52,7 +52,7 @@ Then enable REST Server in HISE: **Tools > Enable REST Server**
 ### Opencode
 
 **Config location:**
-- macOS/Linux: `~/.local/share/opencode/opencode.json`
+- macOS/Linux: `~/.config/opencode/opencode.json`
 - Windows: `%USERPROFILE%\.config\opencode\opencode.json`
 
 **Remote server:**
