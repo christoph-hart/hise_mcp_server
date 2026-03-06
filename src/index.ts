@@ -323,7 +323,7 @@ const RUNTIME_TOOLS: Tool[] = [
   },
   {
     name: 'hise_runtime_get_script',
-    description: `Read script from a processor. Returns {callbacks: {...}, externalFiles: [...]}.`,
+    description: `Read script from a processor. Returns {callbacks: {...}, externalFiles: [...]}. Edit external files on disk with mcp_edit (not hise_runtime_edit_script), then call hise_runtime_recompile.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -368,7 +368,7 @@ const RUNTIME_TOOLS: Tool[] = [
   },
   {
     name: 'hise_runtime_edit_script',
-    description: `Edit script by replacing oldString with newString. Works like the native mcp_edit tool - find exact string match and replace. This is the primary tool for modifying existing scripts. For multiple edits, call repeatedly with compile:false, then compile:true on last edit.`,
+    description: `Edit INLINE callback code by replacing oldString with newString. Works like the native mcp_edit tool - find exact string match and replace. This is the primary tool for modifying existing scripts in inline callbacks. For multiple edits, call repeatedly with compile:false, then compile:true on last edit. Does NOT work for external .js files (include()) — edit those on disk with mcp_edit, then call hise_runtime_recompile. See hise_runtime_get_script for externalFiles[] paths.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -406,7 +406,7 @@ const RUNTIME_TOOLS: Tool[] = [
   },
   {
     name: 'hise_runtime_recompile',
-    description: `Recompile a processor without changing script. Use after editing external .js files.`,
+    description: `Recompile a processor without changing script. Required after editing external .js files on disk to apply changes. Editing files with mcp_edit only triggers lightweight shadow parser diagnostics — this tool performs the actual recompilation.`,
     inputSchema: {
       type: 'object',
       properties: {

@@ -18,7 +18,7 @@ export const WORKFLOWS: Workflow[] = [
       '3. Analyze errors[0].codeContext for the problematic code',
       '4. Check errors[0].suggestions - if present, apply the suggested fix directly',
       '5. If error is "Function / constant not found", use search_hise or query_scripting_api to find the correct API',
-      '6. Call hise_runtime_edit_script to fix the error (find the broken code string, replace with corrected version)',
+      '6. For inline callback errors, use hise_runtime_edit_script to fix them. For external .js file errors, edit the file on disk with mcp_edit, then call hise_runtime_recompile',
       '7. If response has errors, repeat from step 3',
     ],
     tools: ['hise_runtime_recompile', 'hise_runtime_edit_script', 'search_hise', 'query_scripting_api'],
@@ -29,6 +29,7 @@ export const WORKFLOWS: Workflow[] = [
       'edit_script works like mcp_edit - find exact string match and replace',
       'For multiple fixes, use compile:false on all but the last edit to save time',
       'Use codeContext from errors to identify the exact string to replace',
+      'Do NOT use edit_script for external .js files — edit those on disk with mcp_edit, then recompile',
     ],
   },
   {

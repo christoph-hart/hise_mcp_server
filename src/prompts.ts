@@ -351,7 +351,7 @@ ${panelGuide}
 
 **Important:** 
 - Use \`hise_runtime_set_script\` to compile new code - do NOT just present code to the user
-- If there are errors, use \`hise_runtime_edit_script\` to fix them (find the broken code string, replace with fixed version)
+- If there are errors in inline callbacks, use \`hise_runtime_edit_script\` to fix them (find the broken code string, replace with fixed version). For external .js file errors, edit on disk with mcp_edit, then recompile
 - For multiple edits, use \`compile: false\` on all but the last edit to avoid repeated compilation
 
 Begin by analyzing the existing code structure and planning your approach.`;
@@ -520,7 +520,7 @@ ${lafGuide}
 
 **Important:**
 - Use \`hise_runtime_set_script\` to compile new code - do NOT just present code to the user
-- If there are errors, use \`hise_runtime_edit_script\` to fix them (find the broken code string, replace with fixed version)
+- If there are errors in inline callbacks, use \`hise_runtime_edit_script\` to fix them (find the broken code string, replace with fixed version). For external .js file errors, edit on disk with mcp_edit, then recompile
 - For multiple edits, use \`compile: false\` on all but the last edit to avoid repeated compilation
 
 Begin by analyzing the existing code structure and planning your approach.`;

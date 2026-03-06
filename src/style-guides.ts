@@ -204,7 +204,7 @@ hise_runtime_set_script({
 })
 \`\`\`
 
-Use \`hise_runtime_edit_script\` to modify existing code - it works like the native mcp_edit tool (find exact string, replace with new string). For multiple edits, use \`compile: false\` on all but the last call.
+Use \`hise_runtime_edit_script\` to modify existing inline callback code - it works like the native mcp_edit tool (find exact string, replace with new string). For multiple edits, use \`compile: false\` on all but the last call. For external .js files (include()), edit on disk with mcp_edit and then call hise_runtime_recompile.
 
 ## The obj Parameter
 
