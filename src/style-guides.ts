@@ -17,92 +17,535 @@ export const STYLE_GUIDES: StyleGuide[] = [
   {
     id: 'hisescript-style',
     name: 'HiseScript Style Guide',
-    description: 'Key differences between HiseScript and JavaScript - load this before writing any HiseScript code',
+    description: 'Comprehensive REPL-tested HiseScript language reference - variable types, realtime safety, syntax rules, and common LLM errors',
     content: `# HiseScript Style Guide
 
-## Quick Reference - JavaScript vs HiseScript
+> Load get_resource('graphics-api-style') for drawing methods. Load get_resource('laf-functions-style') before writing LAF code. Load get_resource('scriptpanel-style') for panel setup patterns.
+
+## Diagnostics
+
+HISE provides a custom LSP server with precise, HiseScript-aware diagnostics including runtime inspection. LSP warnings and errors are highly accurate - treat them as compile errors and fix them immediately. Do not ignore LSP diagnostics expecting code to compile successfully; the LSP and compiler share the same parser.
+
+## JavaScript vs HiseScript
+
+HiseScript is based on JavaScript but is its own language. ES6+ features do not exist. The engine is designed for realtime audio safety - many differences exist for this reason.
 
 | Feature | JavaScript | HiseScript |
 |---------|-----------|------------|
-| Local variables | \`const\`, \`let\`, \`var\` | \`var\` (inside functions) |
-| Constants | \`const\` | \`const\` (global only) |
-| Classes | \`class Foo {}\` | Factory functions |
-| Arrow functions | \`() => {}\` | \`inline function() {}\` |
-| Inline function params | Any number | Max 5, no undefined |
+| Variable declaration | \`const\`, \`let\`, \`var\` | \`var\`, \`const var\`, \`reg\`, \`local\`, \`global\` |
+| Undeclared assignment | Creates global silently | **Compile error** (except for loop counters) |
+| Arrow functions | \`() => {}\` | Works with >=1 param: \`x => x + 1\`, \`(x, y) => x + y\`. Expands to regular function - **not realtime-safe**. Zero-param \`() => expr\` not supported. |
+| Classes / new | \`class Foo {}\`, \`new Foo()\` | Not supported - use factory functions |
+| Template literals | \`Hello \${x}\` | \`"Hello " + x\` |
 | Default parameters | \`fn(x = 5)\` | Not supported |
-| Template literals | \`\`Hello \${x}\`\` | \`"Hello " + x\` |
 | Destructuring | \`const {a} = obj\` | Not supported |
 | Spread operator | \`[...arr]\` | Not supported |
-| Object creation | \`new Object()\` | \`{}\` |
-| MIDI access | \`event.pitch\` | \`Message.getNoteNumber()\` |
+| === / !== | Strict equality | Not supported - use \`==\` / \`!=\` |
+| Prototype chain | \`Object.prototype\` | Not supported |
+| try/catch | Exception handling | Not supported |
+| async/await | Promises | Not supported |
+| Module system | import/export | \`include("File.js")\` + namespaces |
 
-(Rest of content remains the same)
+## Variable Types
+
+Every variable **must** be declared with a keyword. Choose based on scope and realtime safety:
+
+| Keyword | Scope | Mutable | Realtime-safe | Notes |
+|---------|-------|---------|---------------|-------|
+| \`var\` | Global (from onInit) | Yes | **No** - allocates at runtime | Least efficient. Never use on audio thread. |
+| \`const var\` | Global | No | Yes (inlined at compile) | Default for references and fixed values. |
+| \`reg\` | Global | Yes | **Yes** - pre-allocated | Max 32 per scope (each namespace gets its own 32). Use for mutable audio-thread state. |
+| \`local\` | Function/callback body | Yes | **Yes** (inside inline function) | Cannot be declared in onInit. Temporary storage inside functions. |
+| \`global\` | Cross-script (all processors) | Yes | No | Equivalent to \`Globals.name\`. Always use \`Globals.\` prefix for clarity. |
+
+\`\`\`javascript
+// WRONG - var inside audio callback
+function onNoteOn()
+{
+    var x = Message.getNoteNumber(); // Allocates memory!
+}
+
+// RIGHT - reg or local inside inline function
+reg noteNumber = 0;
+function onNoteOn()
+{
+    noteNumber = Message.getNoteNumber();
+}
+\`\`\`
+
+### const var Naming
+
+\`\`\`javascript
+const var NUM_BUTTONS = 8;              // UPPER_CASE for simple values
+const var Knob1 = Content.getComponent("Knob1"); // PascalCase for references
+\`\`\`
+
+### reg Type Annotations
+
+reg variables support optional type constraints. Violations produce compile errors (development only - zero overhead in exported plugin).
+
+\`\`\`javascript
+reg:int noteNumber = 60;
+reg:number gain = -6.0;      // int or double
+reg:string label = "Hello";
+\`\`\`
+
+| Identifier | Accepts |
+|-----------|---------|
+| \`int\` | Integer |
+| \`double\` | Float |
+| \`number\` | int or double (preferred) |
+| \`string\` | String |
+| \`Array\` | Array |
+| \`JSON\` | JSON object |
+| \`object\` | JSON object or HISE script object (component reference, etc.) |
+
+## Data Types
+
+Five primitive types: Number, String, Boolean, undefined, null.
+
+- Numbers have no int/float distinction at the language level
+- Strings use single or double quotes - **not realtime-safe** (allocates memory). Never concatenate or print strings on the audio thread.
+- 0 is falsy. All non-zero numbers are truthy.
+- undefined means "not assigned". null means "explicitly empty".
+
+### Built-in Utility Functions (Not in API Browser)
+
+These must be known by name - they do not appear in autocomplete or the API Browser:
+
+| Function | Purpose |
+|----------|---------|
+| \`isDefined(v)\` | Returns true if v is not undefined. Preferred over \`v != undefined\`. |
+| \`trace(v)\` | Returns a readable string representation of arrays/objects. Essential for debugging nested data. |
+| \`obj.clone()\` | Deep-copies an array or object. Without it, assignment copies by reference. |
+
+### Pass-by-Reference
+
+Arrays and objects are passed by reference. Assignment does NOT copy:
+
+\`\`\`javascript
+var a = [1, 2, 3];
+var b = a;          // b points to the SAME array
+b[0] = 99;
+Console.print(a[0]); // 99 - a was modified!
+
+var c = a.clone();  // Independent deep copy
+c[0] = 0;
+Console.print(a[0]); // 99 - a is unaffected
+\`\`\`
+
+## Functions
+
+### inline function (Default Choice)
+
+Use inline function for all named, reusable functions. Pre-allocated scope - **realtime-safe**. Supports local variables. Max 5 parameters.
+
+\`\`\`javascript
+inline function clampValue(v, lo, hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+\`\`\`
+
+### No Nesting
+
+\`inline function\` cannot be nested inside another \`inline function\`. Define all \`inline function\`s at file or namespace scope, then reference them by name where needed.
+
+### Type Annotations on Functions
+
+Parameters and return values can be typed:
+
+\`\`\`javascript
+inline function setGain(value: number) { /* ... */ }
+inline function: int getIndex() { return 3; }
+\`\`\`
+
+### Regular function (Anonymous Callbacks Only)
+
+Use plain function for anonymous callbacks in non-realtime contexts (paint routines, dialogs, mouse callbacks). Each call allocates a scope object - **not realtime-safe**.
+
+\`\`\`javascript
+// RIGHT - anonymous callback, not on audio thread
+Panel1.setPaintRoutine(function(g)
+{
+    g.fillAll(Colours.red);
+});
+
+Engine.showYesNoWindow("Confirm", "Sure?", function(ok)
+{
+    if (ok) Console.print("Yes");
+});
+
+// WRONG - named reusable function as regular function
+function myHelper(x) { return x * 2; }  // Use inline function instead
+\`\`\`
+
+### Variable Capturing
+
+Inner functions cannot access outer function parameters. Use C++-style capture lists:
+
+\`\`\`javascript
+inline function showDialog(presetName)
+{
+    // WRONG - presetName not accessible inside callback
+    Engine.showYesNoWindow("Delete?", "Sure?", function(ok)
+    {
+        Console.print(presetName); // ERROR
+    });
+
+    // RIGHT - capture presetName explicitly
+    Engine.showYesNoWindow("Delete?", "Sure?", function [presetName](ok)
+    {
+        Console.print(presetName); // Works
+    });
+}
+\`\`\`
+
+Multiple captures: \`function [a, b, c](param) { ... }\`
+
+## Loops
+
+### for...in (Default Choice)
+
+**Significantly faster** than index-based for. Use as default whenever index is not needed.
+
+- On **arrays** and **Buffers**: iterates elements directly
+- On **objects**: iterates keys
+
+\`\`\`javascript
+// Arrays - gives elements
+for (name in ["Alice", "Bob", "Charlie"])
+    Console.print(name); // Alice, Bob, Charlie
+
+// Objects - gives keys
+const var o = { a: 10, b: 20 };
+for (k in o)
+    Console.print(k + ": " + o[k]); // a: 10, b: 20
+\`\`\`
+
+### Index-based for (When Index is Needed)
+
+Counter variable does not need a keyword declaration:
+
+\`\`\`javascript
+for (i = 0; i < panels.length; i++)
+    panels[i].set("visible", i == selectedIndex);
+\`\`\`
+
+### String Concatenation Gotcha in Loops
+
+\`\`\`javascript
+// WRONG - without parentheses, string concatenation takes over
+Content.getComponent("Button" + i + 1);
+
+// OK - parentheses force arithmetic first
+Content.getComponent("Button" + (i + 1));
+
+// SAFEST - parseInt guards against float values like 1.5
+Content.getComponent("Button" + parseInt(i + 1));
+\`\`\`
+
+If the numeric value could be a float (e.g. from a slider value or calculation), use \`parseInt()\` to avoid names like "Button1.5".
+
+### ComboBox Values Are Floats
+
+ComboBox \`onControl\` values arrive as floats (e.g. \`1.0\` not \`1\`). Use \`parseInt(value)\` before string concatenation or array indexing:
+
+\`\`\`javascript
+inline function onComboBoxControl(component, value)
+{
+    // WRONG - produces "Mode1.0" or fractional index
+    local name = "Mode" + value;
+
+    // RIGHT
+    local name = "Mode" + parseInt(value);
+}
+\`\`\`
+
+## Namespaces
+
+Primary organizational tool. Each namespace gets its own scope.
+
+\`\`\`javascript
+namespace MyModule
+{
+    reg myValue = 10;              // Has its own 32-reg allocation
+    const var Panel1 = Content.getComponent("Panel1");
+
+    inline function doSomething()
+    {
+        Console.print(myValue);
+    }
+}
+
+MyModule.doSomething(); // Access from outside via dot notation
+\`\`\`
+
+### Rules
+
+- Cannot be nested
+- Names must not collide with HISE classes (Engine, Content, Synth, etc.)
+- **var inside a namespace leaks to global scope** - always use \`reg\`, \`const var\`, or \`local\` instead
+- Each namespace gets its own allocation of 32 reg variables
+- Convention: one namespace per .js file, name matches filename
+
+### External Files
+
+\`\`\`javascript
+// onInit - just a series of includes
+include("App.js");
+include("LookAndFeel.js");
+include("Header.js");
+include("Settings.js");
+\`\`\`
+
+## Realtime Safety
+
+The audio thread must never block. The MIDI callbacks (onNoteOn, onNoteOff, onController) and onTimer all run on the audio thread.
+
+### Safe on Audio Thread
+
+| Feature | Why |
+|---------|-----|
+| \`reg\` variables | Pre-allocated at compile time |
+| \`local\` inside inline function | Pre-allocated at compile time |
+| \`const var\` | Inlined at compile time |
+| inline function calls | No scope allocation |
+| for...in / for loops (fixed iterations) | No allocation |
+| Number arithmetic | No allocation |
+| \`Message.*\` methods | Designed for audio thread |
+| \`Synth.addNoteOn()\`, \`Synth.addVolumeFade()\`, etc. | Designed for audio thread |
+
+### NOT Safe on Audio Thread
+
+| Feature | Why |
+|---------|-----|
+| \`var\` declarations | Allocates memory at runtime |
+| Regular function calls | Allocates scope object |
+| String operations (concatenation, formatting) | Allocates memory |
+| Array \`.push()\` / resize operations | Allocates memory |
+| Object creation \`{}\` | Allocates memory |
+| \`Content.getComponent()\` | Lookup operation |
+
+**Exception:** \`Console.print()\` and other \`Console.*\` calls are safe to use in audio-thread callbacks during development - they are completely stripped out in the exported plugin.
+
+### Callback Thread Reference
+
+| Callback | Thread | Notes |
+|----------|--------|-------|
+| onInit | Scripting | Setup only - runs once at compile/load |
+| onNoteOn | **Audio** | Use \`Message.*\` to read/modify MIDI |
+| onNoteOff | **Audio** | |
+| onController | **Audio** | |
+| onTimer | **Audio** | Started with \`Synth.startTimer(seconds)\`. For MIDI-synced timing (arpeggiators, sequencers). |
+| onControl | Scripting | Fires for any UI control change |
+
+For UI timers (animations, display updates), use \`Engine.createTimerObject()\` - runs on UI thread, not audio thread.
+
+## Essential Patterns
+
+### Module References
+
+Obtain references in onInit as \`const var\`. Use \`getAttribute()\` / \`setAttribute()\` with named constants:
+
+\`\`\`javascript
+const var MySynth = Synth.getChildSynth("Sine Wave Generator1");
+const var MyEffect = Synth.getEffect("Delay1");
+const var MyMod = Synth.getModulator("LFO1");
+
+// Parameter access uses reference.ParameterName
+MySynth.setAttribute(MySynth.SaturationAmount, 0.5);
+var sat = MySynth.getAttribute(MySynth.SaturationAmount);
+\`\`\`
+
+### Component References
+
+\`\`\`javascript
+const var Knob1 = Content.getComponent("Knob1");
+
+// Properties (text, colour, position, visibility...)
+Knob1.set("text", "Cutoff");
+var label = Knob1.get("text");
+
+// Value (the user-facing control value)
+Knob1.setValue(0.5);
+var v = Knob1.getValue();
+\`\`\`
+
+### Custom Callbacks (Preferred Over onControl)
+
+Assign individual handlers with \`setControlCallback()\`. The function receives (component, value). **Must be an \`inline function\`** - anonymous \`function()\` will not work.
+
+\`\`\`javascript
+const var Knob1 = Content.getComponent("Knob1");
+const var MySynth = Synth.getChildSynth("Sine Wave Generator1");
+
+inline function onKnob1Control(component, value)
+{
+    MySynth.setAttribute(MySynth.SaturationAmount, value);
+}
+
+Knob1.setControlCallback(onKnob1Control);
+\`\`\`
+
+### Component Arrays and Shared Callbacks
+
+Store references in arrays, assign one callback to all. Use component parameter to branch:
+
+\`\`\`javascript
+const var NUM_BUTTONS = 4;
+var buttons = [];
+
+for (i = 0; i < NUM_BUTTONS; i++)
+    buttons[i] = Content.getComponent("Button" + (i + 1));
+
+inline function onButtonControl(component, value)
+{
+    local idx = buttons.indexOf(component);
+
+    // Radio-group: turn off all others
+    for (i = 0; i < buttons.length; i++)
+    {
+        if (buttons[i] == component) continue;
+        buttons[i].setValue(0);
+    }
+}
+
+for (i = 0; i < NUM_BUTTONS; i++)
+    buttons[i].setControlCallback(onButtonControl);
+\`\`\`
+
+### No-Code Module Connection
+
+For simple one-to-one connections, set \`processorId\` and \`parameterId\` in the component's Property Editor - no script needed.
+
+## Containers (Audio-Thread-Safe Alternatives to Array)
+
+| Type | Use Case |
+|------|----------|
+| Buffer | Fixed-size float array - DSP, sample data |
+| MidiList | 128-slot integer array - velocity maps, key switches |
+| FixObjectArray | Fixed-size structured object array |
+| FixObjectStack | Same with push/pop semantics |
+| UnorderedStack | Pre-allocated number stack - voice/note tracking |
+
+## Functional Array Methods
+
+\`.map()\`, \`.filter()\`, \`.every()\`, \`.some()\`, \`.find()\`, \`.findIndex()\`, \`.forEach()\` all exist and work with arrow syntax:
+
+\`\`\`javascript
+[1, 2, 3].map(x => x * 2);           // [2, 4, 6]
+[1, 2, 3, 4].filter(x => x > 2);     // [3, 4]
+[{a: 1}, {a: 2}].map(obj => obj.a);   // [1, 2]
+[1, 2, 3].every(x => x > 0);         // true
+\`\`\`
+
+Arrow functions expand to regular function - **not realtime-safe**. Use for...in on the audio thread.
+
+## Behavioral Differences from JavaScript
+
+These features work but behave differently than in standard JavaScript:
+
+| Feature | JavaScript | HiseScript |
+|---------|-----------|------------|
+| \`str.replace("a", "b")\` | Replaces **first** occurrence | Replaces **all** occurrences (no replaceAll() needed) |
+| \`arr.concat([4, 5])\` | Returns a **new** array | **Mutates** the original array in-place, returns void |
+| \`typeof true\` | "boolean" | "number" |
+| \`typeof null\` | "object" | "void" |
+| \`1/0\` | Infinity | null |
+
+## HiseScript Extras (No JS Equivalent)
+
+Features unique to HiseScript that LLMs won't discover from standard JS knowledge:
+
+| Feature | Description |
+|---------|-------------|
+| \`Math.range(val, lo, hi)\` | Clamp value to range (also available as \`Math.clamp()\`) |
+| \`Math.randInt(lo, hi)\` | Random integer in range |
+| \`Math.fmod(x, y)\` | Floating-point modulus |
+| \`Math.toRadians(deg)\` / \`Math.toDegrees(rad)\` | Angle conversion |
+| \`Math.wrap(val, max)\` | Wrap value at boundary |
+| \`Array.sortNatural()\` | Natural sort (numbers in strings) |
+| \`Engine.doubleToString(num, decimals)\` | Number to string with decimal precision |
+| \`Engine.matchesRegex(str, pattern)\` | Boolean regex test |
+| \`Engine.getRegexMatches(str, pattern)\` | Array of regex matches |
+
+## What Doesn't Exist (Common LLM Errors)
+
+| LLM Writes | Correct HiseScript |
+|------------|-------------------|
+| \`const x = 5\` | \`const var x = 5\` |
+| \`let x = 5\` | \`var x = 5\` (or \`reg\`, \`local\`) |
+| \`x = 5\` (undeclared) | Must use \`var\`, \`reg\`, \`local\`, \`const var\`, or \`global\` |
+| \`() => expr\` (zero-param arrow) | \`function() {}\` - arrows require >=1 parameter |
+| \`class Foo {}\` / \`new Foo()\` | Factory function returning \`{}\` |
+| \`template \${lit}\` | \`"string " + lit\` |
+| \`const {a, b} = obj\` | \`var a = obj.a; var b = obj.b;\` |
+| \`[...arr]\` / \`{...obj}\` | \`arr.clone()\` / manual copy |
+| \`arr.splice(i, n)\` | \`arr.removeElement(i)\` |
+| \`console.log()\` | \`Console.print()\` |
+| \`setTimeout()\` / \`setInterval()\` | \`Engine.createTimerObject()\` or \`panel.startTimer(ms)\` |
+| \`this.property\` | \`this.get("property")\` / \`this.set("property", value)\` |
+| \`===\` / \`!==\` | \`==\` / \`!=\` |
+| \`switch\` without \`break\` | Every case **must** end with \`break\` |
+| \`obj.hasOwnProperty("key")\` | \`isDefined(obj.key)\` |
+| \`Object.assign({}, obj)\` | \`obj.clone()\` |
+| \`Number(str)\` | \`parseInt(str)\` or \`parseFloat(str)\` |
+| \`"key" in obj\` (boolean check) | \`isDefined(obj.key)\` - \`in\` only works in \`for...in\` |
 `
   },
   {
     id: 'hisescript-code-workflow',
     name: 'HiseScript Code Generation Workflow',
-    description: 'Step-by-step process for writing correct HiseScript code, including API method verification',
-    content: `# HiseScript Code Generation Workflow: A Comprehensive Guide
+    description: 'LSP-first workflow for writing HiseScript - external file editing, diagnostics, REPL testing, and verification',
+    content: `# HiseScript Code Generation Workflow
 
 ## API Naming Convention
 
 All API methods use \`Namespace.camelCase()\` with British spelling (e.g., \`Colour\` not \`Color\`).
 
-## Step 1: API Method Research
+## Step 1: Read Current State
 
-1. Identify all API methods you'll need for your code
-2. Use \`search_hise\` to find methods by keyword
-3. Use \`list_scripting_namespaces\` to see available namespaces
-4. Use \`list_ui_components\` for UI-related methods
+Before writing or editing code, understand what exists:
 
-## Step 2: Verify Method Parameters
+- Use \`hise_runtime_get_script\` to read current callbacks and see \`externalFiles[]\` paths
+- Use \`hise_runtime_list_components\` to see existing UI components
+- For external .js files, use \`mcp_read\` to read the file on disk
 
-1. Call \`hise_verify_parameters\` with method names to get correct signatures
+## Step 2: Write or Edit Code
 
-\`\`\`javascript
-hise_verify_parameters(["fillRect", "print", "setTimerCallback", "setValue"])
-\`\`\`
+Use \`mcp_edit\` to modify external .js files on disk. Avoid editing inline callbacks - move code to an external file via \`include()\` so you get LSP diagnostics.
 
-This returns method signatures with example values:
-\`\`\`javascript
-{
-  "fillRect": ["Graphics.fillRect(Rectangle(0, 0, 100, 100))"],
-  "print": ["Console.print(\\"message\\")"],
-  "setTimerCallback": ["ScriptPanel.setTimerCallback(function() {})"],
-  "setValue": ["ScriptSlider.setValue(value)"]
-}
-\`\`\`
+1. Edit the file with \`mcp_edit\`
+2. Read LSP diagnostics - HISE's LSP server runs automatically and provides precise, HiseScript-aware feedback including parameter counts, method names, and runtime inspection
+3. Fix all LSP warnings/errors before proceeding
+4. Call \`hise_runtime_recompile\` to apply changes
 
-## Step 3: Write Code
+### Language rules
 
-- Use the exact signatures returned by \`hise_verify_parameters\`
-- Handle multiple matches by context:
-  - \`Content.getComponent()\` returns ScriptSlider, ScriptPanel, etc.
-  - Paint routine \`g\` uses Graphics methods
-  - \`Message.*\` in MIDI callbacks
+Load \`get_resource('hisescript-style')\` for variable types, realtime safety, and syntax rules. Key defaults:
 
-## Step 4: Validate Syntax
+- \`inline function\` over regular function (realtime-safe)
+- \`for...in\` over index-based for (faster)
+- \`const var\` for references, \`reg\` for mutable audio-thread state
+- Explicit variable declarations (\`var\`, \`reg\`, \`local\`, \`const var\`)
 
-1. Use the HiseScript style guide (\`get_resource('hisescript-style')\`) as a reference
-2. Follow syntax rules carefully
-3. Prefer:
-   - \`inline function\` over regular functions
-   - Range-based loops (\`for x in array\`)
-   - Explicit type conversions
-   - Explicit variable declarations
+## Step 3: Handle Errors
 
-## Step 5: Compile and Test
+If compilation fails or LSP reports issues:
 
-1. Use \`hise_runtime_set_script\` to compile
-2. Review any compilation errors or warnings
-3. If errors occur, use the style guide to identify and fix syntax issues
+1. Read the error message carefully - HISE error messages are precise
+2. Use \`hise_verify_parameters\` if the error involves an unknown method or wrong parameter count
+3. Use \`hise_runtime_repl\` to test expressions interactively (note: has side effects - calling \`Synth.playNote()\` will play a note, \`setValue()\` will change a component)
+4. Fix and recompile
 
-## Pro Tips
+## Step 4: Verify (When Needed)
 
-- Use \`hise_runtime_screenshot\` to visually debug UI components
-- Use \`hise_runtime_get_component_properties\` to check component states
-- When in doubt, consult the documentation or ask for help
+- \`hise_runtime_repl\` - inspect variables, test return values, check runtime state. **Warning:** Expressions have real side effects - API calls execute, values change, notes play.
+- \`hise_runtime_get_component_properties\` - check component state
+- \`hise_runtime_screenshot\` - only use when the developer explicitly requests a screenshot. Costs ~1,000 tokens per image. Target specific components with \`scale: 0.5\` when possible.
 `
   },
   {
@@ -190,21 +633,7 @@ Use list_laf_functions("PopupMenu") directly
 2. Call list_laf_functions(type) to see available functions
 3. Call query_laf_function(name) to get obj properties
 4. Write drawing code using Graphics API (\`get_resource('graphics-api-style')\`)
-5. Apply code using hise_runtime_set_script (see below)
-
-## Applying LAF Code
-
-Use \`hise_runtime_set_script\` with the callbacks parameter to write new LAF code:
-
-\`\`\`javascript
-// Only onInit is updated, other callbacks remain unchanged
-hise_runtime_set_script({
-  moduleId: "Interface",
-  callbacks: { "onInit": "const var laf = Content.createLocalLookAndFeel();\\n..." }
-})
-\`\`\`
-
-Use \`hise_runtime_edit_script\` to modify existing inline callback code - it works like the native mcp_edit tool (find exact string, replace with new string). For multiple edits, use \`compile: false\` on all but the last call. For external .js files (include()), edit on disk with mcp_edit and then call hise_runtime_recompile.
+5. Apply code using the workflow in \`get_resource('hisescript-code-workflow')\`
 
 ## The obj Parameter
 
@@ -218,10 +647,6 @@ Every LAF function receives obj with component state. Common properties:
 - obj.bgColour, obj.itemColour1, obj.textColour - Component colours
 
 Use query_laf_function(functionName) for the complete property list.
-
-## Graphics API
-
-The g parameter is a Graphics object. Load \`get_resource('graphics-api-style')\` for complete drawing method reference.
 `
   },
   {
@@ -479,31 +904,6 @@ this.get("itemColour2")   // Item colour 2
 this.get("textColour")    // Text colour
 \`\`\`
 
-## Screenshot Best Practices
-
-When verifying graphics changes with \`hise_runtime_screenshot\`:
-
-| Scenario | Parameters | Token Cost |
-|----------|------------|------------|
-| Routine verification | \`id: "ComponentId", scale: 0.5\` | ~750-1,000 |
-| Detailed inspection | \`id: "ComponentId", scale: 1.0\` | ~2,000-3,000 |
-| Layout verification | \`scale: 0.5\` (full interface) | ~15,000-20,000 |
-| Full interface | \`scale: 1.0\` | ~50,000-80,000 |
-
-**Recommendations:**
-- **Always target specific components** when verifying drawing code changes
-- **Use \`scale: 0.5\`** for routine verification (4x fewer tokens than 1.0)
-- **Reserve full interface screenshots** only for layout or positioning tasks
-- **Verify iteratively** - screenshot after each significant change, not at the end
-
-\`\`\`javascript
-// Efficient: target component at half scale
-hise_runtime_screenshot({ id: "Knob1", scale: 0.5 })
-
-// Expensive: full interface at full scale
-hise_runtime_screenshot({ scale: 1.0 })
-\`\`\`
-
 ## What Doesn't Exist (Common LLM Errors)
 
 | LLM Invents | Use Instead |
@@ -607,10 +1007,10 @@ p.setMouseCallback(function(event)
 {
     // Mouse state
     event.hover       // Mouse is over panel
-    event.clicked     // Mouse button just pressed
+    event.clicked     // Mouse button just pressed (mutually exclusive with doubleClick)
     event.mouseUp     // Mouse button just released  
     event.rightClick  // Right mouse button
-    event.doubleClick // Double click detected
+    event.doubleClick // Double click detected (mutually exclusive with clicked)
     
     // Position
     event.x           // Mouse X coordinate
@@ -625,6 +1025,14 @@ p.setMouseCallback(function(event)
     event.shiftDown
     event.cmdDown     // Cmd on Mac, Ctrl on Windows
     event.altDown
+    
+    // IMPORTANT: doubleClick and clicked are mutually exclusive.
+    // Check doubleClick first with an early return, otherwise it never triggers.
+    if(event.doubleClick)
+    {
+        // Handle double click
+        return;
+    }
     
     // Common pattern
     this.data.hover = event.hover;
@@ -657,36 +1065,9 @@ this.startTimer(30);  // Start with 30ms interval
 this.stopTimer();     // Stop timer
 \`\`\`
 
-## Triggering Repaints
+## Panel Properties
 
-\`\`\`javascript
-this.repaint();    // Inside callbacks - repaint this panel
-panel.repaint();   // From outside - repaint specific panel
-\`\`\`
-
-## Getting Panel Properties
-
-\`\`\`javascript
-this.get("width")         // Panel width
-this.get("height")        // Panel height  
-this.get("bgColour")      // Background colour
-this.get("itemColour")    // Item colour 1
-this.get("itemColour2")   // Item colour 2
-this.get("textColour")    // Text colour
-this.get("enabled")       // Enabled state
-this.get("text")          // Text property
-
-this.getLocalBounds(margin)  // Rectangle with margin
-\`\`\`
-
-## Setting Panel Properties
-
-\`\`\`javascript
-p.set("width", 200);
-p.set("height", 100);
-p.set("allowCallbacks", "All Callbacks");
-p.set("enabled", true);
-\`\`\`
+Use \`this.get(prop)\` / \`p.set(prop, val)\`. Key properties: \`width\`, \`height\`, \`x\`, \`y\`, \`enabled\`, \`text\`, \`allowCallbacks\`, \`bgColour\`, \`itemColour\`, \`itemColour2\`, \`textColour\`. Use \`this.getLocalBounds(margin)\` for a Rectangle of the panel area.
 
 ## Storing Paths for Reuse
 
@@ -732,16 +1113,6 @@ p.setMouseCallback(function(event)
     }
 });
 \`\`\`
-
-## TODO: Topics to Expand
-
-- Control callbacks (setValue, getValue, changed)
-- Broadcaster integration  
-- External file includes
-- Complex mouse interaction patterns (dragging, resizing)
-- Keyboard focus and key handling
-- Performance optimization (partial repaints)
-- Animation easing functions
 `
   }
 ];
