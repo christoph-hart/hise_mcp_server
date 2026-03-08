@@ -139,13 +139,17 @@ const DOC_TOOLS: Tool[] = [
   // EXACT QUERY TOOLS - Use after search or when you know exact names
   {
     name: 'query_scripting_api',
-    description: `Get API method details. Format: "Namespace.method" (e.g., "Synth.addNoteOn"). Returns signature, parameters, examples.`,
+    description: `Get API method details. Format: "Namespace.method" (e.g., "Synth.addNoteOn"). Returns signature, parameters, examples. Enriched classes include thread safety, pitfalls, and source locations.`,
     inputSchema: {
       type: 'object',
       properties: {
         apiCall: {
           type: 'string',
-          description: '"Namespace.method" (e.g., "Synth.addNoteOn")',
+          description: '"Namespace" for class overview, "Namespace.method" for method details (e.g., "Synth.addNoteOn")',
+        },
+        examples: {
+          type: 'boolean',
+          description: 'Include code examples (default: true)',
         },
       },
       required: ['apiCall'],
@@ -1019,7 +1023,64 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'query_scripting_api': {
-        const { apiCall } = args as { apiCall: string };
+        const { apiCall, examples: includeExamples = true } = args as { apiCall: string; examples?: boolean };
+
+        // Class-level query: no dot means class overview (e.g., "TransportHandler")
+        if (!apiCall.includes('.')) {
+          const classData = dataLoader.queryScriptingClass(apiCall);
+          if (classData) {
+            const canonicalName = dataLoader.resolveClassName(apiCall) || apiCall;
+
+            if (classData.llmRef) {
+              // Enriched class: serve llmRef verbatim
+              return {
+                content: [{ type: 'text', text: classData.llmRef }],
+              };
+            }
+
+            // Unenriched class: generate plain text card from structured data
+            const classLines: string[] = [];
+            classLines.push(`${canonicalName}${classData.category ? ` (${classData.category})` : ''}`);
+            if (classData.obtainedVia) {
+              classLines.push(`Obtain via: ${classData.obtainedVia}`);
+            }
+            classLines.push('');
+            if (classData.description) {
+              classLines.push(classData.description);
+              classLines.push('');
+            }
+            if (classData.methodNames && classData.methodNames.length > 0) {
+              classLines.push(`Methods (${classData.methodNames.length}):`);
+              // Format method names in columns (4 per row, padded)
+              const names = classData.methodNames.sort();
+              const colWidth = Math.max(...names.map(n => n.length)) + 2;
+              const cols = Math.max(1, Math.floor(72 / colWidth));
+              for (let i = 0; i < names.length; i += cols) {
+                const row = names.slice(i, i + cols).map(n => n.padEnd(colWidth)).join('');
+                classLines.push(`  ${row.trimEnd()}`);
+              }
+            }
+            return {
+              content: [{ type: 'text', text: classLines.join('\n').trimEnd() }],
+            };
+          }
+
+          // No class found - fall through to suggestions
+          const suggestions = await dataLoader.findSimilar(apiCall, 3, 'api');
+          if (suggestions.length > 0) {
+            return {
+              content: [{
+                type: 'text',
+                text: `No class or method found for "${apiCall}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use search_hise to find methods by keyword.`
+              }],
+            };
+          }
+          return {
+            content: [{ type: 'text', text: `No class found for "${apiCall}". Use list_scripting_namespaces to see available namespaces.` }],
+          };
+        }
+
+        // Method-level query: has dot (e.g., "Synth.addNoteOn")
         const enriched = dataLoader.queryScriptingAPIEnriched(apiCall);
 
         if (!enriched) {
@@ -1037,8 +1098,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
+        const method = enriched.result;
+        const lines: string[] = [];
+
+        if (method.llmRef) {
+          // Enriched method: serve llmRef verbatim
+          lines.push(method.llmRef);
+
+          // Append examples if requested
+          if (includeExamples && method.examples && method.examples.length > 0) {
+            lines.push('');
+            for (const ex of method.examples) {
+              lines.push(`Example: ${ex.title}`);
+              // Indent each line of code by 2 spaces
+              for (const codeLine of ex.code.split('\n')) {
+                lines.push(`  ${codeLine}`);
+              }
+              lines.push('');
+            }
+          }
+        } else {
+          // Unenriched method: generate plain text card
+          const paramStr = method.parameters
+            .map(p => `${p.type} ${p.name}`)
+            .join(', ');
+          lines.push(`${method.namespace}::${method.methodName}(${paramStr}) -> ${method.returnType}`);
+          lines.push('');
+          if (method.description) {
+            lines.push(method.description);
+          }
+
+          // Append example if requested
+          if (includeExamples && method.examples && method.examples.length > 0) {
+            lines.push('');
+            for (const ex of method.examples) {
+              lines.push(`Example: ${ex.title}`);
+              for (const codeLine of ex.code.split('\n')) {
+                lines.push(`  ${codeLine}`);
+              }
+              lines.push('');
+            }
+          }
+        }
+
+        // Append related items
+        if (enriched.related && enriched.related.length > 0) {
+          lines.push(`Related: ${enriched.related.join(', ')}`);
+        }
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(enriched, null, 2) }],
+          content: [{ type: 'text', text: lines.join('\n').trimEnd() }],
         };
       }
 
@@ -1134,17 +1243,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'list_scripting_namespaces': {
-        const data = dataLoader.getAllData();
-        const namespaces = [...new Set(data?.scriptingAPI.map((m: ScriptingAPIMethod) => m.namespace) || [])].sort();
+        const listing = dataLoader.getNamespaceListing();
+        const lines: string[] = [];
+        lines.push(`${listing.length} namespaces:\n`);
+
+        // Find the longest name for alignment (only among entries with descriptions)
+        const maxNameLen = Math.max(...listing.filter(e => e.description).map(e => e.name.length));
+
+        for (const entry of listing) {
+          if (entry.description) {
+            lines.push(`  ${entry.name.padEnd(maxNameLen)}  - ${entry.description}`);
+          } else {
+            lines.push(`  ${entry.name}`);
+          }
+        }
+
+        lines.push('');
+        lines.push('Use query_scripting_api("Namespace") for class overview, "Namespace.method" for method details.');
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              count: namespaces.length,
-              namespaces,
-              hint: 'Use query_scripting_api with "Namespace.methodName" to get method details, or search_hise with "Namespace.*" to list all methods in a namespace.'
-            }, null, 2)
-          }],
+          content: [{ type: 'text', text: lines.join('\n') }],
         };
       }
 

@@ -29,6 +29,18 @@ export interface ScriptingAPIMethod {
   deprecated?: boolean;
   deprecatedSince?: string;
   replacement?: string;
+  // Enriched fields (present for enriched classes, absent for Tier 2)
+  callScope?: string;
+  callScopeNote?: string;
+  examples?: APIExample[];
+  crossReferences?: string[];
+  pitfalls?: string[];
+  llmRef?: string;
+}
+
+export interface APIExample {
+  title: string;
+  code: string;
 }
 
 export interface APIParameter {

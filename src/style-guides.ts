@@ -521,6 +521,8 @@ Before writing or editing code, understand what exists:
 - Use \`hise_runtime_get_script\` to read current callbacks and see \`externalFiles[]\` paths
 - Use \`hise_runtime_list_components\` to see existing UI components
 - For external .js files, use \`mcp_read\` to read the file on disk
+- Use \`query_scripting_api("ClassName")\` to get a class overview (methods, constants, usage patterns)
+- Use \`query_scripting_api("ClassName.method")\` for individual method details
 
 ## Step 2: Write or Edit Code
 

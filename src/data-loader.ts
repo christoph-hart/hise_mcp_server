@@ -47,6 +47,19 @@ export class HISEDataLoader {
   // Lazy-loading flag for snippets
   private snippetsLoaded = false;
 
+  // Enriched class tracking (from filter-mcp pipeline)
+  private enrichedClasses: Set<string> = new Set();
+  // Class-level metadata for search indexing and class-level queries
+  private classMetadata: Map<string, {
+    description?: string;
+    obtainedVia?: string;
+    category?: string;
+    constants?: Record<string, any>;
+    commonMistakes?: Array<{ mistake: string; fix: string }>;
+    llmRef?: string;
+    methodNames?: string[];
+  }> = new Map();
+
   // Cache timestamp for status reporting
   private cacheLoadedAt: string | null = null;
 
@@ -129,7 +142,7 @@ export class HISEDataLoader {
       const apiMtime = this.getFileMtime(join(dataDir, 'scripting_api.json'));
       const procMtime = this.getFileMtime(join(dataDir, 'processors.json'));
 
-      if (cache.version !== '1.1' || 
+      if (cache.version !== '1.3' || 
           cache.uiMtime !== uiMtime || 
           cache.apiMtime !== apiMtime || 
           cache.procMtime !== procMtime) {
@@ -158,7 +171,7 @@ export class HISEDataLoader {
       // Only cache the transformed data, not the indexes (they're quick to rebuild)
       const cachedAt = new Date().toISOString();
       const cache = {
-        version: '1.1',
+        version: '1.3',
         cachedAt,
         uiMtime: this.getFileMtime(join(dataDir, 'ui_component_properties.json')),
         apiMtime: this.getFileMtime(join(dataDir, 'scripting_api.json')),
@@ -245,47 +258,68 @@ export class HISEDataLoader {
   private transformScriptingAPI(data: any): ScriptingAPIMethod[] {
     const methods: ScriptingAPIMethod[] = [];
 
-    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-      for (const [namespace, nsData] of Object.entries(data)) {
-        if (typeof nsData !== 'object' || nsData === null) continue;
+    // New enriched format: { version, classes: { ClassName: { methods: [...] } } }
+    if (data?.version && data?.classes) {
+      // Store enriched class list
+      if (Array.isArray(data.enrichedClasses)) {
+        this.enrichedClasses = new Set(data.enrichedClasses);
+      }
 
-        for (const [index, method] of Object.entries(nsData)) {
-          if (typeof method !== 'object' || method === null) continue;
+      for (const [namespace, classData] of Object.entries(data.classes)) {
+        const cls = classData as any;
+        if (!cls?.methods || !Array.isArray(cls.methods)) continue;
+
+        // Store class-level metadata for search indexing and class-level queries
+        const methodNames = (cls.methods || [])
+          .filter((m: any) => m?.name)
+          .map((m: any) => m.name as string);
+        this.classMetadata.set(namespace, {
+          description: cls.description || undefined,
+          obtainedVia: cls.obtainedVia || undefined,
+          category: cls.category || undefined,
+          constants: cls.constants || undefined,
+          commonMistakes: cls.commonMistakes || undefined,
+          llmRef: cls.llmRef || undefined,
+          methodNames,
+        });
+
+        for (const method of cls.methods) {
+          if (!method?.name) continue;
+
+          const params: APIParameter[] = (method.parameters || []).map((p: any) => ({
+            name: p.name || '',
+            type: p.type || 'var',
+            description: p.description || '',
+            optional: false,
+            defaultValue: undefined,
+          }));
+
+          // First example's code serves as the singular `example` field
+          // (used by hise_verify_parameters)
+          const firstExample = Array.isArray(method.examples) && method.examples.length > 0
+            ? method.examples[0].code
+            : undefined;
+
           methods.push({
-            id: method.name,
-            namespace: namespace,
+            id: `${namespace}.${method.name}`,
+            namespace,
             methodName: method.name,
             returnType: method.returnType || 'var',
-            parameters: this.parseParameters(method.arguments),
+            parameters: params,
             description: method.description || '',
-            example: method.example || undefined
+            example: firstExample,
+            // Enriched fields (present for enriched classes, absent for Tier 2)
+            callScope: method.callScope || undefined,
+            crossReferences: method.crossReferences || undefined,
+            pitfalls: method.pitfalls || undefined,
+            llmRef: method.llmRef || undefined,
+            examples: method.examples || undefined,
           });
         }
       }
     }
 
     return methods;
-  }
-
-  private parseParameters(args: string): any[] {
-    if (!args || args === '()') {
-      return [];
-    }
-    
-    const match = args.match(/\((.*?)\)/);
-    if (!match) {
-      return [];
-    }
-    
-    const params = match[1].split(',').map(p => p.trim());
-    
-    return params.map(param => ({
-      name: param,
-      type: 'unknown',
-      description: '',
-      optional: false,
-      defaultValue: undefined
-    }));
   }
 
   private transformProcessors(data: Record<string, any>): ModuleParameter[] {
@@ -353,6 +387,36 @@ export class HISEDataLoader {
     this.keywordIndex.clear();
     this.allItems = [];
 
+    // Rebuild classMetadata and enrichedClasses from scripting_api.json
+    // (needed because cache path skips transformScriptingAPI)
+    this.classMetadata.clear();
+    this.enrichedClasses.clear();
+    try {
+      const apiData = JSON.parse(readFileSync(join(__dirname, '..', 'data', 'scripting_api.json'), 'utf8'));
+      if (apiData?.version && apiData?.classes) {
+        if (Array.isArray(apiData.enrichedClasses)) {
+          this.enrichedClasses = new Set(apiData.enrichedClasses);
+        }
+        for (const [ns, cls] of Object.entries(apiData.classes)) {
+          const c = cls as any;
+          const methodNames = (c.methods || [])
+            .filter((m: any) => m?.name)
+            .map((m: any) => m.name as string);
+          this.classMetadata.set(ns, {
+            description: c.description || undefined,
+            obtainedVia: c.obtainedVia || undefined,
+            category: c.category || undefined,
+            constants: c.constants || undefined,
+            commonMistakes: c.commonMistakes || undefined,
+            llmRef: c.llmRef || undefined,
+            methodNames,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to rebuild classMetadata in buildIndexes:', error);
+    }
+
     // Index UI properties
     for (const prop of this.data.uiComponentProperties) {
       const key = `${prop.componentType}.${prop.propertyName}`.toLowerCase();
@@ -372,20 +436,53 @@ export class HISEDataLoader {
     // Index API methods
     for (const method of this.data.scriptingAPI) {
       const key = `${method.namespace}.${method.methodName}`.toLowerCase();
-this.apiMethodIndex.set(key, method);
+      this.apiMethodIndex.set(key, method);
 
       // Build method-only index (for hise_verify_parameters)
       const existing = this.methodNameIndex.get(method.methodName) || [];
       existing.push(method);
       this.methodNameIndex.set(method.methodName, existing);
 
-      const keywords = this.extractKeywords(method.methodName, method.description, method.namespace);
+      // Include class-level description and obtainedVia in keyword extraction
+      const classMeta = this.classMetadata.get(method.namespace);
+      const keywords = this.extractKeywords(
+        method.methodName, method.description, method.namespace,
+        classMeta?.description || '', classMeta?.obtainedVia || ''
+      );
       this.addToKeywordIndex(key, keywords);
       this.allItems.push({
         id: key,
         domain: 'api',
         name: `${method.namespace}.${method.methodName}`,
         description: method.description,
+        keywords
+      });
+    }
+
+    // Index API classes (for class-level search results)
+    for (const [className, meta] of this.classMetadata) {
+      const key = className.toLowerCase();
+
+      const extraSources: string[] = [];
+      if (meta.description) extraSources.push(meta.description);
+      if (meta.obtainedVia) extraSources.push(meta.obtainedVia);
+      if (meta.methodNames) extraSources.push(...meta.methodNames);
+      if (meta.constants) {
+        for (const [groupName, group] of Object.entries(meta.constants)) {
+          extraSources.push(groupName);
+          if (typeof group === 'object' && group !== null) {
+            extraSources.push(...Object.keys(group));
+          }
+        }
+      }
+
+      const keywords = this.extractKeywords(className, ...extraSources);
+      this.addToKeywordIndex(key, keywords);
+      this.allItems.push({
+        id: key,
+        domain: 'api',
+        name: className,
+        description: meta.description || '',
         keywords
       });
     }
@@ -532,6 +629,22 @@ this.apiMethodIndex.set(key, method);
 
     // 1. Check for exact matches first
     if (domain === 'all' || domain === 'api') {
+      // Class-level exact match
+      const classMatch = this.resolveClassName(normalized);
+      if (classMatch) {
+        const classMeta = this.classMetadata.get(classMatch);
+        results.push({
+          id: classMatch.toLowerCase(),
+          domain: 'api',
+          name: classMatch,
+          description: classMeta?.description || '',
+          score: 1.0,
+          matchType: 'exact'
+        });
+        seen.add(classMatch.toLowerCase());
+      }
+
+      // Method-level exact match
       const exactApi = this.apiMethodIndex.get(normalized);
       if (exactApi) {
         results.push({
@@ -642,6 +755,26 @@ this.apiMethodIndex.set(key, method);
       }
     }
 
+    // Process class-level matches first (they rank higher)
+    for (const [itemId, matchCount] of keywordMatches) {
+      if (seen.has(itemId) || itemId.includes('.')) continue;
+
+      const item = itemsToSearch.find(i => i.id === itemId);
+      if (!item) continue;
+
+      const score = Math.min(0.9, 0.3 + (matchCount / queryKeywords.length) * 0.5 + 0.1);
+      results.push({
+        id: item.id,
+        domain: item.domain,
+        name: item.name,
+        description: item.description,
+        score,
+        matchType: 'keyword'
+      });
+      seen.add(itemId);
+    }
+
+    // Then process method/property-level matches
     for (const [itemId, matchCount] of keywordMatches) {
       if (seen.has(itemId)) continue;
 
@@ -674,7 +807,9 @@ this.apiMethodIndex.set(key, method);
     for (const item of itemsToSearch) {
       if (seen.has(item.id)) continue;
 
-      const score = this.calculateSimilarity(normalized, item.id, item.name.toLowerCase(), item.keywords);
+      const rawScore = this.calculateSimilarity(normalized, item.id, item.name.toLowerCase(), item.keywords);
+      const isClassResult = !item.id.includes('.');
+      const score = rawScore + (isClassResult ? 0.1 : 0);
       if (score >= 0.4) {
         results.push({
           id: item.id,
@@ -903,6 +1038,62 @@ this.apiMethodIndex.set(key, method);
     return this.data;
   }
 
+  getNamespaceListing(): Array<{ name: string; description?: string }> {
+    if (!this.data) return [];
+
+    const namespaces = [...new Set(this.data.scriptingAPI.map(m => m.namespace))].sort();
+
+    return namespaces.map(ns => {
+      const entry: { name: string; description?: string } = { name: ns };
+
+      // Only include description for enriched classes (unenriched descriptions are noise)
+      if (this.enrichedClasses.has(ns)) {
+        const meta = this.classMetadata.get(ns);
+        if (meta?.description) {
+          // Truncate to first sentence
+          const firstDot = meta.description.indexOf('.');
+          entry.description = firstDot > 0 ? meta.description.substring(0, firstDot + 1) : meta.description;
+        }
+      }
+
+      return entry;
+    });
+  }
+
+  isEnrichedClass(namespace: string): boolean {
+    return this.enrichedClasses.has(namespace);
+  }
+
+  queryScriptingClass(name: string): {
+    description?: string;
+    obtainedVia?: string;
+    category?: string;
+    constants?: Record<string, any>;
+    commonMistakes?: Array<{ mistake: string; fix: string }>;
+    llmRef?: string;
+    methodNames?: string[];
+  } | null {
+    // Try exact match first
+    const meta = this.classMetadata.get(name);
+    if (meta) return meta;
+
+    // Try case-insensitive match
+    for (const [key, value] of this.classMetadata) {
+      if (key.toLowerCase() === name.toLowerCase()) return value;
+    }
+
+    return null;
+  }
+
+  // Resolve the canonical class name (case-insensitive lookup)
+  resolveClassName(name: string): string | null {
+    if (this.classMetadata.has(name)) return name;
+    for (const key of this.classMetadata.keys()) {
+      if (key.toLowerCase() === name.toLowerCase()) return key;
+    }
+    return null;
+  }
+
   lookupMethodsByName(methodNames: string[]): Record<string, string[]> {
     const result: Record<string, string[]> = {};
 
@@ -919,9 +1110,8 @@ this.apiMethodIndex.set(key, method);
   }
 
   private formatParam(param: APIParameter): string {
-    const parts = param.name.split(' ');
-    const type = parts[0];
-    const name = parts.slice(1).join(' ');
+    const type = param.type || 'var';
+    const name = param.name || '';
     const nameLower = name.toLowerCase();
 
     // === Callbacks ===
