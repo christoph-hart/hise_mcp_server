@@ -34,7 +34,7 @@ HiseScript is based on JavaScript but is its own language. ES6+ features do not 
 |---------|-----------|------------|
 | Variable declaration | \`const\`, \`let\`, \`var\` | \`var\`, \`const var\`, \`reg\`, \`local\`, \`global\` |
 | Undeclared assignment | Creates global silently | **Compile error** (except for loop counters) |
-| Arrow functions | \`() => {}\` | Works with >=1 param: \`x => x + 1\`, \`(x, y) => x + y\`. Expands to regular function - **not realtime-safe**. Zero-param \`() => expr\` not supported. |
+| Arrow functions | \`() => {}\` | All forms: \`() => expr\`, \`x => expr\`, \`(x, y) => expr\`, block body \`(x) => { return x; }\`. Expands to regular function - **not realtime-safe**. |
 | Classes / new | \`class Foo {}\`, \`new Foo()\` | Not supported - use factory functions |
 | Template literals | \`Hello \${x}\` | \`"Hello " + x\` |
 | Default parameters | \`fn(x = 5)\` | Not supported |
@@ -108,6 +108,14 @@ Five primitive types: Number, String, Boolean, undefined, null.
 - Strings use single or double quotes - **not realtime-safe** (allocates memory). Never concatenate or print strings on the audio thread.
 - 0 is falsy. All non-zero numbers are truthy.
 - undefined means "not assigned". null means "explicitly empty".
+
+### Division by Zero (Audio Safety)
+
+Division by zero does **not** follow IEEE 754. Both \`1/0\` and \`0/0\` return a special non-finite numeric value (not \`Infinity\` or \`NaN\`). This value propagates through arithmetic - \`(1/0) + 5\` is still non-finite, not \`5\`. This is intentional: leaking \`Infinity\`/\`NaN\` into the audio signal path can damage speakers.
+
+- Guard with \`isFinite(x)\` before using results that could involve division by zero
+- \`isNaN(1/0)\` is \`false\` - division by zero is not \`NaN\`
+- \`NaN\` only arises from math functions: \`Math.sqrt(-1)\`, \`Math.log(-1)\`. Check with \`isNaN(x)\`.
 
 ### Built-in Utility Functions (Not in API Browser)
 
@@ -454,7 +462,8 @@ These features work but behave differently than in standard JavaScript:
 | \`arr.concat([4, 5])\` | Returns a **new** array | **Mutates** the original array in-place, returns void |
 | \`typeof true\` | "boolean" | "number" |
 | \`typeof null\` | "object" | "void" |
-| \`1/0\` | Infinity | null |
+| \`1/0\` | \`Infinity\` | Non-finite numeric value (propagates through arithmetic) |
+| \`0/0\` | \`NaN\` | Non-finite numeric value (propagates through arithmetic) |
 
 ## HiseScript Extras (No JS Equivalent)
 
@@ -479,7 +488,6 @@ Features unique to HiseScript that LLMs won't discover from standard JS knowledg
 | \`const x = 5\` | \`const var x = 5\` |
 | \`let x = 5\` | \`var x = 5\` (or \`reg\`, \`local\`) |
 | \`x = 5\` (undeclared) | Must use \`var\`, \`reg\`, \`local\`, \`const var\`, or \`global\` |
-| \`() => expr\` (zero-param arrow) | \`function() {}\` - arrows require >=1 parameter |
 | \`class Foo {}\` / \`new Foo()\` | Factory function returning \`{}\` |
 | \`template \${lit}\` | \`"string " + lit\` |
 | \`const {a, b} = obj\` | \`var a = obj.a; var b = obj.b;\` |
