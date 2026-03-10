@@ -108,6 +108,7 @@ Five primitive types: Number, String, Boolean, undefined, null.
 - Strings use single or double quotes - **not realtime-safe** (allocates memory). Never concatenate or print strings on the audio thread.
 - 0 is falsy. All non-zero numbers are truthy.
 - undefined means "not assigned". null means "explicitly empty".
+- Colours are 32-bit hex integers in \`0xAARRGGBB\` format (alpha first). Always include alpha: \`0xFFFF0000\` (red), not \`0xFF0000\`. Use \`Colours.red\` etc. for named colours. See \`get_resource('graphics-api-style')\` for full colour API.
 
 ### Division by Zero (Audio Safety)
 
@@ -480,6 +481,9 @@ Features unique to HiseScript that LLMs won't discover from standard JS knowledg
 | \`Engine.doubleToString(num, decimals)\` | Number to string with decimal precision |
 | \`Engine.matchesRegex(str, pattern)\` | Boolean regex test |
 | \`Engine.getRegexMatches(str, pattern)\` | Array of regex matches |
+| \`SyncNotification\` (911) | Dispatch synchronously on calling thread |
+| \`AsyncNotification\` (912) | Dispatch asynchronously on UI thread |
+| \`AsyncHiPriorityNotification\` (913) | Dispatch async on separate high-priority thread |
 
 ## What Doesn't Exist (Common LLM Errors)
 
@@ -502,6 +506,7 @@ Features unique to HiseScript that LLMs won't discover from standard JS knowledg
 | \`Object.assign({}, obj)\` | \`obj.clone()\` |
 | \`Number(str)\` | \`parseInt(str)\` or \`parseFloat(str)\` |
 | \`"key" in obj\` (boolean check) | \`isDefined(obj.key)\` - \`in\` only works in \`for...in\` |
+| \`fn(undefined)\` / \`fn(null)\` to clear | Pass \`false\`: \`knob.setControlCallback(false)\`, \`knob.setLocalLookAndFeel(false)\` |
 `
   },
   {
