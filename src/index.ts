@@ -136,6 +136,37 @@ const DOC_TOOLS: Tool[] = [
     },
   },
 
+  // CLASS EXPLORATION TOOL - Use before query_scripting_api for discovery
+  {
+    name: 'explore_hise',
+    description: `Explore HISE API class relationships and find the right classes for a task. Use this BEFORE query_scripting_api when you don't know which classes are involved. Returns class briefs, domain/role tags, factory chains (creates/createdBy), and "when to use A vs B" distinctions (seeAlso). Accepts a className for full graph entry, or query for free-text discovery.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Free-text search across briefs and seeAlso distinctions',
+        },
+        className: {
+          type: 'string',
+          description: 'Full entry with one-hop context for a specific class',
+        },
+        domain: {
+          type: 'string',
+          enum: ['audio', 'complex-data', 'data', 'event', 'file', 'network',
+                 'playback', 'preset-model', 'routing', 'scripting', 'scriptnode', 'ui'],
+          description: 'Filter by functional domain (audio, ui, event, file, etc.)',
+        },
+        role: {
+          type: 'string',
+          enum: ['component', 'container', 'event', 'factory', 'handle',
+                 'processor', 'service', 'utility'],
+          description: 'Filter by architectural role (factory, handle, container, utility, etc.)',
+        },
+      },
+    },
+  },
+
   // EXACT QUERY TOOLS - Use after search or when you know exact names
   {
     name: 'query_scripting_api',
@@ -997,6 +1028,57 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      // CLASS EXPLORATION TOOL
+      case 'explore_hise': {
+        const { query, className, domain, role } = args as {
+          query?: string;
+          className?: string;
+          domain?: string;
+          role?: string;
+        };
+
+        // className mode takes precedence
+        if (className) {
+          const result = await dataLoader.exploreSurveyByClass(className);
+          if (!result) {
+            return {
+              content: [{
+                type: 'text',
+                text: `No class found for "${className}". Use explore_hise({ query: "keyword" }) to search by topic, or explore_hise({ domain: "audio" }) to browse by domain.`
+              }],
+            };
+          }
+          return {
+            content: [{ type: 'text', text: result }],
+          };
+        }
+
+        // query mode
+        if (query) {
+          const result = await dataLoader.exploreSurveyByQuery(query, { domain, role });
+          return {
+            content: [{ type: 'text', text: result }],
+          };
+        }
+
+        // filter-only mode (domain and/or role without query)
+        if (domain || role) {
+          const result = await dataLoader.exploreSurveyByFilter({ domain, role });
+          return {
+            content: [{ type: 'text', text: result }],
+          };
+        }
+
+        // No parameters provided
+        return {
+          content: [{
+            type: 'text',
+            text: 'Please provide at least one parameter: query (free-text search), className (full class details), or domain/role (filter by category).'
+          }],
+          isError: true,
+        };
+      }
+
       // EXACT QUERY TOOLS (with enriched responses)
       case 'query_ui_property': {
         const { componentProperty } = args as { componentProperty: string };
@@ -1243,6 +1325,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'list_scripting_namespaces': {
+        // Load survey data so briefs are available as fallback descriptions
+        await dataLoader.loadSurveyData();
         const listing = dataLoader.getNamespaceListing();
         const lines: string[] = [];
         lines.push(`${listing.length} namespaces:\n`);

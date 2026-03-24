@@ -133,6 +133,49 @@ export interface ServerStatus extends ServerStatusBase {
 }
 
 // ============================================================================
+// Class Survey Types (explore_hise)
+// ============================================================================
+
+/**
+ * A "see also" distinction entry - explains when to use class A vs class B
+ */
+export interface ClassSurveySeeAlso {
+  class: string;
+  distinction: string;
+}
+
+/**
+ * A single class entry in the survey dataset
+ */
+export interface ClassSurveyEntry {
+  brief: string;
+  domain: string;           // "audio", "ui", "event", "scripting", etc.
+  role: string;             // "handle", "factory", "container", "service", etc.
+  baseClass: string;
+  creates: string[];
+  references: string[];
+  seeAlso: ClassSurveySeeAlso[];
+  callbackDensity: number;
+  statefulness: number;
+  threadingExposure: number;
+  createdBy: string[];
+  fanOut: number;
+  fanIn: number;
+}
+
+/**
+ * Root structure of the class survey dataset
+ */
+export interface ClassSurveyData {
+  meta: {
+    generatedAt: string;
+    classCount: number;
+    groups: string[];
+  };
+  classes: Record<string, ClassSurveyEntry>;
+}
+
+// ============================================================================
 // Workflow Types
 // ============================================================================
 

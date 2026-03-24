@@ -86,6 +86,20 @@ Then enable REST Server in HISE: **Tools > Enable REST Server**
 
 **Tip:** Run `npm run build:configure` to automatically configure Opencode with the correct paths.
 
+### Claude Code (CLI)
+
+**Remote server:**
+```bash
+claude mcp add --transport sse hise -- https://docs.hise.dev/mcp
+```
+
+**Local server:**
+```bash
+claude mcp add --transport stdio hise -- node /path/to/hise_mcp_server/dist/index.js
+```
+
+Use `--scope project` to store the config in `.mcp.json` (shared via version control) or `--scope user` to make it available across all projects.
+
 ### Claude Desktop
 
 **Config location:**

@@ -1,0 +1,2887 @@
+{
+  "meta": {
+    "generatedAt": "2026-02-27",
+    "classCount": 87,
+    "groups": [
+      "services",
+      "ui",
+      "data",
+      "scriptnode",
+      "module-tree",
+      "event"
+    ],
+    "normalization": {
+      "maxFanOut": 27,
+      "maxFanIn": 20
+    }
+  },
+  "classes": {
+    "Array": {
+      "brief": "Dynamic-size general-purpose container that holds any type of element (numbers, strings, objects, nested arrays), similar to JavaScript arrays.",
+      "domain": "scripting",
+      "role": "container",
+      "baseClass": "juce::var (built-in JavaScript engine type)",
+      "creates": [],
+      "references": [
+        "String"
+      ],
+      "seeAlso": [
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer when you need a fixed-size float array for audio sample data with math operations; use Array for dynamic, mixed-type collections."
+        },
+        {
+          "class": "MidiList",
+          "distinction": "Use MidiList for exactly 128 integer slots indexed by MIDI note number; use Array for variable-length, general-purpose collections."
+        },
+        {
+          "class": "FixObjectArray",
+          "distinction": "Use FixObjectArray for fixed-size arrays of typed objects with named properties and memory-efficient layout; use Array for dynamic heterogeneous collections."
+        },
+        {
+          "class": "FixObjectStack",
+          "distinction": "Use FixObjectStack for a LIFO stack of typed objects with insert/remove; use Array for push/pop of any value type."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "Use UnorderedStack for fast insert/remove of up to 128 floats or events without preserving order; use Array for ordered, dynamic collections of any type."
+        },
+        {
+          "class": "ThreadSafeStorage",
+          "distinction": "Use ThreadSafeStorage to safely pass data between threads; use Array as a standard container on a single thread."
+        }
+      ],
+      "callbackDensity": 0.25,
+      "statefulness": 0.0,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "String"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.1
+    },
+    "AudioFile": {
+      "brief": "Scriptable reference to an audio file slot in a processor, providing file loading, sample data access, range/loop control, and playback position callbacks.",
+      "domain": "complex-data",
+      "role": "handle",
+      "baseClass": "ScriptComplexDataReferenceBase (ConstScriptingObject, ComplexDataUIUpdaterBase::EventListener)",
+      "creates": [],
+      "references": [
+        "Buffer",
+        "String"
+      ],
+      "seeAlso": [
+        {
+          "class": "Table",
+          "distinction": "Use Table for editable modulation curves; use AudioFile for loading and accessing audio waveform data from files."
+        },
+        {
+          "class": "SliderPackData",
+          "distinction": "Use SliderPackData for discrete slider value arrays; use AudioFile for audio sample data with file loading and playback."
+        },
+        {
+          "class": "DisplayBuffer",
+          "distinction": "Use DisplayBuffer for a processor's ring buffer visualization; use AudioFile for loading and manipulating audio files in sample slots."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for standalone in-memory float arrays; use AudioFile for audio file slots with file I/O, sample rate info, and range management."
+        },
+        {
+          "class": "ScriptAudioWaveform",
+          "distinction": "AudioFile is the data handle (file reference, playback range, loops); use for programmatic audio file control"
+        }
+      ],
+      "callbackDensity": 0.13,
+      "statefulness": 0.47,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "AudioSampleProcessor",
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "AudioSampleProcessor": {
+      "brief": "Script handle to a module that plays a single audio file (AudioLoopPlayer, etc.), providing file loading, sample range control, loop range queries, and access to the underlying AudioFile complex data object.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "AudioFile"
+      ],
+      "references": [
+        "Synth",
+        "FileSystem",
+        "File"
+      ],
+      "seeAlso": [
+        {
+          "class": "Sampler",
+          "distinction": "AudioSampleProcessor plays a single audio file with sample range control, while Sampler manages multi-sample instruments with key/velocity mapping and round-robin groups."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.65,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Builder",
+        "Synth"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "BackgroundTask": {
+      "brief": "A task handle for running long operations (downloads, processing, OS processes) on a background thread with progress reporting, abort signaling, and thread-safe property storage.",
+      "domain": "scripting",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Timer",
+          "distinction": "BackgroundTask runs a one-shot or long-running function on a background thread, while Timer fires a periodic callback on the message thread for UI polling."
+        },
+        {
+          "class": "Threads",
+          "distinction": "BackgroundTask is a concrete task handle with progress tracking and abort control, while Threads is a utility namespace for querying thread identity and lock state."
+        },
+        {
+          "class": "ThreadSafeStorage",
+          "distinction": "BackgroundTask runs code on a background thread with progress and abort control; use ThreadSafeStorage to safely pass structured results back to the UI or audio thread."
+        }
+      ],
+      "callbackDensity": 0.27,
+      "statefulness": 0.6,
+      "threadingExposure": 0.8,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "BeatportManager": {
+      "brief": "Beatport DRM integration service for validating product access through the Beatport SDK.",
+      "domain": "preset-model",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Unlocker",
+          "distinction": "Both handle product DRM/licensing; BeatportManager uses the Beatport SDK while Unlocker uses RSA key file validation."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.67,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "Broadcaster": {
+      "brief": "A flexible event router that attaches to component values, properties, module parameters, complex data, mouse events, and other sources to dispatch messages to registered listener callbacks.",
+      "domain": "event",
+      "role": "event",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Broadcaster",
+        "ScriptPanel",
+        "Sampler",
+        "Modulator"
+      ],
+      "seeAlso": [
+        {
+          "class": "GlobalCable",
+          "distinction": "Broadcaster routes events within a single script (component values, module parameters, mouse events), while GlobalCable is a named value bus for cross-project or cross-script value routing with OSC integration."
+        },
+        {
+          "class": "Timer",
+          "distinction": "Broadcaster fires callbacks in response to state changes from attached sources, while Timer fires a callback at a fixed periodic interval regardless of external state."
+        },
+        {
+          "class": "TransportHandler",
+          "distinction": "Broadcaster can attach to arbitrary UI/module sources, while TransportHandler specifically reacts to host transport events (tempo, play/stop, beat, time signature)."
+        }
+      ],
+      "callbackDensity": 0.84,
+      "statefulness": 0.1,
+      "threadingExposure": 0.5,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "Buffer": {
+      "brief": "Fixed-size float array optimized for audio sample data, supporting DSP operations like normalization, resampling, pitch detection, and median filtering.",
+      "domain": "audio",
+      "role": "container",
+      "baseClass": "VariantBuffer (built-in JavaScript engine type)",
+      "creates": [
+        "Buffer"
+      ],
+      "references": [
+        "String",
+        "File"
+      ],
+      "seeAlso": [
+        {
+          "class": "Array",
+          "distinction": "Use Array for dynamic mixed-type collections; use Buffer for fixed-size float arrays with audio DSP operations."
+        },
+        {
+          "class": "MidiList",
+          "distinction": "Use MidiList for 128 integer slots keyed by MIDI note number; use Buffer for contiguous float sample data of any length."
+        },
+        {
+          "class": "DisplayBuffer",
+          "distinction": "Use DisplayBuffer to reference a ring buffer owned by a processor for visualization; use Buffer for standalone audio sample data you manipulate directly."
+        },
+        {
+          "class": "AudioFile",
+          "distinction": "Use AudioFile to load/manage audio files from disk with playback integration; use Buffer for in-memory float sample manipulation."
+        },
+        {
+          "class": "FFT",
+          "distinction": "Buffer is the raw float array for audio samples; use FFT to analyze or transform its frequency content"
+        },
+        {
+          "class": "File",
+          "distinction": "Buffer is an in-memory float array for audio data; use File to load/save audio data from/to disk"
+        },
+        {
+          "class": "ScriptShader",
+          "distinction": "Buffer can be passed to ScriptShader as uniform data for GPU-accelerated visual effects"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.0,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Buffer",
+        "DisplayBuffer",
+        "SliderPackData",
+        "UnorderedStack"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.6
+    },
+    "Builder": {
+      "brief": "Programmatic module tree construction tool that creates synths, effects, and modulators by type/ID, sets their attributes, and connects script processors -- used for dynamically building the entire processor hierarchy at init time.",
+      "domain": "scripting",
+      "role": "factory",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Sampler",
+        "Effect",
+        "Modulator",
+        "ChildSynth",
+        "MidiProcessor",
+        "AudioSampleProcessor",
+        "TableProcessor",
+        "SlotFX"
+      ],
+      "references": [
+        "Synth",
+        "Console"
+      ],
+      "seeAlso": [
+        {
+          "class": "Synth",
+          "distinction": "Builder creates/destroys modules in the processor tree programmatically, while Synth retrieves existing modules by name and controls voice/MIDI processing."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.15,
+      "threadingExposure": 0.1,
+      "createdBy": [
+        "Synth"
+      ],
+      "fanOut": 0.33,
+      "fanIn": 0.05
+    },
+    "ChildSynth": {
+      "brief": "Script handle to a child sound generator module (synth, sampler, etc.) within a SynthGroup or SynthChain, providing attribute control, bypass, modulator chain access, routing matrix retrieval, and conversion to a Sampler reference.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Modulator",
+        "Sampler",
+        "RoutingMatrix",
+        "ChildSynth"
+      ],
+      "references": [
+        "Synth",
+        "Effect"
+      ],
+      "seeAlso": [
+        {
+          "class": "Synth",
+          "distinction": "ChildSynth is a handle to a specific child sound generator for attribute and routing control, while Synth is the parent-level API for voice management and module traversal."
+        },
+        {
+          "class": "Effect",
+          "distinction": "ChildSynth references a sound-generating module (with its own voice management), while Effect references an audio processing module in the FX chain."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.6,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Builder",
+        "ChildSynth",
+        "Synth"
+      ],
+      "fanOut": 0.19,
+      "fanIn": 0.2
+    },
+    "Colours": {
+      "brief": "Static utility namespace for colour manipulation -- converting between ARGB/HSL/vec4 formats, mixing colours, and adjusting alpha/brightness/saturation of colour values.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ApiClass",
+      "creates": [],
+      "references": [
+        "ScriptPanel"
+      ],
+      "seeAlso": [
+        {
+          "class": "Graphics",
+          "distinction": "Colours provides colour constants and manipulation functions; Graphics uses those colour values for drawing operations via setColour()."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.0,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.0,
+      "fanIn": 0.25
+    },
+    "ComplexGroupManager": {
+      "brief": "Advanced multi-layer round-robin group controller for Samplers that provides per-layer/per-group volume, fade-in/out, delay, start offset, gain tracking, and fixed-length playback -- designed for complex multi-articulation instruments.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Sampler"
+      ],
+      "seeAlso": [
+        {
+          "class": "Sampler",
+          "distinction": "ComplexGroupManager provides fine-grained per-layer/per-group voice control (fades, delays, volumes), while Sampler handles sample map loading and basic RR group switching."
+        }
+      ],
+      "callbackDensity": 0.06,
+      "statefulness": 0.5,
+      "threadingExposure": 0.8,
+      "createdBy": [
+        "Sampler"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "Connection": {
+      "brief": "A modulation or signal connection between a source node and a target parameter within a ScriptNode graph.",
+      "domain": "scriptnode",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Node",
+        "Parameter"
+      ],
+      "seeAlso": [
+        {
+          "class": "Parameter",
+          "distinction": "Connection is the link object that routes a signal to a Parameter; Parameter is the endpoint that receives the value."
+        },
+        {
+          "class": "Node",
+          "distinction": "Connection represents the wiring between nodes; Node is the processing unit that produces or consumes the signal."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.33,
+      "threadingExposure": 0.33,
+      "createdBy": [
+        "Node",
+        "Parameter"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "Console": {
+      "brief": "Debugging utility for printing messages, benchmarking, assertions, and automated callback testing.",
+      "domain": "scripting",
+      "role": "utility",
+      "baseClass": "ApiClass",
+      "creates": [],
+      "references": [
+        "ScriptPanel",
+        "Content",
+        "Builder"
+      ],
+      "seeAlso": [],
+      "callbackDensity": 0.06,
+      "statefulness": 0.0,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ContainerChild": {
+      "brief": "A reference to a child component inside a ScriptDynamicContainer, providing property access, hierarchy traversal, and value/paint callbacks.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "ContainerChild"
+      ],
+      "references": [
+        "ScriptDynamicContainer"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptDynamicContainer",
+          "distinction": "ContainerChild is a reference to a single child within a dynamic container; ScriptDynamicContainer is the parent component that owns and manages all children."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "ContainerChild is a lightweight child reference within a dynamic container; ScriptPanel is a standalone UI component with full paint and mouse callback support."
+        }
+      ],
+      "callbackDensity": 0.11,
+      "statefulness": 0.52,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "ContainerChild"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.0
+    },
+    "Content": {
+      "brief": "Top-level factory for creating and managing all UI components on the script interface, including layout helpers and object factories for paths, shaders, and look-and-feel objects.",
+      "domain": "ui",
+      "role": "factory",
+      "baseClass": "ScriptingObject",
+      "creates": [
+        "ScriptPanel",
+        "ScriptButton",
+        "ScriptSlider",
+        "ScriptComboBox",
+        "ScriptLabel",
+        "ScriptTable",
+        "ScriptSliderPack",
+        "ScriptImage",
+        "ScriptAudioWaveform",
+        "ScriptFloatingTile",
+        "ScriptWebView",
+        "ScriptedViewport",
+        "ScriptMultipageDialog",
+        "ScriptDynamicContainer",
+        "ScriptLookAndFeel",
+        "Path",
+        "ScriptShader",
+        "MarkdownRenderer"
+      ],
+      "references": [
+        "Colours",
+        "Engine",
+        "FileSystem",
+        "Graphics",
+        "Broadcaster",
+        "Rectangle",
+        "MidiPlayer"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Content creates and manages components; ScriptPanel is a specific component you draw on with paint routines and mouse callbacks."
+        },
+        {
+          "class": "Engine",
+          "distinction": "Content manages the visual interface; Engine manages the audio engine, MIDI, and global state."
+        }
+      ],
+      "callbackDensity": 0.06,
+      "statefulness": 0.35,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.78,
+      "fanIn": 1.0
+    },
+    "Date": {
+      "brief": "Date/time utility providing system time access and ISO-8601 string conversion.",
+      "domain": "scripting",
+      "role": "utility",
+      "baseClass": "ApiClass",
+      "creates": [],
+      "references": [],
+      "seeAlso": [],
+      "callbackDensity": 0.0,
+      "statefulness": 0.5,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.0,
+      "fanIn": 0.0
+    },
+    "DisplayBuffer": {
+      "brief": "Scriptable reference to a processor's ring buffer, used for real-time waveform/spectrum visualization by reading and converting audio data to paths.",
+      "domain": "complex-data",
+      "role": "handle",
+      "baseClass": "ScriptComplexDataReferenceBase (ConstScriptingObject, ComplexDataUIUpdaterBase::EventListener)",
+      "creates": [
+        "Buffer"
+      ],
+      "references": [
+        "String"
+      ],
+      "seeAlso": [
+        {
+          "class": "Table",
+          "distinction": "Use Table for editable modulation curve data; use DisplayBuffer for read-only ring buffer visualization from a DSP processor."
+        },
+        {
+          "class": "SliderPackData",
+          "distinction": "Use SliderPackData for editable discrete slider values; use DisplayBuffer for streaming audio visualization data."
+        },
+        {
+          "class": "AudioFile",
+          "distinction": "Use AudioFile for loading/managing audio files; use DisplayBuffer for visualizing a processor's real-time audio output."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for standalone sample manipulation; use DisplayBuffer for accessing a processor's internal ring buffer for UI visualization."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "DisplayBuffer is a ring buffer data source captured from a module output"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.44,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "Download": {
+      "brief": "Handle to an active or completed file download with progress tracking, pause/resume, and abort capabilities.",
+      "domain": "network",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "File"
+      ],
+      "references": [
+        "Server",
+        "File"
+      ],
+      "seeAlso": [
+        {
+          "class": "Server",
+          "distinction": "Download objects are created by Server.downloadFile(); Server manages the HTTP connection while Download exposes per-transfer state."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.82,
+      "threadingExposure": 0.7,
+      "createdBy": [
+        "Server"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "DspModule": {
+      "brief": "Legacy API for loading and controlling an external DSP module instance from a DspFactory, predating the ScriptNode system.",
+      "domain": "scriptnode",
+      "role": "processor",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Node",
+          "distinction": "DspModule is the legacy API for external DSP libraries with manual processBlock calls; Node is the modern ScriptNode graph API where processing is managed by the network."
+        },
+        {
+          "class": "DspNetwork",
+          "distinction": "DspModule processes audio via an external library; DspNetwork hosts the entire ScriptNode graph that contains Node objects."
+        },
+        {
+          "class": "Effect",
+          "distinction": "DspModule is the legacy API for loading external C++ DSP libraries; Effect references built-in HISE modules"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.5,
+      "threadingExposure": 0.31,
+      "createdBy": [],
+      "fanOut": 0.0,
+      "fanIn": 0.0
+    },
+    "DspNetwork": {
+      "brief": "The top-level container that manages a ScriptNode DSP graph, providing methods to create, retrieve, and process nodes.",
+      "domain": "scriptnode",
+      "role": "container",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Node",
+        "NetworkTest"
+      ],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Builder",
+          "distinction": "DspNetwork manages the ScriptNode DSP graph (create/connect nodes); Builder programmatically creates the HISE module tree (synths, effects, modulators) -- different systems entirely."
+        },
+        {
+          "class": "DspModule",
+          "distinction": "DspNetwork is the modern ScriptNode graph container; DspModule is the legacy API for loading external DSP libraries."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.42,
+      "threadingExposure": 0.25,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "Effect": {
+      "brief": "Script handle to an audio effect module in the signal chain (filter, reverb, delay, etc.) that provides attribute control, bypass, modulator chain access, peak level monitoring, draggable filter data, and state export/restore.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Modulator"
+      ],
+      "references": [
+        "Synth",
+        "SlotFX"
+      ],
+      "seeAlso": [
+        {
+          "class": "SlotFX",
+          "distinction": "Effect is a static handle to a specific effect module, while SlotFX is a container that can dynamically swap different effect types at runtime."
+        },
+        {
+          "class": "Modulator",
+          "distinction": "Effect processes audio in the FX chain, while Modulator generates control signals that modulate parameters over time."
+        },
+        {
+          "class": "DspModule",
+          "distinction": "Effect is a handle to a built-in HISE effect module in the module tree"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.6,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Builder",
+        "SlotFX",
+        "Synth"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.2
+    },
+    "Engine": {
+      "brief": "Central factory and utility class that provides object creation (Broadcasters, Timers, MidiLists, ModulationMatrices, etc.), unit conversions (dB/gain, MIDI/frequency, samples/ms), global state management (user presets, expansions, zoom), and resource loading (fonts, images, audio files).",
+      "domain": "scripting",
+      "role": "factory",
+      "baseClass": "ScriptingObject, ApiClass",
+      "creates": [
+        "MessageHolder",
+        "MidiList",
+        "Broadcaster",
+        "Timer",
+        "BackgroundTask",
+        "DspNetwork",
+        "ExpansionHandler",
+        "ErrorHandler",
+        "FFT",
+        "FixObjectFactory",
+        "GlobalRoutingManager",
+        "NeuralNetwork",
+        "ScriptModulationMatrix",
+        "UnorderedStack",
+        "AudioFile",
+        "DisplayBuffer",
+        "SliderPackData",
+        "Table",
+        "BeatportManager",
+        "UserPresetHandler",
+        "MidiAutomationHandler",
+        "MacroHandler",
+        "TransportHandler"
+      ],
+      "references": [
+        "Synth",
+        "Settings",
+        "Content",
+        "Buffer"
+      ],
+      "seeAlso": [
+        {
+          "class": "Synth",
+          "distinction": "Engine provides global utilities, object factories, and conversion functions, while Synth controls the parent synthesiser's voice management, MIDI processing, and module tree traversal."
+        },
+        {
+          "class": "Settings",
+          "distinction": "Engine handles global project-level concerns (presets, resources, conversions), while Settings manages audio device configuration and standalone app preferences."
+        }
+      ],
+      "callbackDensity": 0.03,
+      "statefulness": 0.45,
+      "threadingExposure": 0.1,
+      "createdBy": [],
+      "fanOut": 1.0,
+      "fanIn": 0.35
+    },
+    "ErrorHandler": {
+      "brief": "Intercepts system-level error events (missing samples, audio dropouts, license issues) and routes them to a scripting callback for custom error UI instead of the default overlay.",
+      "domain": "scripting",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Broadcaster",
+          "distinction": "ErrorHandler is specifically for system error events with predefined error levels, while Broadcaster is a general-purpose event dispatcher for arbitrary script-level sources."
+        }
+      ],
+      "callbackDensity": 0.13,
+      "statefulness": 0.5,
+      "threadingExposure": 0.1,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "Expansion": {
+      "brief": "Handle to a single installed expansion pack, providing access to its sample maps, audio files, images, data, and user presets.",
+      "domain": "preset-model",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "File"
+      ],
+      "references": [
+        "ExpansionHandler",
+        "File",
+        "Sampler"
+      ],
+      "seeAlso": [
+        {
+          "class": "ExpansionHandler",
+          "distinction": "ExpansionHandler is the factory that returns Expansion references; Expansion is a handle to one specific expansion pack."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.65,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "ExpansionHandler"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.05
+    },
+    "ExpansionHandler": {
+      "brief": "Factory/manager for loading, installing, and managing expansion packs with encryption and credential support.",
+      "domain": "preset-model",
+      "role": "factory",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Expansion"
+      ],
+      "references": [
+        "Expansion",
+        "File",
+        "FileSystem",
+        "Engine"
+      ],
+      "seeAlso": [
+        {
+          "class": "Expansion",
+          "distinction": "ExpansionHandler is the factory that manages the collection of expansions; Expansion is a handle to a single installed expansion pack."
+        },
+        {
+          "class": "Unlocker",
+          "distinction": "Unlocker manages RSA key-based product licensing; ExpansionHandler manages expansion pack installation/encryption which may use Unlocker credentials."
+        }
+      ],
+      "callbackDensity": 0.17,
+      "statefulness": 0.44,
+      "threadingExposure": 0.4,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.15,
+      "fanIn": 0.15
+    },
+    "FFT": {
+      "brief": "Fast Fourier Transform processor that analyses audio buffers into frequency-domain magnitude/phase data, with optional inverse FFT and 2D spectrogram generation.",
+      "domain": "audio",
+      "role": "processor",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Buffer"
+      ],
+      "seeAlso": [
+        {
+          "class": "NeuralNetwork",
+          "distinction": "Use FFT for frequency-domain analysis/resynthesis of audio; use NeuralNetwork for machine-learning inference on audio or parameter data."
+        },
+        {
+          "class": "LorisManager",
+          "distinction": "Use LorisManager for partial-tracking analysis and resynthesis of audio; use FFT for standard windowed FFT spectral processing."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer to hold the audio sample data that FFT processes; FFT operates on Buffer contents."
+        }
+      ],
+      "callbackDensity": 0.25,
+      "statefulness": 0.42,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.15
+    },
+    "File": {
+      "brief": "Handle to a specific file or directory on disk, with methods for reading, writing, and manipulating file content and metadata.",
+      "domain": "file",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "File"
+      ],
+      "references": [
+        "FileSystem",
+        "Buffer",
+        "MessageHolder",
+        "Sampler",
+        "MidiPlayer",
+        "AudioSampleProcessor"
+      ],
+      "seeAlso": [
+        {
+          "class": "FileSystem",
+          "distinction": "FileSystem provides folder locations and file browsing utilities; File is a handle to one specific file or directory returned by FileSystem methods."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "File is a handle for disk I/O; use Buffer for in-memory audio sample data (see Engine.loadAudioFileIntoBufferArray)"
+        },
+        {
+          "class": "MidiPlayer",
+          "distinction": "File.loadMidiMetadata defines the canonical TimeSignature JSON format that MidiPlayer.getTimeSignature/setTimeSignature consume."
+        }
+      ],
+      "callbackDensity": 0.02,
+      "statefulness": 0.55,
+      "threadingExposure": 0.6,
+      "createdBy": [
+        "Download",
+        "Expansion",
+        "File",
+        "FileSystem",
+        "Unlocker"
+      ],
+      "fanOut": 0.15,
+      "fanIn": 0.3
+    },
+    "FileSystem": {
+      "brief": "Namespace providing access to special folder locations, file browsing dialogs, and RSA encryption utilities.",
+      "domain": "file",
+      "role": "factory",
+      "baseClass": "ApiClass",
+      "creates": [
+        "File"
+      ],
+      "references": [
+        "File",
+        "Content",
+        "AudioSampleProcessor",
+        "ScriptPanel"
+      ],
+      "seeAlso": [
+        {
+          "class": "File",
+          "distinction": "FileSystem returns File objects from getFolder/fromAbsolutePath/browse; File is the handle you operate on after obtaining it from FileSystem."
+        }
+      ],
+      "callbackDensity": 0.27,
+      "statefulness": 0.07,
+      "threadingExposure": 0.4,
+      "createdBy": [],
+      "fanOut": 0.07,
+      "fanIn": 0.25
+    },
+    "FixObjectArray": {
+      "brief": "Fixed-size array of typed objects with named properties and contiguous memory layout, created via FixObjectFactory for memory-efficient structured data.",
+      "domain": "data",
+      "role": "container",
+      "baseClass": "fixobj::Array (LayoutBase, AssignableObject, ObjectWithJSONConverter, ConstScriptingObject)",
+      "creates": [],
+      "references": [
+        "String",
+        "Buffer"
+      ],
+      "seeAlso": [
+        {
+          "class": "Array",
+          "distinction": "Use Array for dynamic mixed-type collections; use FixObjectArray for fixed-size arrays of identically-typed objects with named properties."
+        },
+        {
+          "class": "FixObjectStack",
+          "distinction": "Use FixObjectStack when you need insert/remove (dynamic size up to capacity); use FixObjectArray when all slots are always valid (fixed iteration count)."
+        },
+        {
+          "class": "FixObjectFactory",
+          "distinction": "Use FixObjectFactory to define the object layout and create FixObjectArray/FixObjectStack instances; FixObjectArray is the container itself."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "Use UnorderedStack for up to 128 floats or events with fast unordered insert/remove; use FixObjectArray for fixed-size arrays of multi-property objects."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for homogeneous float sample data; use FixObjectArray for structured objects with multiple named properties per element."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.22,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "FixObjectFactory"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "FixObjectFactory": {
+      "brief": "Factory that defines a typed memory layout from a JSON prototype and creates FixObjectArray, FixObjectStack, and single FixObject instances from it.",
+      "domain": "data",
+      "role": "factory",
+      "baseClass": "fixobj::Factory (LayoutBase, ConstScriptingObject)",
+      "creates": [
+        "FixObjectArray",
+        "FixObjectStack"
+      ],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "FixObjectArray",
+          "distinction": "FixObjectFactory creates FixObjectArray instances; FixObjectArray is the fixed-size container of typed objects."
+        },
+        {
+          "class": "FixObjectStack",
+          "distinction": "FixObjectFactory creates FixObjectStack instances; FixObjectStack is the variable-occupancy container of typed objects."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.2,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "FixObjectStack": {
+      "brief": "Variable-occupancy stack of typed objects (up to a fixed capacity) with insert/remove operations, created via FixObjectFactory for event tracking and active-voice lists.",
+      "domain": "data",
+      "role": "container",
+      "baseClass": "fixobj::Stack (inherits fixobj::Array)",
+      "creates": [],
+      "references": [
+        "String",
+        "Buffer"
+      ],
+      "seeAlso": [
+        {
+          "class": "FixObjectArray",
+          "distinction": "Use FixObjectArray when all slots are always valid; use FixObjectStack when you need dynamic insert/remove within a fixed capacity."
+        },
+        {
+          "class": "FixObjectFactory",
+          "distinction": "Use FixObjectFactory to define the layout and create FixObjectStack instances; FixObjectStack is the container you insert into and remove from."
+        },
+        {
+          "class": "Array",
+          "distinction": "Use Array for dynamic mixed-type collections; use FixObjectStack for preallocated typed-object stacks with no allocation on insert."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "Use UnorderedStack for up to 128 floats or HISE events; use FixObjectStack for multi-property typed objects with custom compare functions."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.14,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "FixObjectFactory"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "GlobalCable": {
+      "brief": "A named value bus for routing normalised or ranged values between scripts, modules, macro controls, and external OSC sources, with support for synchronous (audio-thread-safe) and asynchronous callbacks.",
+      "domain": "routing",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "GlobalRoutingManager",
+        "ScriptPanel"
+      ],
+      "seeAlso": [
+        {
+          "class": "Broadcaster",
+          "distinction": "GlobalCable is a named value bus for cross-project routing with OSC and macro integration, while Broadcaster attaches to specific component/module sources for script-level event dispatch."
+        },
+        {
+          "class": "GlobalRoutingManager",
+          "distinction": "GlobalCable is the individual value bus you interact with, while GlobalRoutingManager is the factory that creates cables and manages OSC connections."
+        }
+      ],
+      "callbackDensity": 0.2,
+      "statefulness": 0.47,
+      "threadingExposure": 0.7,
+      "createdBy": [
+        "GlobalRoutingManager"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "GlobalRoutingManager": {
+      "brief": "A singleton manager for the global cable routing system that creates and retrieves named GlobalCable instances and provides OSC send/receive integration for external controller communication.",
+      "domain": "routing",
+      "role": "factory",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "GlobalCable"
+      ],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "GlobalCable",
+          "distinction": "GlobalRoutingManager is the factory that creates/retrieves GlobalCable instances and manages OSC connections, while GlobalCable is the individual named value bus you send and receive values through."
+        },
+        {
+          "class": "Broadcaster",
+          "distinction": "GlobalRoutingManager provides cross-project named value buses with OSC integration, while Broadcaster routes events between components and modules within a single script."
+        }
+      ],
+      "callbackDensity": 0.14,
+      "statefulness": 0.29,
+      "threadingExposure": 0.4,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.1
+    },
+    "Graphics": {
+      "brief": "2D drawing context passed to paint routines for rendering shapes, text, images, paths, gradients, layers, blur effects, and shaders onto panels and look-and-feel functions.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Path",
+        "ScriptShader",
+        "MarkdownRenderer",
+        "Colours",
+        "ScriptPanel",
+        "Rectangle",
+        "ScriptLookAndFeel"
+      ],
+      "seeAlso": [
+        {
+          "class": "Path",
+          "distinction": "Graphics is the drawing context that renders shapes; Path defines reusable vector shape geometry that Graphics draws or fills."
+        },
+        {
+          "class": "ScriptLookAndFeel",
+          "distinction": "Graphics provides drawing methods; ScriptLookAndFeel determines when and where those drawing methods are called for component rendering."
+        },
+        {
+          "class": "Rectangle",
+          "distinction": "Graphics draws into rectangular areas; Rectangle provides layout slicing and transformation methods to compute those areas."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.15,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.19,
+      "fanIn": 0.25
+    },
+    "LorisManager": {
+      "brief": "Interface to the Loris partial-tracking library for analysis, manipulation, and resynthesis of audio via sinusoidal partials -- requires optional Loris module.",
+      "domain": "audio",
+      "role": "processor",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Buffer"
+      ],
+      "seeAlso": [
+        {
+          "class": "FFT",
+          "distinction": "Use FFT for standard windowed FFT spectral processing; use LorisManager for sinusoidal partial tracking with per-partial manipulation."
+        },
+        {
+          "class": "NeuralNetwork",
+          "distinction": "Use NeuralNetwork for ML-based audio processing; use LorisManager for physics-based spectral analysis and resynthesis via Loris partials."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer to hold the audio data that LorisManager analyses and resynthesises; LorisManager operates on audio files and returns Buffer arrays."
+        }
+      ],
+      "callbackDensity": 0.11,
+      "statefulness": 0.22,
+      "threadingExposure": 0.1,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.0
+    },
+    "MacroHandler": {
+      "brief": "Service for reading and writing macro control connection data with change notification callbacks.",
+      "domain": "preset-model",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "UserPresetHandler",
+        "MidiAutomationHandler",
+        "Broadcaster"
+      ],
+      "seeAlso": [
+        {
+          "class": "UserPresetHandler",
+          "distinction": "UserPresetHandler manages the full preset model; MacroHandler specifically manages macro-to-parameter connections within that model."
+        },
+        {
+          "class": "MidiAutomationHandler",
+          "distinction": "MidiAutomationHandler maps MIDI CC to parameters; MacroHandler maps macro knobs to parameters. Both are preset-model services with similar get/set data patterns."
+        }
+      ],
+      "callbackDensity": 0.25,
+      "statefulness": 0.75,
+      "threadingExposure": 0.1,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "MarkdownRenderer": {
+      "brief": "Markdown text renderer that parses markdown syntax into styled text with headings, lists, and inline images, drawn via Graphics.drawMarkdownText().",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Graphics",
+        "Path",
+        "Colours",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "Graphics",
+          "distinction": "MarkdownRenderer parses and lays out markdown text; Graphics.drawMarkdownText() renders the result onto a surface."
+        },
+        {
+          "class": "ScriptLabel",
+          "distinction": "Use MarkdownRenderer for rich formatted text with headings and images; use ScriptLabel for simple plain-text display or input."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.6,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.15,
+      "fanIn": 0.1
+    },
+    "Math": {
+      "brief": "Standard math library with trigonometric, logarithmic, rounding, clamping, and range conversion functions.",
+      "domain": "data",
+      "role": "utility",
+      "baseClass": "ApiClass",
+      "creates": [],
+      "references": [
+        "Engine"
+      ],
+      "seeAlso": [],
+      "callbackDensity": 0.0,
+      "statefulness": 0.0,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.0
+    },
+    "Message": {
+      "brief": "Transient reference to the current MIDI event inside onNoteOn/onNoteOff/onController callbacks, providing getters/setters for note number, velocity, channel, detune, gain, and event ID -- only valid during the callback execution.",
+      "domain": "event",
+      "role": "event",
+      "baseClass": "ScriptingObject, ApiClass",
+      "creates": [],
+      "references": [
+        "MessageHolder",
+        "UnorderedStack",
+        "Sampler"
+      ],
+      "seeAlso": [
+        {
+          "class": "MessageHolder",
+          "distinction": "Message is a transient reference valid only inside MIDI callbacks, while MessageHolder is a persistent object that stores a copy of a MIDI event for later use."
+        },
+        {
+          "class": "MidiList",
+          "distinction": "Message is a single live MIDI event, transient within a callback; MidiList stores persistent note-number sets"
+        }
+      ],
+      "callbackDensity": 0.03,
+      "statefulness": 0.85,
+      "threadingExposure": 1.0,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.1
+    },
+    "MessageHolder": {
+      "brief": "Persistent, copyable container for a MIDI event that can be stored across callbacks, used in arrays (e.g. for MidiPlayer event lists), and manipulated independently of the real-time message stream.",
+      "domain": "event",
+      "role": "container",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Message",
+        "MidiPlayer",
+        "File",
+        "UnorderedStack"
+      ],
+      "seeAlso": [
+        {
+          "class": "Message",
+          "distinction": "MessageHolder persists a MIDI event for deferred processing or storage, while Message is a transient callback-scoped reference to the live event."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "MessageHolder is the vehicle for MIDI data in event-mode processing; push/pop into UnorderedStack for buffering"
+        },
+        {
+          "class": "MidiPlayer",
+          "distinction": "MessageHolder holds a single persistent MIDI message copy"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.9,
+      "threadingExposure": 0.4,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.3
+    },
+    "MidiAutomationHandler": {
+      "brief": "Service for managing MIDI CC-to-parameter automation mappings with popup configuration and change callbacks.",
+      "domain": "preset-model",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "UserPresetHandler",
+        "MacroHandler"
+      ],
+      "seeAlso": [
+        {
+          "class": "MacroHandler",
+          "distinction": "Both manage parameter automation mappings; MidiAutomationHandler maps MIDI CC messages while MacroHandler maps macro knob indices."
+        },
+        {
+          "class": "UserPresetHandler",
+          "distinction": "UserPresetHandler manages the full preset and host automation system; MidiAutomationHandler handles the MIDI CC mapping subset."
+        }
+      ],
+      "callbackDensity": 0.14,
+      "statefulness": 0.71,
+      "threadingExposure": 0.1,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "MidiList": {
+      "brief": "Exactly 128 integer slots (indexed 0-127) for storing per-note values like velocity curves, key switches, or note-number mappings in MIDI processing.",
+      "domain": "event",
+      "role": "container",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "String",
+        "UnorderedStack",
+        "ScriptPanel"
+      ],
+      "seeAlso": [
+        {
+          "class": "Array",
+          "distinction": "Use Array for dynamic-size collections of any type; use MidiList for a fixed 128-slot integer lookup table keyed by MIDI note number."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for floating-point audio sample data; use MidiList for integer values indexed by MIDI note number (0-127)."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "Use UnorderedStack for a dynamic set of active floats/events with fast insert/remove; use MidiList for a static 128-slot note-indexed lookup."
+        },
+        {
+          "class": "Message",
+          "distinction": "MidiList is a 128-slot persistent lookup table for note-number mappings"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.73,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "MidiPlayer": {
+      "brief": "Script handle to a MIDI Player module that provides MIDI file loading, sequence playback control (play/stop/record), event list editing with undo, tempo sync, and visualization helpers for piano-roll style displays.",
+      "domain": "playback",
+      "role": "handle",
+      "baseClass": "MidiPlayerBaseType, ConstScriptingObject, SuspendableTimer",
+      "creates": [
+        "MidiProcessor"
+      ],
+      "references": [
+        "MessageHolder",
+        "Synth",
+        "File",
+        "ScriptPanel"
+      ],
+      "seeAlso": [
+        {
+          "class": "MidiProcessor",
+          "distinction": "MidiPlayer provides MIDI file playback, recording, and sequence editing, while MidiProcessor is a generic handle to any MIDI processor module for attribute control."
+        },
+        {
+          "class": "MessageHolder",
+          "distinction": "MidiPlayer manages entire MIDI sequences with file playback, recording, and transport"
+        },
+        {
+          "class": "File",
+          "distinction": "File.loadMidiMetadata is the canonical source for the TimeSignature JSON object format; MidiPlayer cross-references it."
+        }
+      ],
+      "callbackDensity": 0.15,
+      "statefulness": 0.4,
+      "threadingExposure": 0.5,
+      "createdBy": [
+        "MidiProcessor",
+        "Synth"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.15
+    },
+    "MidiProcessor": {
+      "brief": "Generic script handle to any MIDI processor module in the signal chain, providing attribute get/set, bypass control, state export/restore, and conversion to a MidiPlayer reference if applicable.",
+      "domain": "event",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject, AssignableObject",
+      "creates": [
+        "MidiPlayer"
+      ],
+      "references": [
+        "Synth"
+      ],
+      "seeAlso": [
+        {
+          "class": "MidiPlayer",
+          "distinction": "MidiProcessor is a generic handle for setting attributes on any MIDI processor, while MidiPlayer adds full MIDI file playback, editing, and visualization capabilities."
+        },
+        {
+          "class": "Effect",
+          "distinction": "MidiProcessor controls modules in the MIDI processing chain, while Effect controls modules in the audio effect chain."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.65,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Builder",
+        "MidiPlayer",
+        "Synth"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "Modulator": {
+      "brief": "Script handle to a modulator in the signal chain (LFO, envelope, constant, etc.) that provides attribute control, intensity/bipolar settings, global modulator connections, state management, and conversion to a TableProcessor reference.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject, AssignableObject",
+      "creates": [
+        "Modulator"
+      ],
+      "references": [
+        "Synth",
+        "TableProcessor",
+        "Broadcaster"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptModulationMatrix",
+          "distinction": "Modulator is a handle to a single modulator module for direct parameter control, while ScriptModulationMatrix manages a dynamic many-to-many modulation routing system."
+        },
+        {
+          "class": "Effect",
+          "distinction": "Modulator controls modulation sources (LFOs, envelopes) that shape parameters over time, while Effect controls audio processing modules (filters, reverbs) in the FX chain."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.65,
+      "threadingExposure": 0.4,
+      "createdBy": [
+        "Builder",
+        "ChildSynth",
+        "Effect",
+        "Modulator",
+        "Synth"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.3
+    },
+    "NetworkTest": {
+      "brief": "A test harness for verifying ScriptNode DSP network output by running processing with configurable specs, runtime functions, and buffer comparison.",
+      "domain": "scriptnode",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "DspNetwork"
+      ],
+      "seeAlso": [
+        {
+          "class": "DspNetwork",
+          "distinction": "NetworkTest is a test harness created from a DspNetwork to verify its audio output; DspNetwork is the live DSP graph that produces audio."
+        }
+      ],
+      "callbackDensity": 0.07,
+      "statefulness": 0.29,
+      "threadingExposure": 0.14,
+      "createdBy": [
+        "DspNetwork"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "NeuralNetwork": {
+      "brief": "Machine-learning inference engine supporting PyTorch, TensorFlow, NAM, and ONNX models for real-time audio processing or parameter prediction.",
+      "domain": "audio",
+      "role": "processor",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Buffer",
+        "FFT"
+      ],
+      "seeAlso": [
+        {
+          "class": "FFT",
+          "distinction": "Use FFT for standard spectral analysis; use NeuralNetwork for learned audio transformations via neural network inference."
+        },
+        {
+          "class": "LorisManager",
+          "distinction": "Use LorisManager for deterministic partial-tracking resynthesis; use NeuralNetwork for data-driven inference using trained models."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.46,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "Node": {
+      "brief": "A processing unit within a ScriptNode DSP network that can be connected, bypassed, and configured with parameters.",
+      "domain": "scriptnode",
+      "role": "processor",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Parameter",
+        "Connection"
+      ],
+      "references": [
+        "DspNetwork"
+      ],
+      "seeAlso": [
+        {
+          "class": "DspModule",
+          "distinction": "Node is a unit in the modern ScriptNode graph with automatic signal routing; DspModule is the legacy API requiring manual processBlock calls on external libraries."
+        },
+        {
+          "class": "DspNetwork",
+          "distinction": "Node is a single processing element; DspNetwork is the container that holds and manages all nodes."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.5,
+      "threadingExposure": 0.4,
+      "createdBy": [
+        "DspNetwork"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.15
+    },
+    "Parameter": {
+      "brief": "A named parameter of a ScriptNode Node that holds a value with range properties and can receive modulation connections.",
+      "domain": "scriptnode",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Connection"
+      ],
+      "references": [
+        "Node"
+      ],
+      "seeAlso": [
+        {
+          "class": "Node",
+          "distinction": "Parameter controls a single value on a Node; Node is the processing unit that owns one or more Parameters."
+        },
+        {
+          "class": "Connection",
+          "distinction": "Parameter is the target endpoint that holds a value; Connection is the link object that routes modulation from a source node to a Parameter."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.75,
+      "threadingExposure": 0.38,
+      "createdBy": [
+        "Node"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "Path": {
+      "brief": "Vector path object for defining reusable 2D shapes (arcs, bezier curves, polygons, stars, etc.) that can be drawn or filled by the Graphics context.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Graphics",
+        "Rectangle"
+      ],
+      "seeAlso": [
+        {
+          "class": "Rectangle",
+          "distinction": "Use Path for complex vector shapes with curves and multiple sub-paths; use Rectangle for simple axis-aligned rectangular geometry."
+        },
+        {
+          "class": "Graphics",
+          "distinction": "Path defines shape geometry; Graphics renders those shapes onto a surface."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.1,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.3
+    },
+    "Rectangle": {
+      "brief": "Mutable rectangle utility for layout calculations with slicing (removeFromTop/Left/Bottom/Right), resizing, containment checks, and union/intersection operations.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "RectangleDynamicObject",
+      "creates": [],
+      "references": [
+        "Path"
+      ],
+      "seeAlso": [
+        {
+          "class": "Path",
+          "distinction": "Use Rectangle for axis-aligned rectangular bounds and layout slicing; use Path for arbitrary vector shapes."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.25,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "RoutingMatrix": {
+      "brief": "Script handle to a processor's channel routing matrix that manages source-to-destination channel connections and send connections, with channel count queries and per-channel gain monitoring.",
+      "domain": "routing",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Synth",
+        "ChildSynth"
+      ],
+      "seeAlso": [
+        {
+          "class": "GlobalRoutingManager",
+          "distinction": "RoutingMatrix manages internal channel routing within a single processor, while GlobalRoutingManager handles cross-module signal routing via named cables and OSC."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.55,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "ChildSynth",
+        "Synth"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "Sample": {
+      "brief": "Handle to a single sampler sound within a sample map, allowing get/set of per-sample properties (root key, velocity range, loop points, sample start/end), audio data analysis, and sample replacement.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject, AssignableObject",
+      "creates": [
+        "Sample"
+      ],
+      "references": [
+        "Sampler"
+      ],
+      "seeAlso": [
+        {
+          "class": "Sampler",
+          "distinction": "Sample represents a single sound with its mapping properties, while Sampler is the module-level handle that manages the entire sample map and all its sounds."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.8,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Sample",
+        "Sampler"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "Sampler": {
+      "brief": "Script handle to a ModulatorSampler module that provides sample map loading/saving, round-robin group management, sample selection/filtering, mic position purging, timestretching control, and per-sample property access.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Sample",
+        "ComplexGroupManager"
+      ],
+      "references": [
+        "ChildSynth",
+        "Synth",
+        "Broadcaster",
+        "Message",
+        "MessageHolder",
+        "File"
+      ],
+      "seeAlso": [
+        {
+          "class": "Sample",
+          "distinction": "Sampler controls the sampler module (loading maps, groups, mic positions), while Sample is a handle to an individual sound within the sampler's current map."
+        },
+        {
+          "class": "AudioSampleProcessor",
+          "distinction": "Sampler manages multi-sample instruments with key/velocity mapping, while AudioSampleProcessor controls single audio file playback modules like AudioLoopPlayer."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.55,
+      "threadingExposure": 0.5,
+      "createdBy": [
+        "Builder",
+        "ChildSynth",
+        "Synth"
+      ],
+      "fanOut": 0.15,
+      "fanIn": 0.35
+    },
+    "ScriptAudioWaveform": {
+      "brief": "Audio waveform display component for visualizing and interacting with audio samples, connected to AudioSampleProcessors or ScriptAudioFile objects.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ComplexDataScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content",
+        "AudioFile"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptTable",
+          "distinction": "Use ScriptAudioWaveform for audio sample visualization; use ScriptTable for envelope/curve editing."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptAudioWaveform for built-in audio waveform rendering; use ScriptPanel for custom-drawn waveform visualizations with full control."
+        },
+        {
+          "class": "AudioFile",
+          "distinction": "ScriptAudioWaveform is the UI component that displays an AudioFile"
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.05,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.05
+    },
+    "ScriptButton": {
+      "brief": "Toggle or momentary button component with filmstrip/image support, radio group assignment, and popup data attachment.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptSlider",
+          "distinction": "Use ScriptButton for on/off or momentary states; use ScriptSlider for continuous or stepped numeric value input."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptButton for standard toggle behavior with built-in filmstrip support; use ScriptPanel for fully custom interactive areas."
+        },
+        {
+          "class": "ScriptComboBox",
+          "distinction": "Use ScriptButton for binary or radio-group selection; use ScriptComboBox for selecting from a list of named items."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.55,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptComboBox": {
+      "brief": "Drop-down list component for selecting from a set of named items, with dynamic item addition and text retrieval.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptSlider",
+          "distinction": "Use ScriptComboBox for choosing from named text items; use ScriptSlider for numeric value input with a continuous range."
+        },
+        {
+          "class": "ScriptButton",
+          "distinction": "Use ScriptComboBox for multi-option selection from a list; use ScriptButton for binary on/off toggling or radio groups."
+        },
+        {
+          "class": "ScriptedViewport",
+          "distinction": "Use ScriptComboBox for simple drop-down selection; use ScriptedViewport in table mode for displaying and interacting with tabular data."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptDynamicContainer": {
+      "brief": "Container component that dynamically creates and manages child components from a data model, supporting template-based layout and value callbacks.",
+      "domain": "ui",
+      "role": "container",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptDynamicContainer for data-driven dynamic child creation; use ScriptPanel for static custom-drawn content with manual child management."
+        },
+        {
+          "class": "ScriptedViewport",
+          "distinction": "Use ScriptDynamicContainer for dynamic component lists from data models; use ScriptedViewport for scrollable table/list display."
+        }
+      ],
+      "callbackDensity": 0.07,
+      "statefulness": 0.45,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "ScriptFloatingTile": {
+      "brief": "Wrapper component that embeds pre-built HISE floating tile widgets (keyboard, preset browser, waveform display, etc.) into the script interface.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptFloatingTile to embed built-in HISE widgets; use ScriptPanel for fully custom-drawn components."
+        },
+        {
+          "class": "ScriptAudioWaveform",
+          "distinction": "Use ScriptFloatingTile for embedding complex built-in tiles like the preset browser; use ScriptAudioWaveform specifically for audio waveform display."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "ScriptImage": {
+      "brief": "Static image display component for showing PNG/filmstrip images with offset and alpha control, without custom paint routines.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptImage for simple image display; use ScriptPanel when you need custom drawing, mouse interaction, or animation."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "ScriptLabel": {
+      "brief": "Text display and input component for showing labels, editable text fields, and text overlays on the interface.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptLabel for standard text display or text input; use ScriptPanel with drawText in the paint routine for fully custom-rendered text."
+        },
+        {
+          "class": "ScriptComboBox",
+          "distinction": "Use ScriptLabel for displaying or editing free-form text; use ScriptComboBox for selecting from a predefined item list."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptLookAndFeel": {
+      "brief": "Customizable look-and-feel object for overriding the rendering of standard UI components (buttons, sliders, comboboxes, etc.) using registered paint functions, CSS stylesheets, or image strips.",
+      "domain": "ui",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Graphics",
+        "Path",
+        "Colours",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptLookAndFeel to customize how standard components render; use ScriptPanel for fully custom-drawn components with their own paint routines."
+        },
+        {
+          "class": "Graphics",
+          "distinction": "ScriptLookAndFeel defines which paint functions are called for components; Graphics is the drawing context passed into those paint functions."
+        }
+      ],
+      "callbackDensity": 0.15,
+      "statefulness": 0.15,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.15,
+      "fanIn": 0.6
+    },
+    "ScriptModulationMatrix": {
+      "brief": "Dynamic modulation routing system that manages many-to-many connections between global modulator sources and UI component targets, with connection callbacks, drag interaction support, user preset integration, and per-connection property control.",
+      "domain": "audio",
+      "role": "service",
+      "baseClass": "ConstScriptingObject, ControlledObject, UserPresetStateManager",
+      "creates": [],
+      "references": [
+        "Engine",
+        "Modulator"
+      ],
+      "seeAlso": [
+        {
+          "class": "Modulator",
+          "distinction": "ScriptModulationMatrix dynamically routes multiple modulation sources to multiple targets with user-configurable connections, while Modulator is a handle to a single fixed modulator for direct parameter control."
+        },
+        {
+          "class": "GlobalRoutingManager",
+          "distinction": "ScriptModulationMatrix handles modulation-specific routing with intensity, inversion, and display data, while GlobalRoutingManager handles general-purpose signal and data routing via named cables."
+        }
+      ],
+      "callbackDensity": 0.25,
+      "statefulness": 0.35,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptMultipageDialog": {
+      "brief": "Multi-page wizard/dialog component for building guided workflows with pages, navigation, modal overlays, and state management.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptMultipageDialog for structured multi-step wizard flows; use ScriptPanel for freeform custom UI layouts."
+        },
+        {
+          "class": "ScriptFloatingTile",
+          "distinction": "Use ScriptMultipageDialog for step-by-step user workflows; use ScriptFloatingTile for embedding single built-in HISE widgets."
+        }
+      ],
+      "callbackDensity": 0.1,
+      "statefulness": 0.35,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptPanel": {
+      "brief": "Scriptable panel component with custom paint routines, mouse/touch interaction, timer callbacks, animation support, drag-and-drop, popup display, and child panel hierarchy.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "Graphics",
+        "Path",
+        "ScriptLookAndFeel",
+        "Colours",
+        "Content",
+        "MarkdownRenderer",
+        "MidiPlayer",
+        "Broadcaster",
+        "GlobalCable",
+        "FileSystem"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptImage",
+          "distinction": "Use ScriptPanel when you need custom drawing via paint routines; use ScriptImage for simple static image display."
+        },
+        {
+          "class": "ScriptFloatingTile",
+          "distinction": "Use ScriptPanel for fully custom-drawn content; use ScriptFloatingTile to embed pre-built HISE widgets like keyboards or waveform displays."
+        },
+        {
+          "class": "ScriptButton",
+          "distinction": "Use ScriptPanel for arbitrary interactive regions with custom drawing; use ScriptButton for standard toggle/momentary button behavior."
+        },
+        {
+          "class": "Timer",
+          "distinction": "ScriptPanel has a built-in timer via setTimerCallback for panel-specific animation and updates; use Timer for standalone periodic tasks"
+        },
+        {
+          "class": "DisplayBuffer",
+          "distinction": "ScriptPanel can visualize DisplayBuffer contents in its paint callback"
+        }
+      ],
+      "callbackDensity": 0.18,
+      "statefulness": 0.4,
+      "threadingExposure": 0.02,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.19,
+      "fanIn": 0.15
+    },
+    "ScriptShader": {
+      "brief": "OpenGL fragment shader wrapper for GPU-accelerated visual effects, supporting uniform variables, preprocessor definitions, blend modes, and cached output buffers.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Graphics",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "Graphics",
+          "distinction": "Use ScriptShader for GPU-accelerated pixel processing; use Graphics for CPU-based 2D drawing operations."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "ScriptShader provides the shader code; ScriptPanel hosts the paint routine that applies the shader via Graphics.applyShader()."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "ScriptShader accepts Buffer objects as uniform inputs for passing data arrays to the GPU shader"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.3,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.1
+    },
+    "ScriptSlider": {
+      "brief": "Numeric value slider/knob component with configurable range, step size, mid-point skew, multiple display styles (Knob/Horizontal/Vertical), filmstrip support, and modifier key customization.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptButton",
+          "distinction": "Use ScriptSlider for continuous or stepped numeric values; use ScriptButton for on/off toggling."
+        },
+        {
+          "class": "ScriptComboBox",
+          "distinction": "Use ScriptSlider for numeric ranges with visual feedback; use ScriptComboBox for selecting from discrete named items."
+        },
+        {
+          "class": "ScriptSliderPack",
+          "distinction": "Use ScriptSlider for a single value control; use ScriptSliderPack for editing an array of values simultaneously."
+        }
+      ],
+      "callbackDensity": 0.07,
+      "statefulness": 0.55,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptSliderPack": {
+      "brief": "Multi-slider array component for editing a pack of discrete values, commonly used for step sequencers, arpeggiator patterns, and parameter arrays.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ComplexDataScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptSlider",
+          "distinction": "Use ScriptSliderPack for editing multiple values at once in an array; use ScriptSlider for a single value control."
+        },
+        {
+          "class": "ScriptTable",
+          "distinction": "Use ScriptSliderPack for discrete stepped values; use ScriptTable for smooth interpolated curves."
+        },
+        {
+          "class": "SliderPackData",
+          "distinction": "ScriptSliderPack is the UI component that displays and edits a SliderPackData object"
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.05,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptTable": {
+      "brief": "Curve editor component backed by a Table data object, used for shaping envelopes, velocity curves, and modulation transfer functions.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ComplexDataScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptSliderPack",
+          "distinction": "Use ScriptTable for smooth curve editing with draggable control points; use ScriptSliderPack for editing discrete step values in an array."
+        },
+        {
+          "class": "ScriptAudioWaveform",
+          "distinction": "Use ScriptTable for parameter curve editing; use ScriptAudioWaveform for displaying and interacting with audio sample data."
+        },
+        {
+          "class": "Table",
+          "distinction": "ScriptTable is the UI component that displays and edits a Table data object"
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.5,
+      "threadingExposure": 0.05,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "ScriptWebView": {
+      "brief": "Embedded web browser component for rendering HTML/CSS/JS content within the plugin interface, with bidirectional HiseScript-to-JavaScript communication.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptWebView for HTML/CSS-based UI rendering; use ScriptPanel for native HISE graphics drawing."
+        },
+        {
+          "class": "ScriptFloatingTile",
+          "distinction": "Use ScriptWebView for custom web content; use ScriptFloatingTile for embedding built-in HISE widgets."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.45,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "ScriptedViewport": {
+      "brief": "Scrollable viewport component that doubles as a sortable data table with configurable columns, row data, and selection callbacks.",
+      "domain": "ui",
+      "role": "component",
+      "baseClass": "ScriptComponent",
+      "creates": [],
+      "references": [
+        "ScriptLookAndFeel",
+        "Content"
+      ],
+      "seeAlso": [
+        {
+          "class": "ScriptComboBox",
+          "distinction": "Use ScriptedViewport for displaying scrollable lists or multi-column tables; use ScriptComboBox for simple drop-down selection."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "Use ScriptedViewport for built-in scrollable list/table behavior; use ScriptPanel for custom scrollable content with manual drawing."
+        }
+      ],
+      "callbackDensity": 0.1,
+      "statefulness": 0.45,
+      "threadingExposure": 0.0,
+      "createdBy": [
+        "Content"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "Server": {
+      "brief": "HTTP client for GET/POST requests and file downloads, with queue management and server activity callbacks.",
+      "domain": "network",
+      "role": "service",
+      "baseClass": "ApiClass",
+      "creates": [
+        "Download"
+      ],
+      "references": [
+        "Download",
+        "FileSystem",
+        "File",
+        "Console",
+        "Engine"
+      ],
+      "seeAlso": [
+        {
+          "class": "Download",
+          "distinction": "Server.downloadFile() returns a Download handle; Server initiates requests while Download tracks the state of a single transfer."
+        }
+      ],
+      "callbackDensity": 0.19,
+      "statefulness": 0.44,
+      "threadingExposure": 0.7,
+      "createdBy": [],
+      "fanOut": 0.19,
+      "fanIn": 0.05
+    },
+    "Settings": {
+      "brief": "Audio device and standalone application settings manager that provides get/set access to audio driver selection, buffer size, sample rate, MIDI input devices, zoom level, disk streaming mode, and OpenGL configuration.",
+      "domain": "scripting",
+      "role": "service",
+      "baseClass": "ApiClass, ScriptingObject",
+      "creates": [],
+      "references": [
+        "Engine"
+      ],
+      "seeAlso": [
+        {
+          "class": "Engine",
+          "distinction": "Settings manages audio device and standalone app configuration, while Engine handles project-level concerns like presets, resources, and utility conversions."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.85,
+      "threadingExposure": 0.05,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "SliderPackData": {
+      "brief": "Scriptable reference to a slider pack's data array (multiple discrete float values), used to control step sequencers, arpeggiators, and multi-parameter displays.",
+      "domain": "complex-data",
+      "role": "handle",
+      "baseClass": "ScriptComplexDataReferenceBase (ConstScriptingObject, ComplexDataUIUpdaterBase::EventListener)",
+      "creates": [
+        "Buffer"
+      ],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Table",
+          "distinction": "Use Table for continuous curve data defined by control points; use SliderPackData for an array of discrete slider values."
+        },
+        {
+          "class": "AudioFile",
+          "distinction": "Use AudioFile for audio waveform references; use SliderPackData for arrays of parameter values (step sequencer, LFO steps)."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for standalone float arrays you process directly; use SliderPackData for float arrays that are bound to a UI slider pack component."
+        },
+        {
+          "class": "DisplayBuffer",
+          "distinction": "Use DisplayBuffer for read-only ring buffer visualization; use SliderPackData for editable discrete slider values."
+        },
+        {
+          "class": "ScriptSliderPack",
+          "distinction": "SliderPackData is the data model (value array); use for programmatic access without a UI component"
+        }
+      ],
+      "callbackDensity": 0.11,
+      "statefulness": 0.67,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.05
+    },
+    "SlotFX": {
+      "brief": "Script handle to a dynamic effect slot that can load and swap different effect types at runtime, providing hot-swapping of effects, parameter property queries, and soft bypass -- used for user-selectable FX chains.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Effect"
+      ],
+      "references": [
+        "Synth"
+      ],
+      "seeAlso": [
+        {
+          "class": "Effect",
+          "distinction": "SlotFX is a container that dynamically loads/swaps effect modules at runtime, while Effect is a static handle to a fixed effect already in the signal chain."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.4,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Builder",
+        "Synth"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.15
+    },
+    "String": {
+      "brief": "Built-in string type with methods for searching, splitting, transforming, encrypting, and parsing text values.",
+      "domain": "scripting",
+      "role": "utility",
+      "baseClass": "juce::String (built-in JavaScript engine type)",
+      "creates": [
+        "Array"
+      ],
+      "references": [],
+      "seeAlso": [],
+      "callbackDensity": 0.0,
+      "statefulness": 0.15,
+      "threadingExposure": 0.0,
+      "createdBy": [],
+      "fanOut": 0.04,
+      "fanIn": 0.35
+    },
+    "Synth": {
+      "brief": "Script handle to the parent synthesiser that provides MIDI note generation, voice control (pitch/volume fades, kill, legato), module tree traversal (getEffect, getModulator, getSampler, etc.), and real-time timer callbacks on the audio thread.",
+      "domain": "audio",
+      "role": "processor",
+      "baseClass": "ScriptingObject, ApiClass",
+      "creates": [
+        "Builder",
+        "Effect",
+        "Modulator",
+        "ChildSynth",
+        "MidiProcessor",
+        "Sampler",
+        "AudioSampleProcessor",
+        "TableProcessor",
+        "SlotFX",
+        "MidiPlayer",
+        "RoutingMatrix",
+        "WavetableController"
+      ],
+      "references": [
+        "Message",
+        "MessageHolder"
+      ],
+      "seeAlso": [
+        {
+          "class": "Engine",
+          "distinction": "Synth operates on the parent synthesiser's signal chain and voices, while Engine provides global utilities and object creation unrelated to a specific synth."
+        },
+        {
+          "class": "ChildSynth",
+          "distinction": "Synth is the implicit parent synth available in every script, while ChildSynth is a handle to a specific child sound generator retrieved via Synth.getChildSynth()."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.35,
+      "threadingExposure": 0.7,
+      "createdBy": [],
+      "fanOut": 0.52,
+      "fanIn": 0.65
+    },
+    "Table": {
+      "brief": "Scriptable reference to a lookup table (curve editor data) used by modulators and effects, supporting point manipulation, value queries, and change callbacks.",
+      "domain": "complex-data",
+      "role": "handle",
+      "baseClass": "ScriptComplexDataReferenceBase (ConstScriptingObject, ComplexDataUIUpdaterBase::EventListener)",
+      "creates": [],
+      "references": [
+        "Array"
+      ],
+      "seeAlso": [
+        {
+          "class": "SliderPackData",
+          "distinction": "Use Table for continuous curve lookup data (modulation shapes); use SliderPackData for discrete step-sequence or multi-slider data."
+        },
+        {
+          "class": "AudioFile",
+          "distinction": "Use AudioFile for audio waveform data from files; use Table for editable modulation curves defined by control points."
+        },
+        {
+          "class": "DisplayBuffer",
+          "distinction": "Use DisplayBuffer for read-only ring buffer visualization from a processor; use Table for an editable modulation curve with control points."
+        },
+        {
+          "class": "ScriptTable",
+          "distinction": "Table is the data model (lookup curve); use for programmatic curve access without a UI component"
+        },
+        {
+          "class": "TableProcessor",
+          "distinction": "Table is the curve data object; use TableProcessor to access tables owned by modules in the signal chain"
+        }
+      ],
+      "callbackDensity": 0.2,
+      "statefulness": 0.5,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Engine",
+        "TableProcessor"
+      ],
+      "fanOut": 0.04,
+      "fanIn": 0.1
+    },
+    "TableProcessor": {
+      "brief": "Script handle to any module that contains lookup tables (table envelopes, table modulators, etc.), providing table point editing, base64 state export/restore, and access to ScriptTableData complex data objects.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Table"
+      ],
+      "references": [
+        "Synth",
+        "Modulator"
+      ],
+      "seeAlso": [
+        {
+          "class": "Modulator",
+          "distinction": "TableProcessor provides direct table curve editing for any module with tables, while Modulator controls the modulator's parameters and intensity without direct table access."
+        },
+        {
+          "class": "Table",
+          "distinction": "TableProcessor is a module handle that exposes tables in the signal chain; use Table for the data object itself"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.7,
+      "threadingExposure": 0.15,
+      "createdBy": [
+        "Builder",
+        "Synth"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.15
+    },
+    "ThreadSafeStorage": {
+      "brief": "Lock-based container for safely passing arbitrary data (JSON, arrays, objects) between the audio thread and the UI/scripting thread.",
+      "domain": "data",
+      "role": "container",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Array",
+          "distinction": "Use Array for standard single-thread collections; use ThreadSafeStorage when data must be shared between audio and UI threads."
+        },
+        {
+          "class": "UnorderedStack",
+          "distinction": "Use UnorderedStack for audio-thread-safe float/event tracking with insert/remove; use ThreadSafeStorage for passing arbitrary data objects between threads."
+        },
+        {
+          "class": "Threads",
+          "distinction": "ThreadSafeStorage provides a lock-based container for passing data between threads; Threads provides utilities for querying which thread you are on and executing functions on the loading thread."
+        },
+        {
+          "class": "BackgroundTask",
+          "distinction": "ThreadSafeStorage is a passive container for cross-thread data sharing; BackgroundTask actively runs code on a background thread with progress reporting -- use ThreadSafeStorage to pass results back."
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 1.0,
+      "threadingExposure": 1.0,
+      "createdBy": [],
+      "fanOut": 0.0,
+      "fanIn": 0.0
+    },
+    "Threads": {
+      "brief": "Provides thread-awareness utilities for querying thread identity, lock state, and safely executing functions on the loading thread after suspending audio processing.",
+      "domain": "scripting",
+      "role": "utility",
+      "baseClass": "ApiClass",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "BackgroundTask",
+          "distinction": "Threads provides query methods for thread state and a single killVoicesAndCall utility, while BackgroundTask is a concrete task handle for running code on a dedicated background thread with progress tracking."
+        },
+        {
+          "class": "ThreadSafeStorage",
+          "distinction": "Threads provides utilities for querying thread identity and executing functions on the loading thread; ThreadSafeStorage provides a lock-based container for safely passing data between threads."
+        }
+      ],
+      "callbackDensity": 0.2,
+      "statefulness": 0.8,
+      "threadingExposure": 0.9,
+      "createdBy": [],
+      "fanOut": 0.0,
+      "fanIn": 0.0
+    },
+    "Timer": {
+      "brief": "A periodic timer that fires a callback on the message thread at a configurable millisecond interval, used for UI polling and delayed actions.",
+      "domain": "ui",
+      "role": "utility",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "TransportHandler",
+          "distinction": "Timer fires at a fixed millisecond interval for general-purpose polling, while TransportHandler fires callbacks synced to the host transport (tempo, beat, grid)."
+        },
+        {
+          "class": "BackgroundTask",
+          "distinction": "Timer fires periodically on the message thread for UI updates, while BackgroundTask runs a one-shot or long-running function on a background thread."
+        },
+        {
+          "class": "Broadcaster",
+          "distinction": "Timer fires at a fixed interval regardless of state changes, while Broadcaster fires when an attached source (component value, module parameter, etc.) changes."
+        },
+        {
+          "class": "ScriptPanel",
+          "distinction": "Timer is a standalone periodic callback object for non-UI periodic tasks"
+        }
+      ],
+      "callbackDensity": 0.17,
+      "statefulness": 0.33,
+      "threadingExposure": 0.1,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "TransportHandler": {
+      "brief": "Registers callbacks for host transport events including tempo changes, play/stop state, time signature changes, beat positions, and a high-precision grid timer synced to the DAW timeline.",
+      "domain": "playback",
+      "role": "event",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [],
+      "seeAlso": [
+        {
+          "class": "Timer",
+          "distinction": "TransportHandler fires callbacks in response to host transport events (tempo, play/stop, beat position), while Timer fires at a fixed millisecond interval independent of the DAW."
+        },
+        {
+          "class": "Broadcaster",
+          "distinction": "TransportHandler is dedicated to host transport state (tempo, playback, grid), while Broadcaster can attach to arbitrary component, module, or data sources."
+        }
+      ],
+      "callbackDensity": 0.3,
+      "statefulness": 0.65,
+      "threadingExposure": 0.7,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.0,
+      "fanIn": 0.05
+    },
+    "Unlocker": {
+      "brief": "RSA key-based product license manager for registration validation, key file handling, and expansion unlocking.",
+      "domain": "preset-model",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "File"
+      ],
+      "references": [
+        "ExpansionHandler",
+        "FileSystem",
+        "File"
+      ],
+      "seeAlso": [
+        {
+          "class": "BeatportManager",
+          "distinction": "Both handle product licensing/DRM but through different backends; Unlocker uses RSA key files while BeatportManager uses the Beatport SDK."
+        },
+        {
+          "class": "ExpansionHandler",
+          "distinction": "Unlocker can manage expansion-level licensing; ExpansionHandler manages the expansion packs themselves."
+        }
+      ],
+      "callbackDensity": 0.06,
+      "statefulness": 0.63,
+      "threadingExposure": 0.2,
+      "createdBy": [],
+      "fanOut": 0.11,
+      "fanIn": 0.0
+    },
+    "UnorderedStack": {
+      "brief": "Fast insert/remove container for up to 128 float numbers or HISE events, without preserving order -- ideal for tracking active notes on the audio thread.",
+      "domain": "event",
+      "role": "container",
+      "baseClass": "ConstScriptingObject",
+      "creates": [
+        "Buffer"
+      ],
+      "references": [
+        "MessageHolder",
+        "Message",
+        "MidiList"
+      ],
+      "seeAlso": [
+        {
+          "class": "Array",
+          "distinction": "Use Array for ordered, dynamic, mixed-type collections on the UI thread; use UnorderedStack for fast unordered insert/remove safe for the audio thread."
+        },
+        {
+          "class": "MidiList",
+          "distinction": "Use MidiList for a static 128-slot lookup by note number; use UnorderedStack for a dynamic set of active values/events with fast membership tests."
+        },
+        {
+          "class": "FixObjectStack",
+          "distinction": "Use FixObjectStack for multi-property typed objects; use UnorderedStack for simple floats or HISE events with built-in event matching."
+        },
+        {
+          "class": "Buffer",
+          "distinction": "Use Buffer for fixed-size float arrays with DSP operations; use UnorderedStack for a dynamic set of values with insert/remove semantics."
+        },
+        {
+          "class": "MessageHolder",
+          "distinction": "UnorderedStack is the container for event-mode MIDI processing; use MessageHolder as the element type for push/pop"
+        }
+      ],
+      "callbackDensity": 0.0,
+      "statefulness": 0.17,
+      "threadingExposure": 0.7,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.07,
+      "fanIn": 0.05
+    },
+    "UserPresetHandler": {
+      "brief": "Service for managing user preset load/save lifecycle, custom automation, host parameter mapping, and preset preprocessing.",
+      "domain": "preset-model",
+      "role": "service",
+      "baseClass": "ConstScriptingObject",
+      "creates": [],
+      "references": [
+        "Engine",
+        "MacroHandler",
+        "MidiAutomationHandler"
+      ],
+      "seeAlso": [
+        {
+          "class": "MacroHandler",
+          "distinction": "MacroHandler manages macro control connections; UserPresetHandler manages the full preset and host automation model that macros feed into."
+        },
+        {
+          "class": "MidiAutomationHandler",
+          "distinction": "MidiAutomationHandler maps MIDI CC to parameters; UserPresetHandler manages the broader preset model including custom automation slots."
+        }
+      ],
+      "callbackDensity": 0.32,
+      "statefulness": 0.56,
+      "threadingExposure": 0.3,
+      "createdBy": [
+        "Engine"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.15
+    },
+    "WavetableController": {
+      "brief": "Script handle to a WavetableSynth module that provides wavetable loading from audio files or buffers, resynthesis control, post-FX processing chain configuration, and wavetable export to HWT/audio formats.",
+      "domain": "audio",
+      "role": "handle",
+      "baseClass": "ConstScriptingObject, ControlledObject, WeakErrorHandler",
+      "creates": [],
+      "references": [
+        "Synth",
+        "Buffer",
+        "FFT"
+      ],
+      "seeAlso": [
+        {
+          "class": "Sampler",
+          "distinction": "WavetableController manages wavetable synthesis with resynthesis and morphing between cycles, while Sampler handles traditional sample-based playback with key/velocity mapping."
+        }
+      ],
+      "callbackDensity": 0.05,
+      "statefulness": 0.4,
+      "threadingExposure": 0.2,
+      "createdBy": [
+        "Synth"
+      ],
+      "fanOut": 0.11,
+      "fanIn": 0.05
+    }
+  },
+  "clusters": {
+    "services": {
+      "members": [
+        "BeatportManager",
+        "Console",
+        "Date",
+        "Download",
+        "Expansion",
+        "ExpansionHandler",
+        "File",
+        "FileSystem",
+        "MacroHandler",
+        "Math",
+        "MidiAutomationHandler",
+        "Server",
+        "Unlocker",
+        "UserPresetHandler"
+      ],
+      "description": ""
+    },
+    "ui": {
+      "members": [
+        "Colours",
+        "Content",
+        "Graphics",
+        "MarkdownRenderer",
+        "Path",
+        "Rectangle",
+        "ScriptAudioWaveform",
+        "ScriptButton",
+        "ScriptComboBox",
+        "ScriptDynamicContainer",
+        "ScriptFloatingTile",
+        "ScriptImage",
+        "ScriptLabel",
+        "ScriptLookAndFeel",
+        "ScriptMultipageDialog",
+        "ScriptPanel",
+        "ScriptShader",
+        "ScriptSlider",
+        "ScriptSliderPack",
+        "ScriptTable",
+        "ScriptWebView",
+        "ScriptedViewport"
+      ],
+      "description": ""
+    },
+    "data": {
+      "members": [
+        "Array",
+        "AudioFile",
+        "Buffer",
+        "DisplayBuffer",
+        "FFT",
+        "FixObjectArray",
+        "FixObjectFactory",
+        "FixObjectStack",
+        "LorisManager",
+        "MidiList",
+        "NeuralNetwork",
+        "SliderPackData",
+        "String",
+        "Table",
+        "ThreadSafeStorage",
+        "UnorderedStack"
+      ],
+      "description": ""
+    },
+    "scriptnode": {
+      "members": [
+        "Connection",
+        "ContainerChild",
+        "DspModule",
+        "DspNetwork",
+        "NetworkTest",
+        "Node",
+        "Parameter"
+      ],
+      "description": ""
+    },
+    "module-tree": {
+      "members": [
+        "AudioSampleProcessor",
+        "Builder",
+        "ChildSynth",
+        "ComplexGroupManager",
+        "Effect",
+        "Engine",
+        "Message",
+        "MessageHolder",
+        "MidiPlayer",
+        "MidiProcessor",
+        "Modulator",
+        "RoutingMatrix",
+        "Sample",
+        "Sampler",
+        "ScriptModulationMatrix",
+        "Settings",
+        "SlotFX",
+        "Synth",
+        "TableProcessor",
+        "WavetableController"
+      ],
+      "description": ""
+    },
+    "event": {
+      "members": [
+        "BackgroundTask",
+        "Broadcaster",
+        "ErrorHandler",
+        "GlobalCable",
+        "GlobalRoutingManager",
+        "Threads",
+        "Timer",
+        "TransportHandler"
+      ],
+      "description": ""
+    }
+  }
+}

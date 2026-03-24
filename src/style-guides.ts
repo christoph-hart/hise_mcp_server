@@ -519,6 +519,10 @@ Features unique to HiseScript that LLMs won't discover from standard JS knowledg
 
 All API methods use \`Namespace.camelCase()\` with British spelling (e.g., \`Colour\` not \`Color\`).
 
+## Step 0: Discover Classes
+
+If the task involves classes you haven't used before, use \`explore_hise\` to discover which API classes are relevant. It returns class relationships, factory chains (how to obtain instances), and disambiguation guidance (when to use class A vs class B).
+
 ## Step 1: Read Current State
 
 Before writing or editing code, understand what exists:

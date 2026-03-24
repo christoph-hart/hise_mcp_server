@@ -15,7 +15,9 @@ import {
   LAFStyleGuideData,
   LAFListResult,
   LAFQueryResult,
-  LAFCallbackProperty
+  LAFCallbackProperty,
+  ClassSurveyData,
+  ClassSurveyEntry
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -70,6 +72,14 @@ export class HISEDataLoader {
   private lafComponentIndex: Map<string, { category: 'ScriptComponents' | 'FloatingTileContentTypes' | 'Global'; functions: string[] }> = new Map();
   // Index: functionName -> { componentType, category, description, properties }
   private lafFunctionIndex: Map<string, LAFQueryResult> = new Map();
+
+  // Class survey data (loaded lazily)
+  private surveyData: ClassSurveyData | null = null;
+  private surveyLoaded = false;
+  // Index: lowercase class name -> canonical class name
+  private surveyClassNames: Map<string, string> = new Map();
+  // Index: lowercase class name -> ClassSurveyEntry
+  private surveyIndex: Map<string, ClassSurveyEntry> = new Map();
 
   // Static stopwords set (optimization #3)
   private static readonly STOPWORDS = new Set([
@@ -1046,13 +1056,19 @@ export class HISEDataLoader {
     return namespaces.map(ns => {
       const entry: { name: string; description?: string } = { name: ns };
 
-      // Only include description for enriched classes (unenriched descriptions are noise)
+      // Include description for enriched classes from API data
       if (this.enrichedClasses.has(ns)) {
         const meta = this.classMetadata.get(ns);
         if (meta?.description) {
           // Truncate to first sentence
           const firstDot = meta.description.indexOf('.');
           entry.description = firstDot > 0 ? meta.description.substring(0, firstDot + 1) : meta.description;
+        }
+      } else {
+        // Fallback: use survey brief for unenriched classes
+        const surveyBrief = this.getSurveyBrief(ns);
+        if (surveyBrief) {
+          entry.description = surveyBrief;
         }
       }
 
@@ -1313,5 +1329,331 @@ export class HISEDataLoader {
     }
 
     return Array.from(functions);
+  }
+
+  // ============================================================================
+  // Class Survey Methods (explore_hise)
+  // ============================================================================
+
+  /**
+   * Ensure survey data is loaded (lazy loading)
+   */
+  private async ensureSurveyLoaded(): Promise<void> {
+    if (this.surveyLoaded) return;
+
+    try {
+      const surveyPath = join(__dirname, '..', 'data', 'class_survey_data.json');
+      const raw = readFileSync(surveyPath, 'utf8');
+      this.surveyData = JSON.parse(raw) as ClassSurveyData;
+
+      this.buildSurveyIndexes();
+      this.surveyLoaded = true;
+      console.error(`Loaded class survey data (${this.surveyIndex.size} classes)`);
+    } catch (error) {
+      console.error('Failed to load survey data:', error);
+      throw new Error(`Failed to load class survey data: ${error}`);
+    }
+  }
+
+  /**
+   * Build indexes for fast survey lookups
+   */
+  private buildSurveyIndexes(): void {
+    if (!this.surveyData) return;
+
+    this.surveyClassNames.clear();
+    this.surveyIndex.clear();
+
+    for (const [className, entry] of Object.entries(this.surveyData.classes)) {
+      const key = className.toLowerCase();
+      this.surveyClassNames.set(key, className);
+      this.surveyIndex.set(key, entry);
+    }
+  }
+
+  /**
+   * Get a survey brief for a class (used as fallback for namespace listing).
+   * Returns null if survey not loaded or class not found.
+   */
+  getSurveyBrief(className: string): string | null {
+    if (!this.surveyLoaded) return null;
+    const entry = this.surveyIndex.get(className.toLowerCase());
+    if (!entry) return null;
+    // Truncate to first sentence
+    const firstDot = entry.brief.indexOf('.');
+    return firstDot > 0 ? entry.brief.substring(0, firstDot + 1) : entry.brief;
+  }
+
+  /**
+   * Ensure survey is loaded (public, for use by getNamespaceListing fallback)
+   */
+  async loadSurveyData(): Promise<void> {
+    await this.ensureSurveyLoaded();
+  }
+
+  /**
+   * Resolve a class name to its canonical form in the survey
+   */
+  private resolveSurveyClassName(name: string): string | null {
+    return this.surveyClassNames.get(name.toLowerCase()) || null;
+  }
+
+  /**
+   * Free-text search across class briefs and seeAlso distinctions.
+   * Returns plain text output with matched classes and their most relevant seeAlso.
+   */
+  async exploreSurveyByQuery(
+    query: string,
+    options?: { domain?: string; role?: string; limit?: number }
+  ): Promise<string> {
+    await this.ensureSurveyLoaded();
+    if (!this.surveyData) return 'Survey data not available.';
+
+    const limit = options?.limit ?? 8;
+    const queryLower = query.toLowerCase();
+    const queryKeywords = this.extractKeywords(query);
+
+    // Score each class
+    const scored: Array<{
+      name: string;
+      entry: ClassSurveyEntry;
+      score: number;
+      bestSeeAlso: { class: string; distinction: string } | null;
+    }> = [];
+
+    for (const [className, entry] of Object.entries(this.surveyData.classes)) {
+      // Apply domain/role filters
+      if (options?.domain && entry.domain !== options.domain) continue;
+      if (options?.role && entry.role !== options.role) continue;
+
+      let score = 0;
+
+      // 1. Class name match (highest weight)
+      const nameLower = className.toLowerCase();
+      if (nameLower === queryLower) {
+        score += 10;
+      } else if (nameLower.includes(queryLower)) {
+        score += 5;
+      }
+
+      // 2. Brief text match
+      const briefLower = entry.brief.toLowerCase();
+      if (briefLower.includes(queryLower)) {
+        score += 4;
+      } else {
+        // Keyword overlap with brief
+        const briefKeywords = this.extractKeywords(entry.brief);
+        const overlap = queryKeywords.filter(k => briefKeywords.includes(k)).length;
+        if (overlap > 0) {
+          score += (overlap / Math.max(queryKeywords.length, 1)) * 3;
+        }
+      }
+
+      // 3. seeAlso distinction match (high value for disambiguation)
+      let bestSeeAlso: { class: string; distinction: string } | null = null;
+      let bestSeeAlsoScore = 0;
+
+      for (const sa of entry.seeAlso) {
+        const distLower = sa.distinction.toLowerCase();
+        let saScore = 0;
+
+        if (distLower.includes(queryLower)) {
+          saScore = 3;
+        } else {
+          const distKeywords = this.extractKeywords(sa.distinction);
+          const overlap = queryKeywords.filter(k => distKeywords.includes(k)).length;
+          if (overlap > 0) {
+            saScore = (overlap / Math.max(queryKeywords.length, 1)) * 2;
+          }
+        }
+
+        if (saScore > bestSeeAlsoScore) {
+          bestSeeAlsoScore = saScore;
+          bestSeeAlso = sa;
+        }
+      }
+
+      score += bestSeeAlsoScore;
+
+      // 4. Domain/role tag match
+      if (queryKeywords.includes(entry.domain)) score += 1;
+      if (queryKeywords.includes(entry.role)) score += 0.5;
+
+      // 5. Creates/createdBy match
+      for (const c of entry.creates) {
+        if (c.toLowerCase().includes(queryLower)) { score += 1; break; }
+      }
+      for (const c of entry.createdBy) {
+        if (c.toLowerCase().includes(queryLower)) { score += 0.5; break; }
+      }
+
+      if (score > 0) {
+        scored.push({ name: className, entry, score, bestSeeAlso });
+      }
+    }
+
+    // Sort by score descending, take top N
+    scored.sort((a, b) => b.score - a.score);
+    const topResults = scored.slice(0, limit);
+
+    if (topResults.length === 0) {
+      return `No classes found for "${query}". Try broader keywords or use domain/role filters.`;
+    }
+
+    // Format as plain text
+    const lines: string[] = [];
+    lines.push(`Found ${topResults.length} class${topResults.length > 1 ? 'es' : ''} for "${query}":\n`);
+
+    for (const { name, entry, bestSeeAlso } of topResults) {
+      lines.push(`${name}  [${entry.domain}/${entry.role}]`);
+      lines.push(`  ${entry.brief}`);
+
+      if (entry.createdBy.length > 0) {
+        lines.push(`  Obtain via: ${entry.createdBy.join(', ')}`);
+      }
+
+      if (bestSeeAlso) {
+        lines.push(`  vs ${bestSeeAlso.class}: ${bestSeeAlso.distinction}`);
+      }
+
+      lines.push('');
+    }
+
+    lines.push('Use explore_hise({ className: "Name" }) for full details including creates/references and all seeAlso distinctions.');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Full entry for a specific class plus one-hop briefs for all referenced classes.
+   * Returns plain text output.
+   */
+  async exploreSurveyByClass(className: string): Promise<string | null> {
+    await this.ensureSurveyLoaded();
+    if (!this.surveyData) return null;
+
+    const canonical = this.resolveSurveyClassName(className);
+    if (!canonical) return null;
+
+    const entry = this.surveyIndex.get(canonical.toLowerCase())!;
+
+    const lines: string[] = [];
+
+    // Header
+    lines.push(`${canonical}  [${entry.domain}/${entry.role}]`);
+    lines.push(`  ${entry.brief}`);
+    lines.push('');
+
+    // Factory chains
+    if (entry.createdBy.length > 0) {
+      lines.push(`Obtain via: ${entry.createdBy.join(', ')}`);
+    } else {
+      lines.push('Obtain via: always available (root-level namespace)');
+    }
+
+    if (entry.creates.length > 0) {
+      lines.push(`Creates: ${entry.creates.join(', ')}`);
+    }
+
+    if (entry.references.length > 0) {
+      lines.push(`References: ${entry.references.join(', ')}`);
+    }
+
+    // Complexity indicators
+    const complexity: string[] = [];
+    if (entry.threadingExposure > 0.5) complexity.push('high threading exposure');
+    if (entry.statefulness > 0.5) complexity.push('stateful');
+    if (entry.callbackDensity > 0.5) complexity.push('callback-heavy');
+    if (complexity.length > 0) {
+      lines.push(`Note: ${complexity.join(', ')}`);
+    }
+
+    // seeAlso distinctions
+    if (entry.seeAlso.length > 0) {
+      lines.push('');
+      lines.push('When to use this vs:');
+      for (const sa of entry.seeAlso) {
+        lines.push(`  ${sa.class}: ${sa.distinction}`);
+      }
+    }
+
+    // One-hop briefs
+    const oneHopClasses = new Set<string>();
+    for (const c of entry.creates) oneHopClasses.add(c);
+    for (const c of entry.createdBy) oneHopClasses.add(c);
+    for (const c of entry.references) oneHopClasses.add(c);
+    // Also include classes mentioned in seeAlso
+    for (const sa of entry.seeAlso) oneHopClasses.add(sa.class);
+
+    // Remove self
+    oneHopClasses.delete(canonical);
+
+    if (oneHopClasses.size > 0) {
+      lines.push('');
+      lines.push('--- Related class briefs ---');
+
+      // Sort for stable output
+      const sorted = [...oneHopClasses].sort();
+      for (const relName of sorted) {
+        const relEntry = this.surveyIndex.get(relName.toLowerCase());
+        if (relEntry) {
+          lines.push(`  ${relName}  [${relEntry.domain}/${relEntry.role}]: ${relEntry.brief}`);
+        } else {
+          lines.push(`  ${relName}: (no survey entry)`);
+        }
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Filter classes by domain and/or role tags.
+   * Returns plain text listing.
+   */
+  async exploreSurveyByFilter(
+    options: { domain?: string; role?: string; limit?: number }
+  ): Promise<string> {
+    await this.ensureSurveyLoaded();
+    if (!this.surveyData) return 'Survey data not available.';
+
+    const limit = options.limit ?? 20;
+    const matches: Array<{ name: string; entry: ClassSurveyEntry }> = [];
+
+    for (const [className, entry] of Object.entries(this.surveyData.classes)) {
+      if (options.domain && entry.domain !== options.domain) continue;
+      if (options.role && entry.role !== options.role) continue;
+      matches.push({ name: className, entry });
+    }
+
+    if (matches.length === 0) {
+      const filters: string[] = [];
+      if (options.domain) filters.push(`domain="${options.domain}"`);
+      if (options.role) filters.push(`role="${options.role}"`);
+      return `No classes match filters: ${filters.join(', ')}.\nAvailable domains: audio, complex-data, data, event, file, network, playback, preset-model, routing, scripting, scriptnode, ui\nAvailable roles: component, container, event, factory, handle, processor, service, utility`;
+    }
+
+    // Sort alphabetically
+    matches.sort((a, b) => a.name.localeCompare(b.name));
+    const display = matches.slice(0, limit);
+
+    const lines: string[] = [];
+    const filters: string[] = [];
+    if (options.domain) filters.push(`domain="${options.domain}"`);
+    if (options.role) filters.push(`role="${options.role}"`);
+    lines.push(`${matches.length} class${matches.length > 1 ? 'es' : ''} matching ${filters.join(', ')}${matches.length > limit ? ` (showing first ${limit})` : ''}:\n`);
+
+    for (const { name, entry } of display) {
+      lines.push(`${name}  [${entry.domain}/${entry.role}]`);
+      lines.push(`  ${entry.brief}`);
+      if (entry.createdBy.length > 0) {
+        lines.push(`  Obtain via: ${entry.createdBy.join(', ')}`);
+      }
+      lines.push('');
+    }
+
+    lines.push('Use explore_hise({ className: "Name" }) for full details.');
+
+    return lines.join('\n');
   }
 }
