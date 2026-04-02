@@ -1,0 +1,266 @@
+{
+  "trusted_posters": {
+    "1": {
+      "name": "Christoph Hart",
+      "reputation": 9164,
+      "postcount": 9062,
+      "role": "author"
+    },
+    "12": {
+      "name": "David Healey",
+      "reputation": 8172,
+      "postcount": 25065,
+      "role": "expert"
+    },
+    "449": {
+      "name": "ustk",
+      "reputation": 2938,
+      "postcount": 6042,
+      "role": "trusted"
+    },
+    "67": {
+      "name": "Lindon",
+      "reputation": 2214,
+      "postcount": 6822,
+      "role": "trusted"
+    },
+    "307": {
+      "name": "ulrik",
+      "reputation": 1407,
+      "postcount": 3333,
+      "role": "trusted"
+    },
+    "274": {
+      "name": "orange",
+      "reputation": 1238,
+      "postcount": 1979,
+      "role": "trusted"
+    },
+    "182": {
+      "name": "Dan Korneff",
+      "reputation": 1202,
+      "postcount": 2819,
+      "role": "trusted"
+    },
+    "831": {
+      "name": "DanH",
+      "reputation": 805,
+      "postcount": 3967,
+      "role": "trusted"
+    },
+    "3130": {
+      "name": "aaronventure",
+      "reputation": 794,
+      "postcount": 1774,
+      "role": "trusted"
+    },
+    "338": {
+      "name": "hisefilo",
+      "reputation": 726,
+      "postcount": 1814,
+      "role": "trusted"
+    },
+    "2712": {
+      "name": "clevername27",
+      "reputation": 622,
+      "postcount": 1630,
+      "role": "trusted"
+    },
+    "418": {
+      "name": "Natan",
+      "reputation": 618,
+      "postcount": 2271,
+      "role": "trusted"
+    },
+    "754": {
+      "name": "Matt_SF",
+      "reputation": 544,
+      "postcount": 1144,
+      "role": "trusted"
+    },
+    "3174": {
+      "name": "HISEnberg",
+      "reputation": 519,
+      "postcount": 1063,
+      "role": "trusted"
+    },
+    "121": {
+      "name": "lalalandsynth",
+      "reputation": 518,
+      "postcount": 1697,
+      "role": "trusted"
+    },
+    "3542": {
+      "name": "griffinboy",
+      "reputation": 510,
+      "postcount": 1043,
+      "role": "trusted"
+    },
+    "357": {
+      "name": "dannytaurus",
+      "reputation": 397,
+      "postcount": 934,
+      "role": "trusted"
+    },
+    "4087": {
+      "name": "Chazrox",
+      "reputation": 375,
+      "postcount": 1445,
+      "role": "trusted"
+    },
+    "1369": {
+      "name": "MikeB",
+      "reputation": 322,
+      "postcount": 868,
+      "role": "trusted"
+    },
+    "713": {
+      "name": "Casey Kolb",
+      "reputation": 285,
+      "postcount": 675,
+      "role": "trusted"
+    },
+    "1534": {
+      "name": "DabDab",
+      "reputation": 274,
+      "postcount": 1042,
+      "role": "trusted"
+    },
+    "426": {
+      "name": "gorangrooves",
+      "reputation": 262,
+      "postcount": 820,
+      "role": "trusted"
+    },
+    "90": {
+      "name": "musictop",
+      "reputation": 234,
+      "postcount": 248,
+      "role": "trusted"
+    },
+    "3118": {
+      "name": "Oli Ullmann",
+      "reputation": 231,
+      "postcount": 843,
+      "role": "trusted"
+    },
+    "2657": {
+      "name": "Straticah",
+      "reputation": 227,
+      "postcount": 589,
+      "role": "trusted"
+    },
+    "2333": {
+      "name": "oskarsh",
+      "reputation": 208,
+      "postcount": 402,
+      "role": "trusted"
+    },
+    "3500": {
+      "name": "Orvillain",
+      "reputation": 203,
+      "postcount": 771,
+      "role": "trusted"
+    },
+    "1002": {
+      "name": "Tania Ghosh",
+      "reputation": 179,
+      "postcount": 450,
+      "role": "trusted"
+    },
+    "3773": {
+      "name": "Morphoice",
+      "reputation": 178,
+      "postcount": 859,
+      "role": "trusted"
+    },
+    "3": {
+      "name": "Dominik Mayer",
+      "reputation": 177,
+      "postcount": 134,
+      "role": "trusted"
+    },
+    "499": {
+      "name": "SteveRiggs",
+      "reputation": 164,
+      "postcount": 622,
+      "role": "trusted"
+    },
+    "666": {
+      "name": "yall",
+      "reputation": 124,
+      "postcount": 970,
+      "role": "trusted"
+    },
+    "2928": {
+      "name": "bendurso",
+      "reputation": 121,
+      "postcount": 630,
+      "role": "trusted"
+    },
+    "3947": {
+      "name": "rglides",
+      "reputation": 120,
+      "postcount": 262,
+      "role": "trusted"
+    },
+    "600": {
+      "name": "tomekslesicki",
+      "reputation": 111,
+      "postcount": 620,
+      "role": "trusted"
+    },
+    "176": {
+      "name": "resonant",
+      "reputation": 110,
+      "postcount": 367,
+      "role": "trusted"
+    },
+    "505": {
+      "name": "LeeC",
+      "reputation": 106,
+      "postcount": 439,
+      "role": "trusted"
+    },
+    "3866": {
+      "name": "VirtualVirgin",
+      "reputation": 101,
+      "postcount": 542,
+      "role": "trusted"
+    },
+    "377": {
+      "name": "Jay",
+      "reputation": 100,
+      "postcount": 591,
+      "role": "trusted"
+    }
+  },
+  "excluded_categories": [
+    4,
+    20
+  ],
+  "category_weights": {
+    "7": 0.15,
+    "2": 0.1,
+    "3": 0.1,
+    "15": 0.1,
+    "5": 0.05,
+    "17": 0.05,
+    "8": 0.05
+  },
+  "scoring": {
+    "trusted_poster_reply": 0.3,
+    "high_reply_count_threshold": 10,
+    "high_reply_count_weight": 0.2,
+    "solved_weight": 0.1,
+    "recency_weight": 0.1,
+    "recency_months": 12,
+    "upvote_weight": 0.05
+  },
+  "defaults": {
+    "max_age_years": 10,
+    "max_search_pages": 3,
+    "max_posts_per_topic": 30,
+    "max_post_words": 500
+  }
+}

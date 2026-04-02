@@ -1,0 +1,2053 @@
+{
+  "nodes": {
+    "container.branch": {
+      "factoryPath": "container.branch",
+      "factory": "container",
+      "title": "Branch",
+      "description": "A container that processes only the child selected by its Index parameter.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "conditional"
+      ],
+      "llmRef": "container.branch\n\nA conditional container that processes only one child at a time, selected by the Index parameter. Unselected children are idle but remain fully prepared.\n\nSignal flow:\n  input -> child[Index].process -> output\n  (all other children: idle)\n\nCPU: negligible (single dispatch), monophonic\n\nParameters:\n  Index: 0 - N-1 (integer, default 0)\n    Selects which child processes audio. Float values are rounded.\n\nWhen to use:\n  Algorithm switching, mode selection, or any case where exactly one of several processing paths should be active. For click-free switching, use template.softbypass_switchN instead.\n\nCommon mistakes:\n  Index switching is immediate with no crossfade. Use template.softbypass_switchN for click-free transitions.\n\nSee also:\n  [companion] container.soft_bypass -- click-free switching via soft bypass wrappers",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Expecting click-free index switching",
+          "wrong": "Switching the Index parameter mid-playback with stateful effects as children",
+          "right": "Use template.softbypass_switchN for click-free switching between processing paths.",
+          "explanation": "Branch switches immediately with no crossfade. Stateful children (filters, delays) may produce clicks when switched. The softbypass_switch templates combine soft_bypass containers with control.xfader for smooth transitions."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.soft_bypass",
+          "type": "companion",
+          "reason": "Click-free switching via soft bypass wrappers"
+        }
+      ],
+      "parameters": {
+        "Index": {
+          "description": "Selects which child processes audio",
+          "range": "0 - N-1",
+          "default": "0"
+        }
+      }
+    },
+    "container.chain": {
+      "factoryPath": "container.chain",
+      "factory": "container",
+      "title": "Chain",
+      "description": "A serial container that processes each child node in sequence.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial"
+      ],
+      "llmRef": "container.chain\n\nA serial container that processes child nodes in sequence. Each child modifies the audio buffer in place and passes it to the next.\n\nSignal flow:\n  input -> child[0] -> child[1] -> ... -> child[N] -> output\n\nCPU: negligible (pure dispatch), monophonic\n\nParameters:\n  None\n\nWhen to use:\n  The default container for any serial signal path. Use for effect chains, processing pipelines, or any sequence of operations where each step feeds the next.\n\nCommon mistakes:\n  Chain uses hard bypass with no crossfade. Use container.soft_bypass for click-free transitions.\n\nSee also:\n  [alternative] container.split -- parallel processing instead of serial\n  [disambiguation] container.modchain -- control-rate chain for modulation sources\n  [disambiguation] container.midichain -- serial chain with MIDI event splitting",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Expecting click-free bypass transitions",
+          "wrong": "Bypassing a chain containing stateful effects (filters, delays) during playback",
+          "right": "Use container.soft_bypass for click-free bypass transitions with stateful effects.",
+          "explanation": "Chain uses hard bypass - processing stops immediately with no crossfade. Stateful effects may produce clicks when abruptly bypassed or un-bypassed."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.split",
+          "type": "alternative",
+          "reason": "Parallel processing instead of serial"
+        },
+        {
+          "id": "container.modchain",
+          "type": "disambiguation",
+          "reason": "Control-rate chain for modulation sources"
+        },
+        {
+          "id": "container.midichain",
+          "type": "disambiguation",
+          "reason": "Serial chain with sample-accurate MIDI event splitting"
+        }
+      ]
+    },
+    "container.clone": {
+      "factoryPath": "container.clone",
+      "factory": "container",
+      "title": "Clone",
+      "description": "An array of identical child node chains with configurable processing modes.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "parallel",
+        "clone"
+      ],
+      "llmRef": "container.clone\n\nAn array of identical child node chains processed in one of three modes: Serial, Parallel, or Copy. The number of active clones is controlled at runtime. All clones share the same structure and synchronised parameters.\n\nSignal flow (Copy mode, default):\n  input --copy--> clone[0] --\\\n  input --copy--> clone[1] ---+--> sum --> output\n  input --copy--> clone[N] --/\n\nSignal flow (Serial mode):\n  input -> clone[0] -> clone[1] -> ... -> clone[N] -> output\n\nSignal flow (Parallel mode):\n  input --passthrough--> output\n  silence -> clone[0] --add--> output\n  silence -> clone[1] --add--> output\n\nCPU: low + linear per active clone, monophonic\n\nParameters:\n  NumClones: 1 - N (integer, default 1)\n    Number of active clones. Inactive clones are bypassed.\n  SplitSignal: Serial / Parallel / Copy (default Copy)\n    Selects the processing mode.\n\nWhen to use:\n  Additive synthesis, unison voices, cascading filters, feedback delay networks, multistage effects (phasers). Any application requiring duplicated processing paths with per-clone parameter control.\n\nKey details:\n  NumClones is a compile-time max. The parameter only caps the active count at runtime.\n  For complex payloads, build the DSP chain as a separate compiled network first.\n\nCommon mistakes:\n  Clone parameters are synced. Use control.clone_cable or control.clone_pack for per-clone values.\n  Clone does not support frame-based processing. Keep it outside frame containers.\n\nSee also:\n  [alternative] container.split -- parallel processing with different children",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "NumClones",
+            "impact": "linear",
+            "note": "Each active clone runs a full processing pass"
+          },
+          {
+            "parameter": "SplitSignal",
+            "impact": "mode-dependent",
+            "note": "Parallel and Copy modes add buffer overhead; Serial is cheapest"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "All clones receive identical parameters",
+          "wrong": "Expecting each clone to have independent parameter values by default",
+          "right": "Use control.clone_cable or control.clone_pack to send different values to each clone.",
+          "explanation": "Clone parameters are synchronised across all clones. For per-clone differentiation (detuning, panning, harmonic frequencies), use the dedicated clone control nodes to distribute different values."
+        },
+        {
+          "title": "Clone inside a frame-based container",
+          "wrong": "Placing a clone container inside container.frame2_block or similar frame containers",
+          "right": "Keep clone containers outside frame-based containers. Use frame containers inside the clone's children instead.",
+          "explanation": "Clone does not support frame-based processing. Place frame containers inside the cloned child chain if per-sample processing is needed."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.split",
+          "type": "alternative",
+          "reason": "Parallel processing with different children instead of identical clones"
+        }
+      ],
+      "parameters": {
+        "NumClones": {
+          "description": "Number of active clones",
+          "range": "1 - N",
+          "default": "1"
+        },
+        "SplitSignal": {
+          "description": "Processing mode: Serial, Parallel, or Copy",
+          "range": "Serial / Parallel / Copy",
+          "default": "Copy"
+        }
+      }
+    },
+    "container.dynamic_blocksize": {
+      "factoryPath": "container.dynamic_blocksize",
+      "factory": "container",
+      "title": "dynamic_blocksize",
+      "description": "Processes children with a parameter-controlled block size, allowing runtime quality settings down to per-sample frame processing.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision",
+        "quality-control"
+      ],
+      "llmRef": "container.dynamic_blocksize\n\nSerial container whose block size is controlled by a modulatable parameter. Splits audio into chunks of the selected size. When set to index 0 (block size 1), switches to per-sample frame processing.\n\nSignal flow:\n  audio in -> BlockSize parameter selects chunk size -> children process each chunk/frame serially -> audio out\n\nCPU: negligible, monophonic. Smaller block sizes increase iteration count linearly.\n\nParameters:\n  BlockSize: 0 - 7, step 1 (default 4 = 64 samples). Index into [1, 8, 16, 32, 64, 128, 256, 512].\n\nWhen to use:\n  When the end user should be able to choose a quality/CPU tradeoff at runtime, such as a \"quality\" knob in a synthesiser. Connect the parameter to a network parameter or control cable for automation.\n\nCommon mistakes:\n  Parameter is an index (0-7), not the block size itself. Index 4 = 64 samples.\n\nSee also:\n  [alternative] container.fix_blockx - property-controlled block size for design-time evaluation\n  [companion] container.framex_block - equivalent to BlockSize index 0",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "BlockSize",
+            "impact": "linear",
+            "note": "Smaller block sizes produce more chunk iterations per host buffer"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Setting parameter to the actual block size",
+          "wrong": "Setting the BlockSize parameter to 64 expecting a 64-sample block size",
+          "right": "Set the parameter to the index: 4 for block size 64. The mapping is [1, 8, 16, 32, 64, 128, 256, 512] at indices 0-7.",
+          "explanation": "The parameter value is an index into a fixed array of valid block sizes, not the block size itself. This ensures only valid power-of-two sizes are used."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Property-controlled block size for design-time evaluation"
+        },
+        {
+          "id": "container.framex_block",
+          "type": "companion",
+          "reason": "Equivalent to dynamic_blocksize with BlockSize set to 1"
+        }
+      ],
+      "parameters": {
+        "BlockSize": {
+          "description": "Index selecting the chunk size: 0=1, 1=8, 2=16, 3=32, 4=64, 5=128, 6=256, 7=512",
+          "range": "0 - 7",
+          "default": "4 (64 samples)"
+        }
+      }
+    },
+    "container.fix128_block": {
+      "factoryPath": "container.fix128_block",
+      "factory": "container",
+      "title": "fix128_block",
+      "description": "Splits the audio buffer into chunks of 128 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix128_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 128 samples. Children process each chunk sequentially. Increases modulation update rate to roughly 345 Hz at 44.1 kHz sample rate.\n\nSignal flow:\n  audio in -> split into 128-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  When a moderate modulation update improvement is needed with very low overhead (4 iterations for a 512-sample buffer). Suitable for slow modulation such as vibrato or tremolo where the host buffer rate is too coarse.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix16_block": {
+      "factoryPath": "container.fix16_block",
+      "factory": "container",
+      "title": "fix16_block",
+      "description": "Splits the audio buffer into chunks of 16 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix16_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 16 samples. Children process each chunk sequentially. Increases modulation update rate to roughly 2.8 kHz at 44.1 kHz sample rate.\n\nSignal flow:\n  audio in -> split into 16-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  When modulation needs a faster update rate than the host buffer but fix8_block is too expensive. Good compromise for audio-rate modulation that tolerates slight stepping.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix256_block": {
+      "factoryPath": "container.fix256_block",
+      "factory": "container",
+      "title": "fix256_block",
+      "description": "Splits the audio buffer into chunks of 256 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix256_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 256 samples. Children process each chunk sequentially. Increases modulation update rate to roughly 172 Hz at 44.1 kHz sample rate.\n\nSignal flow:\n  audio in -> split into 256-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  Useful only with very large host buffers (512+) where even a single subdivision improves modulation timing. The largest fixN_block variant. For block size 512, use fix_blockx or dynamic_blocksize instead.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix32_block": {
+      "factoryPath": "container.fix32_block",
+      "factory": "container",
+      "title": "fix32_block",
+      "description": "Splits the audio buffer into chunks of 32 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix32_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 32 samples. Children process each chunk sequentially. Increases modulation update rate to roughly 1.4 kHz at 44.1 kHz sample rate.\n\nSignal flow:\n  audio in -> split into 32-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  Good general-purpose choice for modulation precision. Handles most filter and pitch modulation without audible stepping while keeping chunk overhead low (16 iterations for a 512-sample buffer).\n\nKey details:\n  In send/receive feedback loops, routing delay equals one processing chunk (32 samples). Use frame processing to reduce to 1 sample.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix64_block": {
+      "factoryPath": "container.fix64_block",
+      "factory": "container",
+      "title": "fix64_block",
+      "description": "Splits the audio buffer into chunks of 64 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix64_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 64 samples. Children process each chunk sequentially. Increases modulation update rate to roughly 689 Hz at 44.1 kHz sample rate.\n\nSignal flow:\n  audio in -> split into 64-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  Default block size used by fix_blockx and dynamic_blocksize. Suitable for moderate modulation precision with minimal overhead (8 iterations for a 512-sample buffer). Good starting point when evaluating block size tradeoffs.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix8_block": {
+      "factoryPath": "container.fix8_block",
+      "factory": "container",
+      "title": "fix8_block",
+      "description": "Splits the audio buffer into chunks of 8 samples for higher modulation update rates.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision"
+      ],
+      "llmRef": "container.fix8_block\n\nSerial container that splits the incoming audio buffer into chunks of at most 8 samples. Children process each chunk sequentially. Increases modulation update rate from once per host buffer to once per 8 samples.\n\nSignal flow:\n  audio in -> split into 8-sample chunks -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\n\nWhen to use:\n  When modulation of child node parameters needs a faster update rate than the host buffer allows. Provides the highest precision of the fixN_block family at the cost of more chunk iterations. For true per-sample accuracy, use a frame container instead.\n\nSee also:\n  [alternative] container.fix_blockx - adjustable block size via property\n  [disambiguation] container.frame2_block - per-sample processing instead of block chunking",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Wrapping nodes that do not benefit",
+          "wrong": "Placing the entire network inside a fix8_block",
+          "right": "Wrap only the section where modulation precision matters.",
+          "explanation": "Block subdivision adds per-chunk call overhead. Nodes that are not modulated gain nothing from a smaller block size. Keep unmodulated processing outside the container."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.fix_blockx",
+          "type": "alternative",
+          "reason": "Adjustable block size via property for evaluating different chunk sizes"
+        },
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Per-sample processing instead of block chunking"
+        }
+      ]
+    },
+    "container.fix_blockx": {
+      "factoryPath": "container.fix_blockx",
+      "factory": "container",
+      "title": "fix_blockx",
+      "description": "Splits the audio buffer into chunks with a property-selectable block size for evaluating different tradeoffs during development.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "block-size",
+        "modulation-precision",
+        "development"
+      ],
+      "llmRef": "container.fix_blockx\n\nSerial container with a property-selectable block size. Splits the audio buffer into chunks of the chosen size. At compilation, the current property value is baked in as a static block size, eliminating the runtime dispatch.\n\nSignal flow:\n  audio in -> split into N-sample chunks (N from property) -> children process each chunk serially -> audio out\n\nCPU: negligible, monophonic\n\nParameters: none\nProperties: BlockSize (8, 16, 32, 64, 128, 256; default 64)\n\nWhen to use:\n  During development to evaluate different block sizes without replacing the node. Once the optimal size is found, the compiled output is identical to using the corresponding fixN_block node directly.\n\nCommon mistakes:\n  BlockSize property is hidden by default - click the parameter button to reveal it.\n\nSee also:\n  [alternative] container.fix8_block - fixed 8-sample block size\n  [alternative] container.dynamic_blocksize - parameter-controlled block size for end-user settings",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "BlockSize property not visible",
+          "wrong": "Looking for the block size selector in the default node view",
+          "right": "Click the parameter button to reveal the BlockSize property.",
+          "explanation": "The BlockSize property is hidden by default. The parameter button in the node header toggles visibility of node properties."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.fix8_block",
+          "type": "alternative",
+          "reason": "Fixed 8-sample block size when the optimal size is already known"
+        },
+        {
+          "id": "container.dynamic_blocksize",
+          "type": "alternative",
+          "reason": "Parameter-controlled block size for end-user quality settings"
+        }
+      ]
+    },
+    "container.frame1_block": {
+      "factoryPath": "container.frame1_block",
+      "factory": "container",
+      "title": "frame1_block",
+      "description": "Enables per-sample processing for child nodes on a single mono channel.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "frame",
+        "per-sample",
+        "mono"
+      ],
+      "llmRef": "container.frame1_block\n\nSerial container that converts block-based processing to per-sample (frame) processing with a fixed channel count of 1 (mono). Children receive one sample at a time and process it serially.\n\nSignal flow:\n  audio in (channel 0 only) -> per-sample iteration -> children process each sample serially -> audio out (channel 0 processed, others unmodified)\n\nCPU: medium, monophonic. Significant per-sample call overhead compared to block processing.\n\nParameters: none\n\nWhen to use:\n  When per-sample accuracy is required for mono processing, such as a mono waveshaper or custom filter. In stereo networks, use frame2_block instead.\n\nCommon mistakes:\n  Only processes channel 0 in a stereo network. Use frame2_block for stereo.\n\nSee also:\n  [disambiguation] container.frame2_block - stereo per-sample processing\n  [alternative] container.framex_block - dynamic channel count\n  [disambiguation] container.fix8_block - block chunking as lower-cost alternative",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Using in a stereo network expecting both channels",
+          "wrong": "Placing frame1_block in a stereo network and expecting both channels to be processed",
+          "right": "Use frame2_block for stereo networks. frame1_block only processes channel 0; other channels pass through unmodified.",
+          "explanation": "frame1_block fixes the channel count to 1 (mono). In a stereo network, only channel 0 is processed by the children. Channel 1 passes through without modification, which is rarely the intended behaviour."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.frame2_block",
+          "type": "disambiguation",
+          "reason": "Stereo per-sample processing (processes both channels)"
+        },
+        {
+          "id": "container.framex_block",
+          "type": "alternative",
+          "reason": "Dynamic channel count per-sample processing"
+        },
+        {
+          "id": "container.fix8_block",
+          "type": "disambiguation",
+          "reason": "Block chunking as a lower-cost alternative to per-sample processing"
+        }
+      ]
+    },
+    "container.frame2_block": {
+      "factoryPath": "container.frame2_block",
+      "factory": "container",
+      "title": "frame2_block",
+      "description": "Enables per-sample processing for child nodes on two stereo channels.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "frame",
+        "per-sample",
+        "stereo"
+      ],
+      "llmRef": "container.frame2_block\n\nSerial container that converts block-based processing to per-sample (frame) processing with a fixed channel count of 2 (stereo). Children receive an interleaved stereo pair [left, right] for each sample.\n\nSignal flow:\n  audio in (stereo) -> per-sample iteration -> children process each [left, right] pair serially -> audio out\n\nCPU: medium, monophonic. Significant per-sample call overhead. Slightly more than frame1_block due to stereo interleaving.\n\nParameters: none\n\nWhen to use:\n  Standard frame container for stereo networks. Use when per-sample accuracy is needed for stereo DSP such as filters, waveshapers, or feedback algorithms. The most commonly used frame container.\n\nKey details:\n  SNEX templated processFrame generates overloads for all channel counts. Use explicit per-channel overloads to avoid mono compile errors.\n\nSee also:\n  [disambiguation] container.frame1_block - mono per-sample processing\n  [alternative] container.framex_block - dynamic channel count\n  [disambiguation] container.fix8_block - block chunking as lower-cost alternative",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.frame1_block",
+          "type": "disambiguation",
+          "reason": "Mono per-sample processing (single channel only)"
+        },
+        {
+          "id": "container.framex_block",
+          "type": "alternative",
+          "reason": "Dynamic channel count per-sample processing"
+        },
+        {
+          "id": "container.fix8_block",
+          "type": "disambiguation",
+          "reason": "Block chunking as a lower-cost alternative to per-sample processing"
+        }
+      ]
+    },
+    "container.framex_block": {
+      "factoryPath": "container.framex_block",
+      "factory": "container",
+      "title": "framex_block",
+      "description": "Enables per-sample processing for child nodes with a dynamic channel count that adapts to the network context.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "frame",
+        "per-sample",
+        "dynamic-channels"
+      ],
+      "llmRef": "container.framex_block\n\nSerial container that converts block-based processing to per-sample (frame) processing with a dynamic channel count. Adapts to the current network channel count at runtime (up to 8 channels).\n\nSignal flow:\n  audio in (all channels) -> per-sample iteration -> children process each multi-channel frame serially -> audio out\n\nCPU: medium, monophonic. Per-sample call overhead plus marginal runtime channel dispatch cost.\n\nParameters: none\n\nWhen to use:\n  When per-sample processing is needed and the channel count is not known at design time, or when processing more than 2 channels. For standard stereo networks, prefer frame2_block for better compiled performance.\n\nSee also:\n  [alternative] container.frame2_block - fixed stereo, better optimisation\n  [companion] container.dynamic_blocksize - BlockSize index 0 is equivalent",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.frame2_block",
+          "type": "alternative",
+          "reason": "Fixed stereo per-sample processing with better compilation optimisation"
+        },
+        {
+          "id": "container.dynamic_blocksize",
+          "type": "companion",
+          "reason": "dynamic_blocksize with BlockSize index 0 is functionally equivalent"
+        }
+      ]
+    },
+    "container.midichain": {
+      "factoryPath": "container.midichain",
+      "factory": "container",
+      "title": "MIDI Chain",
+      "description": "A serial container that enables sample-accurate MIDI event processing for its children.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "midi"
+      ],
+      "llmRef": "container.midichain\n\nA serial container that enables sample-accurate MIDI event processing. Splits the audio block at MIDI event timestamps so children process audio in chunks aligned to event boundaries.\n\nSignal flow:\n  input audio block + MIDI events ->\n    process(samples before event 1) ->\n    handleEvent(event 1) ->\n    process(samples before event 2) ->\n    handleEvent(event 2) ->\n    ... -> output\n\nCPU: low, monophonic\n  Overhead proportional to MIDI event count per block.\n\nParameters:\n  None\n\nWhen to use:\n  Required in effect plugin contexts to enable MIDI processing. Provides sample-accurate MIDI timing for nodes that respond to MIDI (oscillators, envelopes). Unnecessary in synthesiser or modulator contexts where MIDI is already enabled.\n\nSee also:\n  [companion] container.no_midi -- blocks MIDI events instead of enabling them\n  [disambiguation] container.chain -- serial chain without MIDI event splitting",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "MIDI event density",
+            "impact": "linear",
+            "note": "More events per block means more audio chunk boundaries"
+          }
+        ]
+      },
+      "seeAlso": [
+        {
+          "id": "container.no_midi",
+          "type": "companion",
+          "reason": "Blocks MIDI events instead of enabling them"
+        },
+        {
+          "id": "container.chain",
+          "type": "disambiguation",
+          "reason": "Serial chain without MIDI event splitting"
+        }
+      ]
+    },
+    "container.modchain": {
+      "factoryPath": "container.modchain",
+      "factory": "container",
+      "title": "Modulation Chain",
+      "description": "A serial container that processes children at control rate without affecting the parent audio signal.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "modulation",
+        "control-rate"
+      ],
+      "llmRef": "container.modchain\n\nA serial container that processes children at control rate on an internal mono buffer without affecting the parent audio signal. Used to build modulation sources.\n\nSignal flow:\n  parent audio -> [passthrough, unmodified] -> parent output\n  internal: mono control buffer (zeroed) -> children process at reduced rate\n\nCPU: low, monophonic\n  Instrument plugins: children run at 1/8 sample rate (HISE_EVENT_RASTER = 8).\n  Effect plugins: children run at full sample rate (HISE_EVENT_RASTER = 1).\n\nParameters:\n  None\n\nWhen to use:\n  Building modulation sources from DSP nodes. Typically contains oscillators, math nodes, and a core.peak node at the end to output the modulation signal via a cable.\n\nCommon mistakes:\n  Modchain does not modify parent audio. Use container.chain for audio processing.\n\nKey details:\n  To combine multiple mod signals, use a split inside the modchain with a core.peak after it.\n\nSee also:\n  [disambiguation] container.chain -- audio-rate serial chain that modifies the signal",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "HISE_EVENT_RASTER",
+            "impact": "divisor",
+            "note": "Instrument plugins process at 1/8 rate; effect plugins at full rate"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Expecting modchain to modify audio",
+          "wrong": "Placing audio effect nodes inside a modchain and expecting the parent signal to change",
+          "right": "Use a regular container.chain for audio processing. Place modulation source nodes (core.peak, envelopes) inside modchain.",
+          "explanation": "Modchain does not modify the parent audio signal. It processes a separate internal control buffer at reduced rate. Nodes inside it should generate modulation output via cables, not process audio."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.chain",
+          "type": "disambiguation",
+          "reason": "Audio-rate serial chain that modifies the signal"
+        }
+      ]
+    },
+    "container.multi": {
+      "factoryPath": "container.multi",
+      "factory": "container",
+      "title": "Multi",
+      "description": "A parallel container that assigns each child a different slice of the audio channels.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "parallel",
+        "multichannel"
+      ],
+      "llmRef": "container.multi\n\nA parallel container that splits the audio channels among its children. Each child processes a non-overlapping slice of channels. The total channel count equals the sum of all children's channel counts.\n\nSignal flow:\n  input (ch0..chN) -> child[0](ch0..chK) | child[1](chK+1..chM) | ... -> output (ch0..chN)\n\nCPU: negligible (pointer offset only), monophonic\n\nParameters:\n  None\n\nWhen to use:\n  Independent left/right processing, mid/side processing (with routing.ms_encode/ms_decode), or any topology requiring per-channel processing paths.\n\nCommon mistakes:\n  Adding more children than available channels raises an error. Ensure channel count >= child count.\n\nSee also:\n  [alternative] container.split -- same channels to each child instead of different channels\n  [alternative] container.sidechain -- channel doubling for sidechain input",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "More children than available channels",
+          "wrong": "Adding three child nodes in a stereo (2-channel) context",
+          "right": "Ensure the channel count is at least equal to the number of children. Use a container with more channels or reduce children.",
+          "explanation": "Multi divides channels equally among children. If there are more children than channels, an error is raised and excess children are silently skipped."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.split",
+          "type": "alternative",
+          "reason": "Same channels to each child instead of different channels"
+        },
+        {
+          "id": "container.sidechain",
+          "type": "alternative",
+          "reason": "Channel doubling for sidechain input instead of channel splitting"
+        }
+      ]
+    },
+    "container.no_midi": {
+      "factoryPath": "container.no_midi",
+      "factory": "container",
+      "title": "No MIDI",
+      "description": "A serial container that blocks all MIDI events from reaching its children.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "midi"
+      ],
+      "llmRef": "container.no_midi\n\nA serial container that blocks all MIDI events from reaching its children. Audio processing is identical to container.chain.\n\nSignal flow:\n  audio in -> child[0] -> child[1] -> ... -> child[N] -> audio out\n  MIDI events -> [blocked]\n\nCPU: negligible, monophonic\n\nParameters:\n  None\n\nWhen to use:\n  Prevent oscillators from responding to MIDI pitch in polyphonic contexts (e.g. using an oscillator as an LFO). Block all MIDI-driven behaviour for a subtree of nodes.\n\nSee also:\n  [companion] container.midichain -- enables MIDI events instead of blocking them",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "container.midichain",
+          "type": "companion",
+          "reason": "Enables MIDI events instead of blocking them"
+        }
+      ]
+    },
+    "container.offline": {
+      "factoryPath": "container.offline",
+      "factory": "container",
+      "title": "Offline",
+      "description": "A container for offline processing that skips the realtime audio callback.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "offline"
+      ],
+      "llmRef": "container.offline\n\nA container for offline (non-realtime) processing. Children are prepared and reset normally but never receive process or handleHiseEvent calls during the realtime audio callback. Audio passes through unmodified.\n\nSignal flow:\n  input -> [passthrough] -> output\n  Children: prepared but not processed in realtime\n\nCPU: negligible (no-op during realtime), monophonic\n\nParameters:\n  None\n\nWhen to use:\n  Offline rendering tasks such as sample analysis, file processing, or convolution IR generation. Children can be invoked programmatically outside the realtime audio callback.\n\nSee also:\n  (none)",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": false,
+        "scalingFactors": []
+      }
+    },
+    "container.oversample": {
+      "factoryPath": "container.oversample",
+      "factory": "container",
+      "title": "Oversample",
+      "description": "Upsamples the audio signal by a selectable factor, processes child nodes at the higher rate, then downsamples back.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "oversampling",
+        "aliasing"
+      ],
+      "llmRef": "container.oversample\n\nUpsamples the audio signal by a selectable factor (1x to 16x), processes child nodes serially at the higher sample rate, then downsamples back with anti-aliasing filtering. Used to reduce aliasing in nonlinear processing such as waveshaping, saturation, and distortion.\n\nSignal flow:\n  audio in -> upsample by factor -> child1 -> child2 -> ... -> childN -> downsample by factor -> audio out\n\nCPU: high, monophonic only. Scales linearly with oversampling factor.\n\nParameters:\n  Oversampling (0 - 4, step 1, default 1 / 2x) - factor exponent. 0=None, 1=2x, 2=4x, 3=8x, 4=16x. Changes cause brief audio interruption.\n  FilterType (Polyphase / FIR, default Polyphase) - anti-aliasing filter. Polyphase has lower latency, FIR has steeper rolloff.\n\nConstraints:\n  - Monophonic only (no polyphonic voice context)\n  - Block processing only (no frame processing)\n  - Cannot be nested inside another oversample container\n  - Latency from the anti-aliasing filter is not reported to the host\n\nWhen to use:\n  When child nodes produce harmonics that fold back as aliasing (waveshaping, saturation, FM synthesis). Choose this dynamic variant when the factor needs to be configurable. Use the fixed variants (oversample2x, oversample4x, etc.) when the factor is known at design time.\n\nKey details:\n  Bypassing only removes upsampling/downsampling - children still process at original rate (no CPU saving).\n  For gap-free runtime factor switching, use ScriptNode.setParent() to reparent the signal chain.\n\nCommon mistakes:\n  Changing the factor during playback causes a brief audio gap.\n  Cannot nest oversample containers - use a single higher factor instead.\n  Cannot be used in polyphonic networks.\n  Bypassing does not reduce CPU - children still run.\n\nSee also:\n  disambiguation container.oversample2x - fixed 2x variant\n  disambiguation container.oversample4x - fixed 4x variant\n  disambiguation container.oversample8x - fixed 8x variant\n  disambiguation container.oversample16x - fixed 16x variant\n  alternative container.repitch - resampling alternative",
+      "cpuProfile": {
+        "baseline": "high",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "Oversampling",
+            "impact": "multiplicative",
+            "note": "CPU scales linearly with the oversampling factor. 16x = 16x the processing cost for all child nodes."
+          },
+          {
+            "parameter": "FilterType",
+            "impact": "minor",
+            "note": "FIR is slightly more expensive than Polyphase but negligible compared to child processing cost."
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Changing the factor during playback causes a gap",
+          "wrong": "Modulating the Oversampling parameter at audio rate or during playback",
+          "right": "Set the oversampling factor before processing begins, or accept a brief audio interruption when changing it.",
+          "explanation": "Changing the oversampling factor triggers a full re-preparation of the entire child chain. Audio output is briefly interrupted during this process. Treat the Oversampling parameter as a configuration setting, not a real-time control."
+        },
+        {
+          "title": "Nesting oversample containers is not allowed",
+          "wrong": "Placing an oversample container inside another oversample container",
+          "right": "Use a single oversample container with the combined factor you need (e.g. 8x instead of nested 2x and 4x).",
+          "explanation": "The container checks that the incoming sample rate matches the network's original sample rate. If the signal has already been upsampled, this check fails and the node reports an error."
+        },
+        {
+          "title": "Cannot be used in polyphonic networks",
+          "wrong": "Placing an oversample container inside a polyphonic signal chain",
+          "right": "Use oversampling only in monophonic contexts. For polyphonic aliasing reduction, apply oversampling to the entire network output instead.",
+          "explanation": "Oversampling is restricted to monophonic processing. If the container detects a polyphonic voice context, it reports an error."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.oversample2x",
+          "type": "disambiguation",
+          "reason": "Fixed 2x variant - no factor parameter, slightly lower overhead"
+        },
+        {
+          "id": "container.oversample4x",
+          "type": "disambiguation",
+          "reason": "Fixed 4x variant"
+        },
+        {
+          "id": "container.oversample8x",
+          "type": "disambiguation",
+          "reason": "Fixed 8x variant"
+        },
+        {
+          "id": "container.oversample16x",
+          "type": "disambiguation",
+          "reason": "Fixed 16x variant"
+        },
+        {
+          "id": "container.repitch",
+          "type": "alternative",
+          "reason": "Resampling alternative - changes pitch rather than preventing aliasing"
+        }
+      ],
+      "parameters": {
+        "Oversampling": {
+          "description": "Oversampling factor exponent (0=None, 1=2x, 2=4x, 3=8x, 4=16x)",
+          "range": "0 - 4",
+          "default": "1 (2x)"
+        },
+        "FilterType": {
+          "description": "Anti-aliasing filter type: Polyphase (lower latency) or FIR (steeper rolloff)",
+          "range": "Polyphase / FIR",
+          "default": "Polyphase"
+        }
+      }
+    },
+    "container.oversample16x": {
+      "factoryPath": "container.oversample16x",
+      "factory": "container",
+      "title": "Oversample 16x",
+      "description": "Upsamples the audio signal by the maximum fixed factor of 16, processes child nodes at the higher rate, then downsamples back.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "oversampling",
+        "aliasing"
+      ],
+      "llmRef": "container.oversample16x\n\nUpsamples the audio signal by the maximum fixed factor of 16, processes child nodes serially at the higher sample rate, then downsamples back with anti-aliasing filtering. Fixed variant of container.oversample - maximum aliasing reduction at extreme CPU cost.\n\nSignal flow:\n  audio in -> upsample 16x -> child1 -> child2 -> ... -> childN -> downsample 16x -> audio out\n\nCPU: very_high, monophonic only. Child processing cost is multiplied by 16.\n\nParameters:\n  FilterType (Polyphase / FIR, default Polyphase) - anti-aliasing filter. Polyphase has lower latency, FIR has steeper rolloff.\n\nConstraints:\n  - Monophonic only (no polyphonic voice context)\n  - Block processing only (no frame processing)\n  - Cannot be nested inside another oversample container\n  - Latency from the anti-aliasing filter is not reported to the host\n\nWhen to use:\n  Only when lower factors leave audible aliasing. Typical cases: aggressive waveshaping with harmonics very close to Nyquist, extreme FM synthesis. At 44.1 kHz, children process at 705.6 kHz. Start with 4x and increase only if needed.\n\nCommon mistakes:\n  Extreme CPU cost - verify 16x is actually necessary before using.\n  Cannot nest oversample containers.\n  Cannot be used in polyphonic networks.\n\nSee also:\n  disambiguation container.oversample - dynamic variant with selectable factor\n  disambiguation container.oversample8x - fixed 8x variant\n  disambiguation container.oversample4x - fixed 4x variant\n  alternative container.repitch - resampling alternative",
+      "cpuProfile": {
+        "baseline": "very_high",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "FilterType",
+            "impact": "minor",
+            "note": "FIR is slightly more expensive than Polyphase but negligible compared to child processing cost."
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Extreme CPU cost - verify 16x is necessary",
+          "wrong": "Using oversample16x by default for all nonlinear processing",
+          "right": "Start with oversample4x and only increase if audible aliasing remains. Reserve 16x for cases with extreme harmonic generation near Nyquist.",
+          "explanation": "16x oversampling multiplies the CPU cost of all child nodes by 16. At 44.1 kHz, children process at 705.6 kHz. In most cases, 4x or 8x oversampling provides sufficient aliasing reduction at a fraction of the cost."
+        },
+        {
+          "title": "Nesting oversample containers is not allowed",
+          "wrong": "Placing an oversample16x container inside another oversample container",
+          "right": "Use a single oversample container with the factor you need.",
+          "explanation": "The container checks that the incoming sample rate matches the network's original sample rate. If the signal has already been upsampled, this check fails and the node reports an error."
+        },
+        {
+          "title": "Cannot be used in polyphonic networks",
+          "wrong": "Placing an oversample16x container inside a polyphonic signal chain",
+          "right": "Use oversampling only in monophonic contexts.",
+          "explanation": "Oversampling is restricted to monophonic processing. If the container detects a polyphonic voice context, it reports an error."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.oversample",
+          "type": "disambiguation",
+          "reason": "Dynamic variant with selectable factor"
+        },
+        {
+          "id": "container.oversample8x",
+          "type": "disambiguation",
+          "reason": "Fixed 8x variant for lower CPU cost"
+        },
+        {
+          "id": "container.oversample4x",
+          "type": "disambiguation",
+          "reason": "Fixed 4x variant for moderate aliasing reduction"
+        },
+        {
+          "id": "container.repitch",
+          "type": "alternative",
+          "reason": "Resampling alternative - changes pitch rather than preventing aliasing"
+        }
+      ],
+      "parameters": {
+        "FilterType": {
+          "description": "Anti-aliasing filter type: Polyphase (lower latency) or FIR (steeper rolloff)",
+          "range": "Polyphase / FIR",
+          "default": "Polyphase"
+        }
+      }
+    },
+    "container.oversample2x": {
+      "factoryPath": "container.oversample2x",
+      "factory": "container",
+      "title": "Oversample 2x",
+      "description": "Upsamples the audio signal by a fixed factor of 2, processes child nodes at the higher rate, then downsamples back.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "oversampling",
+        "aliasing"
+      ],
+      "llmRef": "container.oversample2x\n\nUpsamples the audio signal by a fixed factor of 2, processes child nodes serially at the higher sample rate, then downsamples back with anti-aliasing filtering. Fixed variant of container.oversample - no factor parameter, slightly lower overhead.\n\nSignal flow:\n  audio in -> upsample 2x -> child1 -> child2 -> ... -> childN -> downsample 2x -> audio out\n\nCPU: medium, monophonic only. Child processing cost is always doubled.\n\nParameters:\n  FilterType (Polyphase / FIR, default Polyphase) - anti-aliasing filter. Polyphase has lower latency, FIR has steeper rolloff.\n\nConstraints:\n  - Monophonic only (no polyphonic voice context)\n  - Block processing only (no frame processing)\n  - Cannot be nested inside another oversample container\n  - Latency from the anti-aliasing filter is not reported to the host\n\nWhen to use:\n  Mild aliasing reduction for waveshaping or saturation where 2x is sufficient. At 44.1 kHz, children process at 88.2 kHz. Use the dynamic container.oversample variant if the factor needs to be configurable.\n\nCommon mistakes:\n  Cannot nest oversample containers - use a single higher factor instead.\n  Cannot be used in polyphonic networks.\n\nSee also:\n  disambiguation container.oversample - dynamic variant with selectable factor\n  disambiguation container.oversample4x - fixed 4x variant\n  alternative container.repitch - resampling alternative",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "FilterType",
+            "impact": "minor",
+            "note": "FIR is slightly more expensive than Polyphase but negligible compared to child processing cost."
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Nesting oversample containers is not allowed",
+          "wrong": "Placing an oversample2x container inside another oversample container",
+          "right": "Use a single oversample container with the combined factor you need.",
+          "explanation": "The container checks that the incoming sample rate matches the network's original sample rate. If the signal has already been upsampled, this check fails and the node reports an error."
+        },
+        {
+          "title": "Cannot be used in polyphonic networks",
+          "wrong": "Placing an oversample2x container inside a polyphonic signal chain",
+          "right": "Use oversampling only in monophonic contexts.",
+          "explanation": "Oversampling is restricted to monophonic processing. If the container detects a polyphonic voice context, it reports an error."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.oversample",
+          "type": "disambiguation",
+          "reason": "Dynamic variant with selectable factor"
+        },
+        {
+          "id": "container.oversample4x",
+          "type": "disambiguation",
+          "reason": "Fixed 4x variant for stronger aliasing reduction"
+        },
+        {
+          "id": "container.repitch",
+          "type": "alternative",
+          "reason": "Resampling alternative - changes pitch rather than preventing aliasing"
+        }
+      ],
+      "parameters": {
+        "FilterType": {
+          "description": "Anti-aliasing filter type: Polyphase (lower latency) or FIR (steeper rolloff)",
+          "range": "Polyphase / FIR",
+          "default": "Polyphase"
+        }
+      }
+    },
+    "container.oversample4x": {
+      "factoryPath": "container.oversample4x",
+      "factory": "container",
+      "title": "Oversample 4x",
+      "description": "Upsamples the audio signal by a fixed factor of 4, processes child nodes at the higher rate, then downsamples back.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "oversampling",
+        "aliasing"
+      ],
+      "llmRef": "container.oversample4x\n\nUpsamples the audio signal by a fixed factor of 4, processes child nodes serially at the higher sample rate, then downsamples back with anti-aliasing filtering. Fixed variant of container.oversample - good balance of aliasing reduction and CPU cost.\n\nSignal flow:\n  audio in -> upsample 4x -> child1 -> child2 -> ... -> childN -> downsample 4x -> audio out\n\nCPU: high, monophonic only. Child processing cost is always quadrupled.\n\nParameters:\n  FilterType (Polyphase / FIR, default Polyphase) - anti-aliasing filter. Polyphase has lower latency, FIR has steeper rolloff.\n\nConstraints:\n  - Monophonic only (no polyphonic voice context)\n  - Block processing only (no frame processing)\n  - Cannot be nested inside another oversample container\n  - Latency from the anti-aliasing filter is not reported to the host\n\nWhen to use:\n  Effective aliasing reduction for waveshaping, saturation, and distortion. At 44.1 kHz, children process at 176.4 kHz. Good balance between quality and CPU cost for most nonlinear processing.\n\nCommon mistakes:\n  Cannot nest oversample containers - use a single higher factor instead.\n  Cannot be used in polyphonic networks.\n\nSee also:\n  disambiguation container.oversample - dynamic variant with selectable factor\n  disambiguation container.oversample2x - fixed 2x variant\n  disambiguation container.oversample8x - fixed 8x variant\n  alternative container.repitch - resampling alternative",
+      "cpuProfile": {
+        "baseline": "high",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "FilterType",
+            "impact": "minor",
+            "note": "FIR is slightly more expensive than Polyphase but negligible compared to child processing cost."
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Nesting oversample containers is not allowed",
+          "wrong": "Placing an oversample4x container inside another oversample container",
+          "right": "Use a single oversample container with the combined factor you need.",
+          "explanation": "The container checks that the incoming sample rate matches the network's original sample rate. If the signal has already been upsampled, this check fails and the node reports an error."
+        },
+        {
+          "title": "Cannot be used in polyphonic networks",
+          "wrong": "Placing an oversample4x container inside a polyphonic signal chain",
+          "right": "Use oversampling only in monophonic contexts.",
+          "explanation": "Oversampling is restricted to monophonic processing. If the container detects a polyphonic voice context, it reports an error."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.oversample",
+          "type": "disambiguation",
+          "reason": "Dynamic variant with selectable factor"
+        },
+        {
+          "id": "container.oversample2x",
+          "type": "disambiguation",
+          "reason": "Fixed 2x variant for lighter processing"
+        },
+        {
+          "id": "container.oversample8x",
+          "type": "disambiguation",
+          "reason": "Fixed 8x variant for stronger aliasing reduction"
+        },
+        {
+          "id": "container.repitch",
+          "type": "alternative",
+          "reason": "Resampling alternative - changes pitch rather than preventing aliasing"
+        }
+      ],
+      "parameters": {
+        "FilterType": {
+          "description": "Anti-aliasing filter type: Polyphase (lower latency) or FIR (steeper rolloff)",
+          "range": "Polyphase / FIR",
+          "default": "Polyphase"
+        }
+      }
+    },
+    "container.oversample8x": {
+      "factoryPath": "container.oversample8x",
+      "factory": "container",
+      "title": "Oversample 8x",
+      "description": "Upsamples the audio signal by a fixed factor of 8, processes child nodes at the higher rate, then downsamples back.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "oversampling",
+        "aliasing"
+      ],
+      "llmRef": "container.oversample8x\n\nUpsamples the audio signal by a fixed factor of 8, processes child nodes serially at the higher sample rate, then downsamples back with anti-aliasing filtering. Fixed variant of container.oversample - strong aliasing reduction at significant CPU cost.\n\nSignal flow:\n  audio in -> upsample 8x -> child1 -> child2 -> ... -> childN -> downsample 8x -> audio out\n\nCPU: very_high, monophonic only. Child processing cost is multiplied by 8.\n\nParameters:\n  FilterType (Polyphase / FIR, default Polyphase) - anti-aliasing filter. Polyphase has lower latency, FIR has steeper rolloff.\n\nConstraints:\n  - Monophonic only (no polyphonic voice context)\n  - Block processing only (no frame processing)\n  - Cannot be nested inside another oversample container\n  - Latency from the anti-aliasing filter is not reported to the host\n\nWhen to use:\n  Heavy nonlinear processing that generates strong high-order harmonics (aggressive waveshaping, hard clipping, FM synthesis). At 44.1 kHz, children process at 352.8 kHz. Consider whether 4x is sufficient before committing to this CPU cost.\n\nCommon mistakes:\n  Cannot nest oversample containers - use a single higher factor instead.\n  Cannot be used in polyphonic networks.\n\nSee also:\n  disambiguation container.oversample - dynamic variant with selectable factor\n  disambiguation container.oversample4x - fixed 4x variant\n  disambiguation container.oversample16x - fixed 16x variant\n  alternative container.repitch - resampling alternative",
+      "cpuProfile": {
+        "baseline": "very_high",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "FilterType",
+            "impact": "minor",
+            "note": "FIR is slightly more expensive than Polyphase but negligible compared to child processing cost."
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Nesting oversample containers is not allowed",
+          "wrong": "Placing an oversample8x container inside another oversample container",
+          "right": "Use a single oversample container with the combined factor you need.",
+          "explanation": "The container checks that the incoming sample rate matches the network's original sample rate. If the signal has already been upsampled, this check fails and the node reports an error."
+        },
+        {
+          "title": "Cannot be used in polyphonic networks",
+          "wrong": "Placing an oversample8x container inside a polyphonic signal chain",
+          "right": "Use oversampling only in monophonic contexts.",
+          "explanation": "Oversampling is restricted to monophonic processing. If the container detects a polyphonic voice context, it reports an error."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.oversample",
+          "type": "disambiguation",
+          "reason": "Dynamic variant with selectable factor"
+        },
+        {
+          "id": "container.oversample4x",
+          "type": "disambiguation",
+          "reason": "Fixed 4x variant for lower CPU cost"
+        },
+        {
+          "id": "container.oversample16x",
+          "type": "disambiguation",
+          "reason": "Fixed 16x variant for maximum aliasing reduction"
+        },
+        {
+          "id": "container.repitch",
+          "type": "alternative",
+          "reason": "Resampling alternative - changes pitch rather than preventing aliasing"
+        }
+      ],
+      "parameters": {
+        "FilterType": {
+          "description": "Anti-aliasing filter type: Polyphase (lower latency) or FIR (steeper rolloff)",
+          "range": "Polyphase / FIR",
+          "default": "Polyphase"
+        }
+      }
+    },
+    "container.repitch": {
+      "factoryPath": "container.repitch",
+      "factory": "container",
+      "title": "Repitch",
+      "description": "A serial container that resamples audio before and after child processing to change the effective pitch.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "resampling"
+      ],
+      "llmRef": "container.repitch\n\nA serial container that resamples audio before and after child processing. Children see a different effective sample rate depending on the RepitchFactor.\n\nSignal flow:\n  input -> downsample(ratio) -> children.process -> upsample(ratio) -> output\n\nCPU: medium, monophonic\n  Resampling cost depends on interpolation quality.\n\nParameters:\n  RepitchFactor: 0.5 - 2.0 (default 1.0, logarithmic skew)\n    Factor > 1.0: children see lower effective pitch (fewer internal samples).\n    Factor < 1.0: children see higher effective pitch (more internal samples).\n  Interpolation: Cubic / Linear / None (default Cubic)\n    Resampling quality. Cubic is highest quality; None introduces aliasing artifacts.\n\nWhen to use:\n  Change the frequency response of static nodes (convolution, neural networks), alter time-based effects, or introduce resampling artifacts. Stack multiple repitch containers for a range beyond one octave.\n\nKey details:\n  Primary use case: shift frequency response of SR-dependent effects (filters, convolution, neural nets) without changing coefficients.\n  SR-independent nodes (gain, waveshapers) are unaffected by the repitch factor.\n  Frequency response shift may appear inverted when only effects (no generator) are inside.\n\nCommon mistakes:\n  Only works with 1 or 2 channels. Multichannel audio passes through unmodified.\n\nSee also:\n  (none)",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "Interpolation",
+            "impact": "quality-dependent",
+            "note": "Cubic uses 4-point interpolation per sample; None uses nearest-neighbour"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Using more than two audio channels",
+          "wrong": "Placing a repitch container in a context with more than 2 channels and expecting resampling to work",
+          "right": "Use repitch only in mono or stereo contexts. For multichannel resampling, nest multiple repitch containers inside a container.multi.",
+          "explanation": "Repitch only processes 1 or 2 channels. With more channels, the audio passes through unmodified with no warning."
+        }
+      ],
+      "parameters": {
+        "RepitchFactor": {
+          "description": "Resampling ratio that controls the effective pitch change",
+          "range": "0.5 - 2.0",
+          "default": "1.0"
+        },
+        "Interpolation": {
+          "description": "Interpolation quality for the resampling operation",
+          "range": "Cubic / Linear / None",
+          "default": "Cubic"
+        }
+      }
+    },
+    "container.sidechain": {
+      "factoryPath": "container.sidechain",
+      "factory": "container",
+      "title": "Sidechain",
+      "description": "A serial container that doubles the channel count by adding empty sidechain channels.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "sidechain",
+        "routing"
+      ],
+      "llmRef": "container.sidechain\n\nA serial container that doubles the channel count by adding zeroed sidechain channels. Children see twice as many channels: the first half is the original audio, the second half is empty sidechain input.\n\nSignal flow:\n  input (ch0, ch1) ->\n    children see (ch0, ch1, sc0=0, sc1=0) ->\n  output (ch0, ch1)  [only original channels returned]\n\nCPU: low, monophonic\n  One buffer zeroing operation per block for the sidechain channels.\n\nParameters:\n  None\n\nWhen to use:\n  Sidechain compression, ducking, or any effect that uses a secondary signal to control processing. Combine with dynamics nodes that have a Sidechain parameter and routing nodes to fill the extra channels.\n\nKey details:\n  Internal routing only. External DAW sidechain input requires HISE source modification (HISE_NUM_FX_PLUGIN_CHANNELS).\n\nCommon mistakes:\n  Sidechain channels are zeroed by default. Route a signal into them using routing nodes.\n\nSee also:\n  [alternative] container.multi -- channel splitting without doubling",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Forgetting to route into sidechain channels",
+          "wrong": "Adding a dynamics node with Sidechain enabled but not routing any signal into the extra channels",
+          "right": "Use routing nodes (routing.receive, routing.global_cable) to fill the sidechain channels with the desired input signal.",
+          "explanation": "The extra channels created by the sidechain container are zeroed by default. Without routing a signal into them, sidechain-enabled processors detect silence and have no effect."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.multi",
+          "type": "alternative",
+          "reason": "Channel splitting without doubling"
+        }
+      ]
+    },
+    "container.soft_bypass": {
+      "factoryPath": "container.soft_bypass",
+      "factory": "container",
+      "title": "Soft Bypass",
+      "description": "A serial container with smoothed bypass crossfading to prevent clicks.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "serial",
+        "bypass"
+      ],
+      "llmRef": "container.soft_bypass\n\nA serial container with smoothed bypass crossfading. When bypass is toggled, a linear crossfade transitions between dry and wet signals over a configurable duration, preventing clicks.\n\nSignal flow:\n  Active:     input -> children process serially -> output\n  Bypassed:   input -> passthrough -> output\n  Transition: input -> crossfade(dry, wet) -> output\n\nCPU: low, monophonic\n  Zero overhead when fully active or fully bypassed. Buffer copy + blend during crossfade.\n\nParameters:\n  None (bypass is controlled via parameter connections or the node's bypass state)\n\nProperties:\n  SmoothingTime: 0 - 1000 ms (default 20)\n\nWhen to use:\n  Click-free bypass toggling for effect chains. The only container that accepts dynamic bypass parameter connections. Used internally by template.softbypass_switchN for click-free N-way switching.\n\nKey details:\n  Use math.compare upstream for threshold-based bypass control.\n  Series chaining two soft_bypass nodes produces clicks - use parallel arrangement instead.\n\nCommon mistakes:\n  Modulation output is suppressed immediately on bypass, not smoothed.\n  Series chaining produces clicks due to nested double-ramp interactions.\n\nSee also:\n  [disambiguation] container.chain -- hard bypass with no crossfade\n  [companion] container.branch -- index-based switching that benefits from soft bypass wrappers",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Modulation output not smoothed during bypass",
+          "wrong": "Expecting modulation outputs from children to fade smoothly when bypassed",
+          "right": "Be aware that modulation output is suppressed immediately when bypassed, even though the audio crossfade takes time.",
+          "explanation": "The audio crossfade uses a linear ramp, but modulation output is cut instantly when bypass is engaged. If downstream nodes depend on modulation from inside the soft_bypass, they will see an abrupt change."
+        },
+        {
+          "title": "Series chaining produces clicks instead of smooth transitions",
+          "wrong": "Placing two soft_bypass containers in series and expecting both to crossfade smoothly",
+          "right": "Use soft_bypass containers in parallel (e.g. inside a split or via the `template.softbypass_switchN` templates). For series switching, use `container.branch` instead.",
+          "explanation": "The double-ramp crossfade pre-multiplies the input by the ramp before processing. When two soft_bypass nodes are in series, the second node receives an already-ramped signal from the first, causing nested ramp interactions that produce clicks rather than smooth transitions."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.chain",
+          "type": "disambiguation",
+          "reason": "Hard bypass with no crossfade"
+        },
+        {
+          "id": "container.branch",
+          "type": "companion",
+          "reason": "Index-based switching that benefits from soft bypass wrappers"
+        }
+      ]
+    },
+    "container.split": {
+      "factoryPath": "container.split",
+      "factory": "container",
+      "title": "Split",
+      "description": "A parallel container that copies the input to each child and sums their outputs.",
+      "polyphonic": false,
+      "tags": [
+        "container",
+        "parallel"
+      ],
+      "llmRef": "container.split\n\nA parallel container that copies the input signal to each child node and sums their outputs. Each child processes independently - they do not see each other's modifications.\n\nSignal flow:\n  input --copy--> child[0] --\\\n  input --copy--> child[1] ---+--> sum --> output\n  input --copy--> child[N] --/\n\nCPU: low, monophonic\n  Buffer copy on entry; one copy + add per child beyond the first.\n\nParameters:\n  None\n\nWhen to use:\n  Parallel effect chains, dry/wet mixing, multiband processing, any topology where the same input feeds multiple independent processing paths whose results are combined.\n\nCommon mistakes:\n  Summing multiple children at unity gain increases the output level. Compensate with gain staging.\n\nSee also:\n  [alternative] container.chain -- serial processing instead of parallel\n  [alternative] container.multi -- channel splitting instead of signal copying\n  [alternative] container.clone -- parallel processing with identical children",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "child count",
+            "impact": "linear",
+            "note": "Each additional child adds a buffer copy and add operation"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Unexpected gain increase from summing",
+          "wrong": "Adding multiple children to a split without compensating output level",
+          "right": "Add a core.gain node after the split or inside each child to compensate for the summed output.",
+          "explanation": "Split sums all child outputs together. Two children at unity gain produce twice the amplitude. Scale each child or the combined output to maintain the expected level."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "container.chain",
+          "type": "alternative",
+          "reason": "Serial processing instead of parallel"
+        },
+        {
+          "id": "container.multi",
+          "type": "alternative",
+          "reason": "Channel splitting instead of signal copying"
+        },
+        {
+          "id": "container.clone",
+          "type": "alternative",
+          "reason": "Parallel processing with identical children"
+        }
+      ]
+    },
+    "filters.allpass": {
+      "factoryPath": "filters.allpass",
+      "factory": "filters",
+      "title": "Allpass",
+      "description": "A six-stage cascaded allpass chain with feedback, producing phaser-style notches when the allpass output is mixed with the dry input.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "allpass",
+        "phaser",
+        "phase-shift",
+        "effect"
+      ],
+      "llmRef": "filters.allpass\n\nSix-stage cascaded allpass chain with feedback, producing phaser-style notches. Mixes dry signal with the allpass output. Despite the name, this is a phaser effect, not a flat-amplitude allpass.\n\nSignal flow:\n  audio in -> 6 cascaded allpass stages with feedback -> mixed with dry input -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Centre frequency for the allpass delay.\n  Q: 0.3 - 9.9 (default 1.0). Feedback amount (0 = no feedback, max = strong resonance).\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: AllPass only (default AllPass).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Phaser-style effects. Modulate Frequency with an LFO for classic phaser sweeps. Not for phase correction - use filters.svf Allpass mode instead.\n\nCommon mistakes:\n  This is a phaser effect, not a true allpass. Use filters.svf Allpass mode for phase-only processing.\n\nSee also:\n  [disambiguation] filters.svf - SVF Allpass mode for true phase-only allpass",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Allpass creates amplitude notches",
+          "wrong": "Using filters.allpass for phase correction expecting flat amplitude response",
+          "right": "Use filters.svf in Allpass mode (mode 4) for a true allpass with flat amplitude.",
+          "explanation": "filters.allpass is a 6-stage cascaded allpass chain with feedback that produces phaser-style amplitude notches. It is an effect, not a utility allpass. For phase-only processing, use the SVF's Allpass mode."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.svf",
+          "type": "disambiguation",
+          "reason": "SVF Allpass mode for true phase-only allpass (no amplitude notches)"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Centre frequency for the allpass delay",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Feedback amount (higher = sharper notches)",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        }
+      }
+    },
+    "filters.biquad": {
+      "factoryPath": "filters.biquad",
+      "factory": "filters",
+      "title": "Biquad",
+      "description": "A second-order biquad filter with six modes: LowPass, HighPass, LowShelf, HighShelf, Peak, and ResoLow.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "biquad",
+        "iir",
+        "lowpass",
+        "highpass",
+        "lowshelf",
+        "highshelf",
+        "peak",
+        "eq"
+      ],
+      "llmRef": "filters.biquad\n\nSecond-order biquad (IIR) filter with six modes: LowPass, HighPass, LowShelf, HighShelf, Peak, and ResoLow. Uses standard cookbook formulas.\n\nSignal flow:\n  audio in -> biquad filter -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff or centre frequency.\n  Q: 0.3 - 9.9 (default 1.0). Used by LowShelf, HighShelf, Peak, ResoLow. Ignored by LowPass, HighPass.\n  Gain: -18 - 18 dB (default 0). Used by LowShelf, HighShelf, Peak. Ignored by LowPass, HighPass, ResoLow.\n  Smoothing: 0 - 1 s (default 0.01). Coefficient interpolation time.\n  Mode: LowPass, HighPass, LowShelf, HighShelf, Peak, ResoLow (default LowPass).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Static or slowly changing EQ. Has the widest mode selection of any filter node (6 modes). Avoid for fast modulation - use SVF filters instead.\n\nCommon mistakes:\n  LowPass mode has no resonance. Use ResoLow for resonant lowpass.\n  Susceptible to clicks with fast modulation. Use SVF filters for filter sweeps.\n\nSee also:\n  [alternative] filters.svf - SVF with better modulation stability\n  [alternative] filters.svf_eq - SVF EQ with gain modes",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Unstable under fast modulation",
+          "wrong": "Using filters.biquad with fast frequency modulation from an LFO or envelope",
+          "right": "Use filters.svf or filters.svf_eq for modulated filter sweeps.",
+          "explanation": "The biquad topology can produce clicks or instability when coefficients change rapidly. SVF filters handle modulation more gracefully."
+        },
+        {
+          "title": "Use ResoLow for resonant lowpass",
+          "wrong": "Expecting resonance in LowPass mode (mode 0)",
+          "right": "Use ResoLow mode (mode 5) for a resonant lowpass.",
+          "explanation": "LowPass mode uses a Butterworth design with no resonance control. Q is ignored. Switch to ResoLow for a resonant lowpass that responds to Q."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "SVF with better modulation stability"
+        },
+        {
+          "id": "filters.svf_eq",
+          "type": "alternative",
+          "reason": "SVF EQ with gain modes and better modulation stability"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff or centre frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Resonance or bandwidth (mode-dependent)",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        },
+        "Gain": {
+          "description": "Boost/cut for shelf and peak modes",
+          "range": "-18 - 18 dB",
+          "default": "0.0"
+        },
+        "Mode": {
+          "description": "Filter type",
+          "range": "LowPass / HighPass / LowShelf / HighShelf / Peak / ResoLow",
+          "default": "LowPass"
+        }
+      }
+    },
+    "filters.convolution": {
+      "factoryPath": "filters.convolution",
+      "factory": "filters",
+      "title": "Convolution",
+      "description": "A partitioned FFT convolution reverb that convolves the input signal with an impulse response loaded from an AudioFile slot.",
+      "polyphonic": false,
+      "tags": [
+        "filters",
+        "convolution",
+        "reverb",
+        "impulse-response",
+        "ir",
+        "fft"
+      ],
+      "llmRef": "filters.convolution\n\nPartitioned FFT convolution reverb with impulse response loading from an AudioFile slot. Mixes wet signal at approximately 50% with the dry input. Monophonic only.\n\nSignal flow:\n  audio in -> FFT convolution with IR -> predelay -> wet/dry mix -> audio out\n\nCPU: high, monophonic. Scales linearly with IR length. Multithread offloads tail to background thread.\n\nParameters:\n  Gate: Off / On (default On). Enables/disables processing with click-free ramp.\n  Predelay: 0 - 1000 ms (default 0). Delay applied to wet signal.\n  Damping: -100 - 0 dB (default 0). Exponential decay applied to IR during loading.\n  HiCut: 20 - 20000 Hz (default 20000). Frequency-dependent decay applied to IR during loading.\n  Multithread: Off / On (default Off). Offloads tail convolution to background thread.\n\nWhen to use:\n  Reverb and IR-based effects in scriptnode. Place on a bus, not per-voice. Use Gate to save CPU when convolution is not needed.\n\nCommon mistakes:\n  Not polyphonic - always processes summed output.\n  Damping and HiCut are not real-time - they trigger IR reload.\n\nSee also:\n  [alternative] fx.reverb - algorithmic reverb with lower CPU",
+      "cpuProfile": {
+        "baseline": "high",
+        "polyphonic": false,
+        "scalingFactors": [
+          {
+            "parameter": "IR length",
+            "impact": "linear",
+            "note": "Longer impulse responses increase FFT partition count and processing time"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Always monophonic, not per-voice",
+          "wrong": "Placing filters.convolution inside a polyphonic voice chain expecting per-voice reverb",
+          "right": "Place convolution on a monophonic bus (after voice summing). It is always monophonic.",
+          "explanation": "Convolution is inherently expensive and stateful. The node processes only the summed signal regardless of where it is placed. For per-voice spatial effects, use simpler filters or delays instead."
+        },
+        {
+          "title": "Damping and HiCut trigger IR reload",
+          "wrong": "Modulating Damping or HiCut in real time expecting smooth changes",
+          "right": "Damping and HiCut are applied during impulse response loading, not in real time. Changes trigger a reload.",
+          "explanation": "These parameters pre-process the impulse response. Changing them causes the IR to be reloaded with crossfading, which is not suited for continuous modulation."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "fx.reverb",
+          "type": "alternative",
+          "reason": "Algorithmic reverb with lower CPU cost"
+        }
+      ],
+      "parameters": {
+        "Gate": {
+          "description": "Enables or disables convolution processing",
+          "range": "Off / On",
+          "default": "On"
+        },
+        "Predelay": {
+          "description": "Delay applied to the wet signal",
+          "range": "0 - 1000 ms",
+          "default": "0"
+        },
+        "Damping": {
+          "description": "Exponential decay applied to the IR during loading",
+          "range": "-100 - 0 dB",
+          "default": "0"
+        },
+        "HiCut": {
+          "description": "Frequency-dependent decay applied to the IR during loading",
+          "range": "20 - 20000 Hz",
+          "default": "20000"
+        },
+        "Multithread": {
+          "description": "Offloads tail FFT to a background thread",
+          "range": "Off / On",
+          "default": "Off"
+        }
+      }
+    },
+    "filters.ladder": {
+      "factoryPath": "filters.ladder",
+      "factory": "filters",
+      "title": "Ladder",
+      "description": "A simple 4-pole (24 dB/octave) ladder lowpass filter.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "ladder",
+        "lowpass",
+        "resonance"
+      ],
+      "llmRef": "filters.ladder\n\nSimple 4-pole (24 dB/oct) ladder lowpass filter. Lightweight alternative to filters.moog with a cleaner character.\n\nSignal flow:\n  audio in -> 4 cascaded one-pole stages with feedback -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff frequency.\n  Q: 0.3 - 9.9 (default 1.0). Resonance.\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: LP24 only (default LP24).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Lightweight 24 dB/oct lowpass when CPU matters and analog character is not needed. For warmer sound, use filters.moog instead.\n\nSee also:\n  [disambiguation] filters.moog - Moog-style ladder with more character\n  [alternative] filters.svf - multimode SVF",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "filters.moog",
+          "type": "disambiguation",
+          "reason": "Moog-style ladder with more analog character"
+        },
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "SVF with multiple filter types"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Resonance feedback",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        }
+      }
+    },
+    "filters.linkwitzriley": {
+      "factoryPath": "filters.linkwitzriley",
+      "factory": "filters",
+      "title": "Linkwitz-Riley",
+      "description": "A fourth-order Linkwitz-Riley (LR4) crossover filter with a 24 dB/octave slope.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "linkwitz-riley",
+        "crossover",
+        "lowpass",
+        "highpass",
+        "allpass"
+      ],
+      "llmRef": "filters.linkwitzriley\n\nFourth-order Linkwitz-Riley (LR4) crossover filter with 24 dB/oct slope. Computes both LP and HP internally, outputs one based on Mode. LP + HP sum to flat allpass (unity gain at crossover).\n\nSignal flow:\n  audio in -> LR4 filter (both LP and HP computed) -> selected output\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Crossover frequency.\n  Q: 0.3 - 9.9 (default 1.0). Ignored - LR filters have fixed Q.\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: LP, HP, AP (default LP). AP = LP + HP sum (flat).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Frequency-band splitting for multiband processing. Use two instances at the same frequency for a proper crossover. The LP and HP outputs sum to unity gain at the crossover point with no amplitude colouring.\n\nCommon mistakes:\n  Use two nodes for a crossover - one LP, one HP. A single node only outputs one band.\n\nSee also:\n  [alternative] filters.svf - general-purpose filter (not crossover)",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Use two nodes for crossover bands",
+          "wrong": "Using a single linkwitzriley node and expecting to get both LP and HP outputs simultaneously",
+          "right": "Use two linkwitzriley nodes at the same frequency - one in LP mode, one in HP mode - to build a crossover.",
+          "explanation": "Each node instance outputs only one band. To split a signal into low and high bands, place two nodes in parallel with matching frequency settings."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "SVF for general filtering (not crossover use)"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Crossover frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Mode": {
+          "description": "Output selection: LP, HP, or AP (LP + HP sum)",
+          "range": "LP / HP / AP",
+          "default": "LP"
+        }
+      }
+    },
+    "filters.moog": {
+      "factoryPath": "filters.moog",
+      "factory": "filters",
+      "title": "Moog",
+      "description": "A Moog-style transistor ladder lowpass filter with a 24 dB/octave slope.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "moog",
+        "ladder",
+        "lowpass",
+        "analog",
+        "resonance"
+      ],
+      "llmRef": "filters.moog\n\nMoog-style transistor ladder lowpass filter with 24 dB/oct slope. Analog-modelled with resonance feedback that can approach self-oscillation at high Q. Always processes as 4-pole regardless of Mode setting.\n\nSignal flow:\n  audio in -> 4-stage ladder with feedback -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff frequency.\n  Q: 0.3 - 9.9 (default 1.0). Resonance feedback. High values approach self-oscillation.\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: One Pole, Two Poles, Four Poles (default One Pole). Display only - does not affect processing.\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Classic analog-style lowpass with character. Choose over filters.ladder when a warmer, more coloured sound is desired. Not suited for EQ or multimode filtering.\n\nCommon mistakes:\n  Mode parameter is display-only - processing is always 24 dB/oct regardless of Mode setting.\n\nSee also:\n  [disambiguation] filters.ladder - simpler ladder lowpass, lighter CPU\n  [alternative] filters.svf - multimode SVF with better modulation stability",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Mode only affects display curve",
+          "wrong": "Switching the Mode parameter expecting different filter slopes",
+          "right": "The Mode parameter only changes the filter display curve, not the audio processing.",
+          "explanation": "Despite showing One Pole, Two Poles, and Four Poles options, the Moog filter always processes as a full 4-pole (24 dB/oct) ladder. The Mode parameter affects only the frequency response visualisation."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.ladder",
+          "type": "disambiguation",
+          "reason": "Simpler ladder lowpass with lighter CPU cost"
+        },
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "SVF with multiple filter types and better modulation stability"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Resonance feedback amount",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        }
+      }
+    },
+    "filters.one_pole": {
+      "factoryPath": "filters.one_pole",
+      "factory": "filters",
+      "title": "One Pole",
+      "description": "A first-order filter with lowpass and highpass modes, providing a gentle 6 dB/octave slope.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "one-pole",
+        "lowpass",
+        "highpass",
+        "smoothing",
+        "dc-blocking"
+      ],
+      "llmRef": "filters.one_pole\n\nFirst-order (one-pole) filter with LP and HP modes. 6 dB/octave slope. The simplest and cheapest filter in the factory.\n\nSignal flow:\n  audio in -> one-pole IIR -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff frequency.\n  Q: 0.3 - 9.9 (default 1.0). Ignored.\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: LP, HP (default LP).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Gentle tone shaping, DC blocking (HP mode), control signal smoothing. When a steep rolloff is not needed and minimal CPU cost matters.\n\nSee also:\n  [alternative] filters.svf - second-order SVF for steeper rolloff",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "seeAlso": [
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "Second-order SVF for steeper rolloff"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Mode": {
+          "description": "LP (lowpass) or HP (highpass)",
+          "range": "LP / HP",
+          "default": "LP"
+        }
+      }
+    },
+    "filters.ring_mod": {
+      "factoryPath": "filters.ring_mod",
+      "factory": "filters",
+      "title": "Ring Mod",
+      "description": "A ring modulator that multiplies the input signal by an internal sine oscillator.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "ring-mod",
+        "ring-modulation",
+        "effect",
+        "sine"
+      ],
+      "llmRef": "filters.ring_mod\n\nRing modulator that multiplies the input by an internal sine oscillator. Q controls wet/dry mix, not resonance. Placed in the filters factory for architectural reasons but is functionally an effect.\n\nSignal flow:\n  audio in -> multiply by sine oscillator -> wet/dry mix -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Internal sine oscillator frequency.\n  Q: 0.3 - 9.9 (default 1.0). Modulation depth (0 = dry, max = full ring mod).\n  Gain: -18 - 18 dB (default 0). Ignored.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: RingMod only (default RingMod).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Ring modulation effects. Creates inharmonic sum and difference frequencies. Minimum oscillator frequency is 20 Hz, so true tremolo is not achievable.\n\nCommon mistakes:\n  Q controls wet/dry mix, not resonance.\n\nSee also: (none)",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Q controls depth, not resonance",
+          "wrong": "Expecting Q to control filter resonance as in other filter nodes",
+          "right": "Q controls modulation depth (wet/dry mix), not resonance.",
+          "explanation": "In this node, Q is repurposed as a wet/dry control. At minimum Q, the output is fully dry. At maximum Q, the output is fully ring-modulated."
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Sine oscillator frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Modulation depth / wet-dry mix",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        }
+      }
+    },
+    "filters.svf": {
+      "factoryPath": "filters.svf",
+      "factory": "filters",
+      "title": "SVF",
+      "description": "A state variable filter with five modes: lowpass, highpass, bandpass, notch, and allpass.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "svf",
+        "lowpass",
+        "highpass",
+        "bandpass",
+        "notch",
+        "allpass"
+      ],
+      "llmRef": "filters.svf\n\nState variable filter with five modes: LP, HP, BP, Notch, and Allpass. Second-order (12 dB/oct) with per-sample processing. Stable under modulation due to trapezoidal integration.\n\nSignal flow:\n  audio in -> SVF (mode-dependent output selection) -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff or centre frequency.\n  Q: 0.3 - 9.9 (default 1.0). Resonance. Higher values increase resonance but cannot self-oscillate.\n  Gain: -18 - 18 dB (default 0). Ignored by all modes.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: LP, HP, BP, Notch, Allpass (default LP).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  General-purpose filter for synthesis and effects. Preferred over biquad when modulating cutoff frequency. Use filters.svf_eq instead when shelving or peak EQ gain control is needed.\n\nCommon mistakes:\n  Gain parameter is ignored - use filters.svf_eq for gain-dependent modes.\n\nSee also:\n  [alternative] filters.svf_eq - SVF with EQ/shelving modes\n  [alternative] filters.biquad - biquad with more modes but less modulation stability",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Gain parameter has no effect",
+          "wrong": "Setting the Gain parameter expecting it to affect the filter response",
+          "right": "Gain has no effect on any SVF mode. Use filters.svf_eq for gain-dependent filtering.",
+          "explanation": "The Gain parameter exists for interface consistency across all filter nodes but is ignored by the SVF. For shelving or peak EQ, use filters.svf_eq instead."
+        },
+        {
+          "title": "Keep Smoothing above zero for modulation",
+          "wrong": "Using filters.svf with rapid frequency modulation and Smoothing set to 0",
+          "right": "Keep Smoothing above 0 (default 0.01s) when modulating parameters to avoid zipper noise.",
+          "explanation": "Although the SVF topology is inherently more stable than biquad under modulation, disabling smoothing entirely can still produce audible artefacts from discrete coefficient steps."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.svf_eq",
+          "type": "alternative",
+          "reason": "SVF with gain-dependent EQ modes (shelving, peak)"
+        },
+        {
+          "id": "filters.biquad",
+          "type": "alternative",
+          "reason": "Biquad with more mode variety but less modulation stability"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff or centre frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Resonance amount",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        },
+        "Mode": {
+          "description": "Filter type: LP, HP, BP, Notch, Allpass",
+          "range": "0 - 4",
+          "default": "0 (LP)"
+        }
+      }
+    },
+    "filters.svf_eq": {
+      "factoryPath": "filters.svf_eq",
+      "factory": "filters",
+      "title": "SVF EQ",
+      "description": "An SVF-based parametric EQ with five modes: LowPass, HighPass, LowShelf, HighShelf, and Peak.",
+      "polyphonic": true,
+      "tags": [
+        "filters",
+        "svf",
+        "eq",
+        "lowshelf",
+        "highshelf",
+        "peak",
+        "parametric"
+      ],
+      "llmRef": "filters.svf_eq\n\nSVF-based parametric EQ with five modes: LowPass, HighPass, LowShelf, HighShelf, and Peak. Uses double-precision processing with built-in per-sample coefficient smoothing for zipper-free parameter changes.\n\nSignal flow:\n  audio in -> SVF EQ (mixing-matrix output selection) -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Frequency: 20 - 20000 Hz (default 1000). Cutoff or centre frequency.\n  Q: 0.3 - 9.9 (default 1.0). Bandwidth or resonance.\n  Gain: -18 - 18 dB (default 0). Boost/cut for LowShelf, HighShelf, Peak. Ignored by LowPass, HighPass.\n  Smoothing: 0 - 1 s (default 0.01). Parameter interpolation time.\n  Mode: LowPass, HighPass, LowShelf, HighShelf, Peak (default LowPass).\n  Enabled: Off / On (default On). Hard bypass.\n\nWhen to use:\n  Parametric EQ in scriptnode. Preferred over filters.biquad for modulated EQ due to SVF stability. Use filters.svf instead when gain control is not needed.\n\nCommon mistakes:\n  Gain is ignored in LowPass/HighPass modes - use LowShelf/HighShelf/Peak for boost/cut.\n\nSee also:\n  [alternative] filters.svf - SVF without gain modes\n  [alternative] filters.biquad - biquad with similar EQ modes",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Gain only works in shelf and peak modes",
+          "wrong": "Setting Gain and expecting it to affect LowPass or HighPass modes",
+          "right": "Gain only affects LowShelf, HighShelf, and Peak modes.",
+          "explanation": "In LowPass and HighPass modes the Gain parameter is ignored. Switch to a shelf or peak mode to control boost/cut."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.svf",
+          "type": "alternative",
+          "reason": "SVF without gain modes (LP/HP/BP/Notch/Allpass)"
+        },
+        {
+          "id": "filters.biquad",
+          "type": "alternative",
+          "reason": "Biquad with similar EQ modes but different topology"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Cutoff or centre frequency",
+          "range": "20 - 20000 Hz",
+          "default": "1000"
+        },
+        "Q": {
+          "description": "Bandwidth or resonance",
+          "range": "0.3 - 9.9",
+          "default": "1.0"
+        },
+        "Gain": {
+          "description": "Boost/cut amount for shelf and peak modes",
+          "range": "-18 - 18 dB",
+          "default": "0.0"
+        },
+        "Mode": {
+          "description": "EQ band type",
+          "range": "LowPass / HighPass / LowShelf / HighShelf / Peak",
+          "default": "LowPass"
+        }
+      }
+    },
+    "fx.bitcrush": {
+      "factoryPath": "fx.bitcrush",
+      "factory": "fx",
+      "title": "Bitcrush",
+      "description": "Reduces the bit depth of the audio signal, producing quantisation noise and digital distortion.",
+      "polyphonic": true,
+      "tags": [
+        "fx",
+        "lo-fi",
+        "distortion"
+      ],
+      "llmRef": "fx.bitcrush\n\nReduces the bit depth of the audio signal by quantising each sample to a stepped curve. Produces the characteristic lo-fi, gritty sound of low bit-depth digital audio. Each voice maintains its own bit depth value; Mode is shared across all voices.\n\nSignal flow:\n  audio in -> quantise to 2^BitDepth levels (rounding depends on Mode) -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  BitDepth (4.0 - 16.0, step 0.1, default 16.0) - number of quantisation bits. Fractional values supported. 16 = transparent, 4 = heavy distortion. Not smoothed - rapid audio-rate modulation can alias; use dynamic_blocksize for frame processing.\n  Mode (DC / Bipolar, default DC) - rounding behaviour. DC Offset rounds up (introduces DC bias). Bipolar rounds toward zero (symmetric, no DC bias). Use Bipolar when modulating BitDepth to avoid time-varying DC drift.\n\nVintage DAC emulation:\n  Wrap with mu-law compression before and expansion after to distribute quantisation logarithmically (more resolution for quiet signals). Models vintage drum machines and 8-bit samplers more accurately than linear bit reduction.\n\nWhen to use:\n  Lo-fi effects, digital distortion, retro character. Pair with fx.sampleandhold for combined bit-depth and sample-rate reduction.\n\nCommon mistakes:\n  DC Offset mode introduces DC bias - use Bipolar for most cases.\n  BitDepth 16 is transparent - use lower values for audible effect.\n\nSee also:\n  companion fx.sampleandhold - sample rate reduction counterpart",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "DC Offset mode introduces DC bias",
+          "wrong": "Using DC Offset mode without a DC blocker downstream",
+          "right": "Use Bipolar mode for most applications, or add a high-pass filter after DC Offset mode to remove the bias.",
+          "explanation": "DC Offset mode rounds using ceil with a half-step shift, which introduces a small DC offset into the signal. Bipolar mode rounds toward zero and does not produce DC bias."
+        },
+        {
+          "title": "BitDepth 16 is effectively transparent",
+          "wrong": "Setting BitDepth to 16 expecting audible distortion",
+          "right": "Use lower BitDepth values (4-10) for audible bitcrushing. At 16 bits the quantisation noise is below the audible threshold.",
+          "explanation": "At 16 bits there are 65536 quantisation levels, producing noise well below audible threshold. The effect becomes clearly audible below roughly 10-12 bits."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "fx.sampleandhold",
+          "type": "companion",
+          "reason": "Sample rate reduction counterpart - bitcrush reduces amplitude resolution, sampleandhold reduces time resolution"
+        }
+      ],
+      "parameters": {
+        "BitDepth": {
+          "description": "Number of quantisation bits (fractional values supported)",
+          "range": "4.0 - 16.0",
+          "default": "16.0"
+        },
+        "Mode": {
+          "description": "Rounding behaviour: DC Offset (ceil + shift) or Bipolar (round toward zero)",
+          "range": "DC / Bipolar",
+          "default": "DC"
+        }
+      }
+    },
+    "fx.haas": {
+      "factoryPath": "fx.haas",
+      "factory": "fx",
+      "title": "Haas",
+      "description": "Stereo positioning effect using inter-channel delay (Haas effect) with up to 20ms offset.",
+      "polyphonic": true,
+      "tags": [
+        "fx",
+        "stereo",
+        "panning"
+      ],
+      "llmRef": "fx.haas\n\nStereo positioning effect using the Haas psychoacoustic principle. Delays one channel by up to 20ms relative to the other, creating the perception of directional placement without amplitude changes.\n\nSignal flow:\n  stereo in -> delay one channel (0-20ms based on Position) -> stereo out\n\nCPU: low, polyphonic\n\nParameters:\n  Position (-1.0 - 1.0, default 0.0) - stereo position. Negative = sound from left (right channel delayed), positive = sound from right (left channel delayed), 0 = centre (no delay).\n\nWhen to use:\n  Natural-sounding stereo placement that preserves mono compatibility better than amplitude panning. Effective for positioning elements in the stereo field without altering their level.\n\nCommon mistakes:\n  Requires stereo input - mono signals need conversion first.\n\nSee also:\n  alternative jdsp.jpanner - amplitude-based panning",
+      "cpuProfile": {
+        "baseline": "low",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Requires stereo input signal",
+          "wrong": "Using fx.haas on a mono channel expecting stereo widening",
+          "right": "Place fx.haas after a mono-to-stereo conversion (e.g. core.mono2stereo) so it receives two channels.",
+          "explanation": "The node requires exactly two input channels. With mono input the behaviour is undefined. Ensure the signal is stereo before this node."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "jdsp.jpanner",
+          "type": "alternative",
+          "reason": "Amplitude-based panning versus Haas delay-based panning"
+        }
+      ],
+      "parameters": {
+        "Position": {
+          "description": "Stereo position from left (-1) through centre (0) to right (+1)",
+          "range": "-1.0 - 1.0",
+          "default": "0.0"
+        }
+      }
+    },
+    "fx.phase_delay": {
+      "factoryPath": "fx.phase_delay",
+      "factory": "fx",
+      "title": "Phase Delay",
+      "description": "A first-order allpass filter that shifts the phase of the signal without changing its amplitude, intended for building comb filters.",
+      "polyphonic": true,
+      "tags": [
+        "fx",
+        "filter",
+        "phase"
+      ],
+      "llmRef": "fx.phase_delay\n\nFirst-order allpass filter that shifts the phase of the input signal without changing its amplitude. Designed as the building block for comb filter effects.\n\nSignal flow:\n  audio in -> first-order allpass (phase shift 0 to -180 degrees) -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Frequency (20 - 20000 Hz, skewed, default 400 Hz) - allpass corner frequency where phase shift is -90 degrees. Below this frequency the phase shift approaches 0; above it approaches -180 degrees.\n\nWhen to use:\n  Building comb filters by placing inside a container.split (so the phase-shifted output sums with the dry signal). Also useful for phaser effects when multiple phase_delay stages are modulated together.\n\nCommon mistakes:\n  Does not produce comb filtering on its own - must be summed with the dry signal via a parallel container.\n\nSee also:\n  alternative filters.allpass - higher-order allpass filter",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": true,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Not a comb filter on its own",
+          "wrong": "Using fx.phase_delay alone expecting comb filter output",
+          "right": "Place fx.phase_delay inside a container.split so its output is summed with the dry signal to produce comb filtering.",
+          "explanation": "The node outputs only the phase-shifted signal. Comb filtering requires mixing this with the original signal, which a parallel container provides automatically."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.allpass",
+          "type": "alternative",
+          "reason": "Higher-order allpass filter with more parameters"
+        }
+      ],
+      "parameters": {
+        "Frequency": {
+          "description": "Allpass corner frequency where phase shift equals -90 degrees",
+          "range": "20 - 20000 Hz",
+          "default": "400 Hz"
+        }
+      }
+    },
+    "fx.pitch_shift": {
+      "factoryPath": "fx.pitch_shift",
+      "factory": "fx",
+      "title": "Pitch Shift",
+      "description": "Real-time pitch shifting using time-stretch-based resampling, with a range of two octaves up or down.",
+      "polyphonic": true,
+      "tags": [
+        "fx",
+        "pitch",
+        "time-stretch"
+      ],
+      "llmRef": "fx.pitch_shift\n\nReal-time pitch shifting that resamples the input at a different rate and then time-stretches back to the original duration. Supports a range of two octaves down to two octaves up.\n\nSignal flow:\n  audio in -> resample at FreqRatio speed (linear interpolation) -> time stretch back to original duration -> audio out\n\nCPU: high, polyphonic. Each voice has its own time stretcher instance.\n\nParameters:\n  FreqRatio (0.25 - 4.0, skewed centre 1.0, default 1.0) - pitch multiplier. 0.5 = one octave down, 1.0 = no shift, 2.0 = one octave up. Continuous (no stepping).\n\nWhen to use:\n  Real-time pitch shifting of audio signals within scriptnode. For pitch modulation of oscillators, use core.pitch_mod instead. Be aware of CPU cost in polyphonic contexts.\n\nCommon mistakes:\n  High CPU per voice - minimise polyphonic voice count.\n  Frame processing not supported - use block-based containers only.\n  Inherent latency from overlap-add windowing.\n\nSee also:\n  disambiguation core.pitch_mod - pitch modulation for oscillators, not audio pitch shifting",
+      "cpuProfile": {
+        "baseline": "high",
+        "polyphonic": true,
+        "scalingFactors": [
+          {
+            "parameter": "FreqRatio",
+            "impact": "high",
+            "note": "Extreme ratios (near 0.25 or 4.0) increase time stretcher workload"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "High CPU cost in polyphonic context",
+          "wrong": "Using fx.pitch_shift per voice in a polyphonic network with many voices",
+          "right": "Minimise voice count or use fx.pitch_shift as a monophonic bus effect where possible.",
+          "explanation": "Each voice maintains its own time stretcher with significant memory and CPU overhead. In polyphonic contexts the cost scales linearly with voice count."
+        },
+        {
+          "title": "Requires block-based processing",
+          "wrong": "Placing fx.pitch_shift inside a container.frame2_block or other frame-processing context",
+          "right": "Use fx.pitch_shift in a block-processing context only (the default for most containers).",
+          "explanation": "The node does not support frame-based (per-sample) processing. It must operate in a block-processing container such as container.chain."
+        },
+        {
+          "title": "Introduces processing latency",
+          "wrong": "Expecting zero-latency pitch shifting for time-critical effects",
+          "right": "Account for inherent latency from the overlap-add windowing used by the time stretcher.",
+          "explanation": "The time stretcher uses FFT-based overlap-add processing which introduces latency of at least one window length. This latency is not automatically compensated."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "core.pitch_mod",
+          "type": "disambiguation",
+          "reason": "Pitch modulation for oscillators versus pitch shifting of audio signals"
+        }
+      ],
+      "parameters": {
+        "FreqRatio": {
+          "description": "Pitch multiplier: 0.25 = -2 octaves, 0.5 = -1 octave, 1.0 = no shift, 2.0 = +1 octave, 4.0 = +2 octaves",
+          "range": "0.25 - 4.0",
+          "default": "1.0"
+        }
+      }
+    },
+    "fx.reverb": {
+      "factoryPath": "fx.reverb",
+      "factory": "fx",
+      "title": "Reverb",
+      "description": "A Freeverb-style algorithmic reverb with room size, damping, and width controls. Outputs 100% wet signal.",
+      "polyphonic": false,
+      "tags": [
+        "fx",
+        "reverb",
+        "spatial"
+      ],
+      "llmRef": "fx.reverb\n\nFreeverb-style algorithmic reverb outputting 100% wet signal. Suitable for adding room ambience and tail to audio signals.\n\nSignal flow:\n  audio in -> 8 parallel comb filters + 4 series allpass filters (100% wet) -> audio out\n\nCPU: medium, monophonic\n\nParameters:\n  Damping (0.0 - 1.0, default 0.5) - high-frequency absorption in the reverb tail. Higher values produce a darker, more absorbed sound.\n  Width (0.0 - 1.0, default 0.5) - stereo width of the reverb output. Has limited effect on the output.\n  Size (0.0 - 1.0, default 0.5) - room size controlling the length of the reverb tail. Higher values produce longer decay.\n\nWhen to use:\n  Adding algorithmic reverb within a scriptnode network. Place inside a container.split for dry/wet control. For realistic space simulation, consider filters.convolution instead.\n\nCommon mistakes:\n  Output is 100% wet - use a parallel container for dry/wet mixing.\n\nSee also:\n  alternative filters.convolution - impulse response reverb",
+      "cpuProfile": {
+        "baseline": "medium",
+        "polyphonic": false,
+        "scalingFactors": []
+      },
+      "commonMistakes": [
+        {
+          "title": "Output is 100% wet only",
+          "wrong": "Using fx.reverb inline expecting a dry/wet mix",
+          "right": "Place fx.reverb inside a container.split or use a dry_wet template to mix the wet reverb output with the dry signal.",
+          "explanation": "The node outputs only the wet reverb signal with no dry component. For a blended reverb, use a parallel container to sum the dry and wet paths."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "filters.convolution",
+          "type": "alternative",
+          "reason": "Impulse response reverb for realistic spaces versus algorithmic reverb"
+        }
+      ],
+      "parameters": {
+        "Size": {
+          "description": "Room size controlling reverb tail length",
+          "range": "0.0 - 1.0",
+          "default": "0.5"
+        },
+        "Damping": {
+          "description": "High-frequency absorption in the reverb tail",
+          "range": "0.0 - 1.0",
+          "default": "0.5"
+        },
+        "Width": {
+          "description": "Stereo spread of the reverb output",
+          "range": "0.0 - 1.0",
+          "default": "0.5"
+        }
+      }
+    },
+    "fx.sampleandhold": {
+      "factoryPath": "fx.sampleandhold",
+      "factory": "fx",
+      "title": "Sample and Hold",
+      "description": "Reduces the effective sample rate by holding each captured sample for a configurable number of periods.",
+      "polyphonic": true,
+      "tags": [
+        "fx",
+        "lo-fi",
+        "distortion"
+      ],
+      "llmRef": "fx.sampleandhold\n\nReduces the effective sample rate by holding each captured sample for a set number of periods. Produces the staircase waveform characteristic of low sample rate audio.\n\nSignal flow:\n  audio in -> capture sample every N periods -> hold value for N-1 periods -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Counter (1 - 64, integer, default 1) - number of samples to hold each captured value. 1 = pass-through, 64 = maximum decimation.\n\nWhen to use:\n  Lo-fi effects, sample rate reduction, retro digital character. Pair with fx.bitcrush for combined bit-depth and sample-rate reduction.\n\nCommon mistakes:\n  Counter=1 is pass-through, not an effect.\n\nSee also:\n  companion fx.bitcrush - bit-depth reduction counterpart",
+      "cpuProfile": {
+        "baseline": "negligible",
+        "polyphonic": true,
+        "scalingFactors": [
+          {
+            "parameter": "Counter",
+            "impact": "low",
+            "note": "Low Counter values use per-sample processing; high values use optimised block fill"
+          }
+        ]
+      },
+      "commonMistakes": [
+        {
+          "title": "Counter of 1 is a pass-through",
+          "wrong": "Setting Counter to 1 expecting any audible effect",
+          "right": "Counter=1 captures every sample, producing no change. Use values of 2 or higher for audible decimation.",
+          "explanation": "At Counter=1 every input sample is captured and output unchanged. The effect only becomes audible at Counter=2 and above."
+        }
+      ],
+      "seeAlso": [
+        {
+          "id": "fx.bitcrush",
+          "type": "companion",
+          "reason": "Often paired for combined lo-fi effects - bitcrush reduces amplitude resolution, sampleandhold reduces time resolution"
+        }
+      ],
+      "parameters": {
+        "Counter": {
+          "description": "Number of samples to hold each captured value",
+          "range": "1 - 64",
+          "default": "1"
+        }
+      }
+    }
+  }
+}

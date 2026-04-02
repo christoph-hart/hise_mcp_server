@@ -26,6 +26,7 @@ import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
+import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -114,7 +115,7 @@ const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
   {
     name: 'search_hise',
-    description: `Search HISE docs by keyword or pattern (e.g., "midi", "Synth.*"). Returns matches with relevance score. Use query_* tools for full details.`,
+    description: `Search HISE docs by keyword or pattern (e.g., "midi", "Synth.*"). Returns matches with relevance score. Use query_* tools for full details. Domains: api, ui, modules, snippets, scriptnode.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -124,7 +125,7 @@ const DOC_TOOLS: Tool[] = [
         },
         domain: {
           type: 'string',
-          enum: ['all', 'api', 'ui', 'modules', 'snippets'],
+          enum: ['all', 'api', 'ui', 'modules', 'snippets', 'scriptnode'],
           description: 'Filter by domain (default: all)',
         },
         limit: {
@@ -188,7 +189,7 @@ const DOC_TOOLS: Tool[] = [
   },
   {
     name: 'query_ui_property',
-    description: `Get UI component property details. Format: "Component.property" (e.g., "ScriptButton.filmstripImage"). Returns type, default, possible values.`,
+    description: `Get UI component property details. Format: "Component.property" (e.g., "ScriptButton.filmstripImage") for property details, or just "Component" (e.g., "ScriptSlider") for component overview with creation method, customization options, and common mistakes.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -202,7 +203,7 @@ const DOC_TOOLS: Tool[] = [
   },
   {
     name: 'query_module_parameter',
-    description: `Get module parameter details. Format: "Module.param" (e.g., "SimpleEnvelope.Attack"). Returns min/max, default, description.`,
+    description: `Get module parameter details. Format: "Module.param" (e.g., "SimpleEnvelope.Attack") for parameter details, or just "Module" (e.g., "LFO") for module overview with signal flow, all parameters, and common mistakes.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -341,6 +342,50 @@ const DOC_TOOLS: Tool[] = [
         },
       },
       required: ['functionName'],
+    },
+  },
+
+  // FORUM SEARCH TOOLS
+  {
+    name: 'search_forum',
+    description: 'Search the HISE forum with signal-based denoising. Returns a ranked topic list filtered by quality heuristics (trusted posters, solved status, upvotes, category relevance). Use fetch_forum_topics to read specific topics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        term: {
+          type: 'string',
+          description: 'Primary search term (e.g., "ScriptSlider")',
+        },
+        alsoTerms: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Additional search terms to broaden results',
+        },
+        maxResults: {
+          type: 'number',
+          description: 'Max topics to return (default: 15, max: 30)',
+        },
+      },
+      required: ['term'],
+    },
+  },
+  {
+    name: 'fetch_forum_topics',
+    description: 'Fetch and denoise specific forum topics by ID. Returns cleaned post content with noise removed (HiseSnippets, quoted replies, URLs, low-signal posts). Only includes posts from the OP, trusted/expert posters, and upvoted posts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tids: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Topic IDs to fetch (max 5 per call)',
+        },
+        maxPostsPerTopic: {
+          type: 'number',
+          description: 'Max posts per topic (default: 30)',
+        },
+      },
+      required: ['tids'],
     },
   },
 
@@ -1082,6 +1127,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // EXACT QUERY TOOLS (with enriched responses)
       case 'query_ui_property': {
         const { componentProperty } = args as { componentProperty: string };
+
+        // Component-level query (no dot) - return enriched llmRef if available
+        if (!componentProperty.includes('.')) {
+          const compData = dataLoader.queryUIComponentEnriched(componentProperty);
+          if (compData?.llmRef) {
+            return {
+              content: [{ type: 'text', text: compData.llmRef }],
+            };
+          }
+        }
+
         const enriched = dataLoader.queryUIPropertyEnriched(componentProperty);
 
         if (!enriched) {
@@ -1235,6 +1291,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'query_module_parameter': {
         const { moduleParameter } = args as { moduleParameter: string };
+
+        // Module-level query (no dot) - return enriched llmRef if available
+        if (!moduleParameter.includes('.')) {
+          const moduleData = dataLoader.queryModuleEnriched(moduleParameter);
+          if (moduleData?.llmRef) {
+            return {
+              content: [{ type: 'text', text: moduleData.llmRef }],
+            };
+          }
+        }
+
         const enriched = dataLoader.queryModuleParameterEnriched(moduleParameter);
 
         if (!enriched) {
@@ -1979,6 +2046,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
+      }
+
+      // ========================================================================
+      // FORUM SEARCH TOOLS
+      // ========================================================================
+
+      case 'search_forum': {
+        const { term, alsoTerms, maxResults } = args as {
+          term: string;
+          alsoTerms?: string[];
+          maxResults?: number;
+        };
+        const result = await searchForum(term, alsoTerms || [], {
+          maxResults: Math.min(maxResults || 15, 30),
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case 'fetch_forum_topics': {
+        const { tids, maxPostsPerTopic } = args as {
+          tids: number[];
+          maxPostsPerTopic?: number;
+        };
+        const cappedTids = tids.slice(0, 5);
+        const forumResults: ForumTopicDetail[] = [];
+        for (const tid of cappedTids) {
+          try {
+            const topics = await fetchForumTopics([tid], { maxPostsPerTopic });
+            forumResults.push(...topics);
+          } catch (err) {
+            forumResults.push({
+              tid,
+              title: `Error fetching topic ${tid}`,
+              posts: [{ header: 'Error', content: err instanceof Error ? err.message : 'Unknown error' }],
+            });
+          }
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(forumResults, null, 2) }],
+        };
       }
 
       default:

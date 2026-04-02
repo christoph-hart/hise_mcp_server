@@ -75,7 +75,7 @@ export interface CodeSnippet {
   difficulty: "beginner" | "intermediate" | "advanced";
 }
 
-export type SearchDomain = "all" | "api" | "ui" | "modules" | "snippets";
+export type SearchDomain = "all" | "api" | "ui" | "modules" | "snippets" | "scriptnode";
 
 export interface SearchResult {
   id: string;
@@ -116,6 +116,7 @@ export interface ServerStatusBase {
     codeSnippets: number;
     lafComponents: number;
     lafFunctions: number;
+    scriptnodeNodes: number;
   };
 }
 

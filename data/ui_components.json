@@ -1,0 +1,1149 @@
+{
+  "ScriptAudioWaveform": {
+    "id": "ScriptAudioWaveform",
+    "type": "plugin-component",
+    "llmRef": "ScriptAudioWaveform (UI component)\nCreate via: Content.addAudioWaveform(\"name\", x, y)\nScripting API: $API.ScriptAudioWaveform$\n\nAudio waveform display for visualising AudioFile data with interactive range selection. Operates in AudioFile mode (file browsing, drag-and-drop, range selection) or Sampler mode (auto-tracks playing voice, shows play/loop/crossfade areas) depending on connected processor type. Connects via processorId to an AudioSampleProcessor.\n\nProperties (component-specific):\n  itemColour3: additional accent colour\n  opaque: skip parent repaint when true\n  showLines: show horizontal guide lines\n  showFileName: show filename text overlay\n  sampleIndex: audio file slot index\n  enableRange: enable range selection\n  loadWithLeftClick: load file on left click\n\nCustomisation:\n  LAF: drawThumbnailBackground, drawThumbnailText, drawThumbnailPath, drawThumbnailRange, drawThumbnailRuler, getThumbnailRenderOptions (config callback)\n  CSS: .scriptaudiowaveform with :disabled; .playhead, .waveformedge sub-selectors; --waveformPath, --playhead variables\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Passing a string path to setDefaultFolder",
+        "wrong": "wf.setDefaultFolder(\"/path/to/folder\")",
+        "right": "wf.setDefaultFolder(FileSystem.getFolder(FileSystem.Desktop))",
+        "explanation": "setDefaultFolder() requires a File object, not a string path. Use FileSystem.getFolder() to obtain a File object."
+      },
+      {
+        "title": "Switching processorId without resetting the cursor",
+        "wrong": "wf.set(\"processorId\", newId) — cursor stays at previous file position",
+        "right": "wf.set(\"processorId\", newId); wf.setPlaybackPosition(0);",
+        "explanation": "When switching the connected processor, the playback cursor retains the position from the previous audio file. Reset it with setPlaybackPosition(0) after changing processorId."
+      },
+      {
+        "title": "Setting only itemColour when changing waveform colour",
+        "wrong": "Setting itemColour alone for a new waveform colour",
+        "right": "Set both itemColour (outline) and itemColour2 (fill) for a consistent appearance",
+        "explanation": "itemColour controls the outline and itemColour2 controls the fill. Setting only one creates a mismatched look."
+      },
+      {
+        "title": "Polling for audio file changes with a Timer",
+        "wrong": "Using a Timer callback to check if the audio file has changed",
+        "right": "Use Broadcaster.attachToComplexData(\"AudioFile.Content\", ...) for change notifications",
+        "explanation": "Timer polling adds unnecessary overhead and latency. The Broadcaster system provides immediate notifications when audio file content changes."
+      },
+      {
+        "title": "Expecting processorId switch to refresh the display",
+        "wrong": "wf.set(\"processorId\", \"Sampler2\"); wf.changed(); — display still shows previous waveform",
+        "right": "Use referToData() to switch the data source at runtime, or rebind via the AudioSampleProcessor API",
+        "explanation": "Setting processorId via script updates the internal property but may not refresh the waveform display until recompilation. For runtime switching between processors, use referToData() with the target processor's audio file handle instead."
+      }
+    ],
+    "properties": {
+      "itemColour3": {
+        "defaultValue": 587202559,
+        "type": "int"
+      },
+      "opaque": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "showLines": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "showFileName": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "sampleIndex": {
+        "defaultValue": 0,
+        "type": "int"
+      },
+      "enableRange": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "loadWithLeftClick": {
+        "defaultValue": false,
+        "type": "bool"
+      }
+    }
+  },
+  "ScriptButton": {
+    "id": "ScriptButton",
+    "type": "plugin-component",
+    "llmRef": "ScriptButton (UI component)\nCreate via: Content.addButton(\"name\", x, y)\nScripting API: $API.ScriptButton$\n\nToggle or momentary button with filmstrip image support and radio group mutual exclusion. Binary value (0 or 1) with fixed range.\n\nProperties (component-specific):\n  filmstripImage: filmstrip image path for custom button skin\n  numStrips: number of filmstrip frames (typically 2 or 6)\n  isVertical: filmstrip orientation\n  scaleFactor: filmstrip display scale (for retina)\n  radioGroup: radio group ID for mutual exclusion (0 = none)\n  isMomentary: momentary mode (value resets to 0 on mouse release)\n  setValueOnClick: set value directly on click instead of toggling\n  enableMidiLearn: allow MIDI CC learn via right-click\n  mouseCursor: mouse cursor style when hovering\n\nCustomisation:\n  LAF: drawToggleButton\n  CSS: button with :hover, :active, :checked, :disabled\n  Filmstrip: yes",
+    "commonMistakes": [
+      {
+        "title": "Using wrong numStrips value",
+        "wrong": "Setting numStrips to a value other than 2 or 6",
+        "right": "Use numStrips = 2 (on/off) or 6 (on/off × normal/hover/down) to match your filmstrip",
+        "explanation": "An incorrect numStrips value silently falls back to the default skin with no error, making it hard to diagnose."
+      },
+      {
+        "title": "Expecting MIDI learn with saveInPreset disabled",
+        "wrong": "Setting enableMidiLearn to true while saveInPreset is false",
+        "right": "Keep saveInPreset enabled when using MIDI learn",
+        "explanation": "saveInPreset being false disables MIDI learn regardless of the enableMidiLearn setting."
+      },
+      {
+        "title": "setValue without changed() expecting callback to fire",
+        "wrong": "btn.setValue(1) — callback does not execute",
+        "right": "btn.setValue(1); btn.changed(); — fires the control callback",
+        "explanation": "setValue() only updates the stored value. Call changed() afterwards to trigger the control callback, just as a user click would."
+      },
+      {
+        "title": "Incomplete position array in setPopupData",
+        "wrong": "btn.setPopupData(ft, [10, 20])",
+        "right": "btn.setPopupData(ft, [10, 20, 200, 100]) — always pass [x, y, w, h]",
+        "explanation": "setPopupData requires a full [x, y, w, h] array. An incomplete array throws a script error."
+      }
+    ],
+    "properties": {
+      "filmstripImage": {
+        "defaultValue": "",
+        "type": "String",
+        "options": [
+          "Load new File",
+          "Use default skin"
+        ],
+        "description": " Select a filmstrip to replace the default button skin."
+      },
+      "numStrips": {
+        "defaultValue": "2",
+        "type": "String",
+        "description": " Set the correct amount of the strips in the filmstrips"
+      },
+      "isVertical": {
+        "defaultValue": true,
+        "type": "bool",
+        "description": " Set to false if not vertical (depreciated)"
+      },
+      "scaleFactor": {
+        "defaultValue": 1.0,
+        "type": "undefined",
+        "description": " if you use a filmstrip, this scalefactor will be used to resize the image. You can use this to support Retina displays."
+      },
+      "radioGroup": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " Set to 1 to makes this button part of a radioGroup 1. Multiple buttons in a common radioGroup will toggle between each other."
+      },
+      "isMomentary": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " in Momentary mode a button switches its value to 1 when clicked, and back to 0 on mouse release."
+      },
+      "enableMidiLearn": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "setValueOnClick": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "mouseCursor": {
+        "defaultValue": "ParentCursor",
+        "type": "String",
+        "options": [
+          "ParentCursor",
+          "NoCursor",
+          "NormalCursor",
+          "WaitCursor",
+          "IBeamCursor",
+          "CrosshairCursor",
+          "CopyingCursor",
+          "PointingHandCursor",
+          "DraggingHandCursor",
+          "LeftRightResizeCursor",
+          "UpDownResizeCursor",
+          "UpDownLeftRightResizeCursor",
+          "TopEdgeResizeCursor",
+          "BottomEdgeResizeCursor",
+          "LeftEdgeResizeCursor",
+          "RightEdgeResizeCursor",
+          "TopLeftCornerResizeCursor",
+          "TopRightCornerResizeCursor",
+          "BottomLeftCornerResizeCursor",
+          "BottomRightCornerResizeCursor"
+        ]
+      }
+    }
+  },
+  "ScriptComboBox": {
+    "id": "ScriptComboBox",
+    "type": "plugin-component",
+    "llmRef": "ScriptComboBox (UI component)\nCreate via: Content.addComboBox(\"name\", x, y)\nScripting API: $API.ScriptComboBox$\n\nDrop-down list component for selecting from named items using 1-based integer indexing. Supports custom popup menus with submenus, headers, separators, and disabled items.\n\nProperties (component-specific):\n  items: newline-separated list of selectable items\n  fontName: font family for the displayed text\n  fontSize: font size in pixels\n  fontStyle: font style (plain, bold, italic, bold italic)\n  enableMidiLearn: allow MIDI CC learn via right-click\n  popupAlignment: popup menu position (bottom, top, topRight, bottomRight)\n  useCustomPopup: enable advanced popup syntax with headers, submenus, separators\n\nCustomisation:\n  LAF: drawComboBox (closed box only — popup uses drawPopupMenuBackground, drawPopupMenuItem)\n  CSS: select with :hover, :active, :disabled; .popup, .popup-item, hr for dropdown\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Using value directly as array index",
+        "wrong": "array[value] — combo box values are 1-based floats",
+        "right": "array[parseInt(value) - 1] for 0-based array access",
+        "explanation": "ComboBox values start at 1 (not 0) and arrive as floats in callbacks. Use parseInt() and subtract 1 for array indexing."
+      },
+      {
+        "title": "Setting value to 0 to select first item",
+        "wrong": "cb.setValue(0) — value 0 means nothing selected",
+        "right": "cb.setValue(1) to select the first item",
+        "explanation": "Value 0 shows the placeholder text property. The first selectable item is index 1."
+      },
+      {
+        "title": "Using comma-separated items",
+        "wrong": "cb.set(\"items\", \"A,B,C\")",
+        "right": "cb.set(\"items\", \"A\\nB\\nC\") — items must be newline-separated",
+        "explanation": "Comma-separated text creates a single item containing the full string. Use newline characters to separate items."
+      },
+      {
+        "title": "Preset breaks after adding items to the list",
+        "wrong": "Adding new items to a combobox that has saveInPreset enabled",
+        "right": "For stable lists, only append new items at the end. For dynamic lists, set saveInPreset = false and persist by name",
+        "explanation": "Presets store the numeric index, not the item text. Inserting or reordering items shifts all indices, causing existing presets to select the wrong item."
+      },
+      {
+        "title": "Styling only drawComboBox without popup functions",
+        "wrong": "Registering only drawComboBox and expecting the dropdown to match",
+        "right": "Also register drawPopupMenuBackground and drawPopupMenuItem for consistent styling",
+        "explanation": "The popup menu uses separate LAF functions. Without them, the dropdown renders with the default skin while the closed box uses your custom style."
+      }
+    ],
+    "properties": {
+      "items": {
+        "defaultValue": "",
+        "type": "String",
+        "description": " Put in a list with the values that you want to select. Seperate the values with a newline."
+      },
+      "fontName": {
+        "defaultValue": "Default",
+        "type": "String",
+        "description": " Select a font of your system fonts."
+      },
+      "fontSize": {
+        "defaultValue": 13.0,
+        "type": "undefined",
+        "description": " Set the font size"
+      },
+      "fontStyle": {
+        "defaultValue": "plain",
+        "type": "String",
+        "options": [
+          "Regular",
+          "Italic",
+          "Bold",
+          "Bold Italic",
+          "Black"
+        ],
+        "description": " Set the font style"
+      },
+      "enableMidiLearn": {
+        "defaultValue": false,
+        "type": "bool",
+        "description": " If `true` then you can right-click and assign this combobox to a MIDI controller / macro control."
+      },
+      "popupAlignment": {
+        "defaultValue": "bottom",
+        "type": "String",
+        "options": [
+          "bottom",
+          "top",
+          "topRight",
+          "bottomRight"
+        ],
+        "description": " Controls where the popup menu will appear relative to the combobox"
+      },
+      "useCustomPopup": {
+        "defaultValue": false,
+        "type": "bool",
+        "description": " If `true`, then you can use the [advanced syntax](/scripting/scripting-in-hise/scriptpanel#context-menus) for creating complex popup menus with headers, submenus etc."
+      }
+    }
+  },
+  "ScriptDynamicContainer": {
+    "id": "ScriptDynamicContainer",
+    "type": "plugin-component",
+    "llmRef": "ScriptDynamicContainer (UI component)\nCreate via: Content.addDynamicContainer(\"name\", x, y)\nScripting API: $API.ScriptDynamicContainer$, $API.ContainerChild$\n\nData-driven container that dynamically creates and manages child UI components\nfrom JSON. Use it when the number or type of controls is not known at compile\ntime - dynamic FX chains, preset browsers, sample lists, or any UI that must\nbe built and rebuilt from data at runtime.\n\nCall setData(jsonArray) to build the component tree. Returns a ContainerChild\nroot reference for hierarchy traversal. Register setValueCallback(f(id, value))\nafter setData to listen for child value changes. Each setData() call invalidates\nall previous ContainerChild references.\n\nSupported child types (with static equivalent):\n  Button (ScriptButton), Slider (ScriptSlider), ComboBox (ScriptComboBox),\n  Label (ScriptLabel), Panel (ScriptPanel), FloatingTile (ScriptFloatingTile),\n  TableEditor (ScriptTable), SliderPack (ScriptSliderPack), AudioFile (ScriptAudioWaveform)\n\nContainer/display-only types (no static equivalent):\n  DragContainer: drag-reorderable children with EffectProcessorChain connection\n  Viewport: CSS flexbox layout container with scrolling\n  TextBox: markdown text display\n\nCustomisation:\n  LAF: none (children use their own component type's LAF)\n  CSS: none on container (children styled via their type selectors)\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Calling setValueCallback before setData",
+        "wrong": "Calling dc.setValueCallback(f) before dc.setData(json)",
+        "right": "Call dc.setData(json) first, then dc.setValueCallback(f)",
+        "explanation": "The value callback monitors the internal value store, which does not exist until setData() creates it. Calling setValueCallback() first silently does nothing."
+      },
+      {
+        "title": "Using stale ContainerChild references after setData",
+        "wrong": "Storing a ContainerChild reference and reusing it after calling setData() again",
+        "right": "Re-obtain all references from the new setData() return value. Check ref.isValid() if uncertain.",
+        "explanation": "Each setData() call rebuilds the entire component tree and permanently invalidates all previous ContainerChild references. Using a stale reference throws a script error."
+      },
+      {
+        "title": "Expecting setValue to trigger the control callback",
+        "wrong": "Calling cc.setValue(0.5) and expecting the control callback to fire",
+        "right": "Call cc.setValue(0.5) then cc.changed() to trigger the callback and visual refresh",
+        "explanation": "setValue() writes silently to the value store. You must call changed() afterward to fire the control callback and update the visual state."
+      },
+      {
+        "title": "Reading properties via dot syntax expecting defaults",
+        "wrong": "var text = cc.text; // may be undefined if not set in JSON",
+        "right": "var text = cc.get(\"text\"); // returns the default value if not set",
+        "explanation": "Dot-read syntax (cc.text) returns the raw ValueTree property which may be undefined. Use cc.get(\"propertyName\") for default-value fallback."
+      },
+      {
+        "title": "Treating removeFromParent as synchronous",
+        "wrong": "cc.removeFromParent(); doSomethingWith(parent.getNumChildComponents());",
+        "right": "Use a timer or defer the follow-up logic - removal is async via SafeAsyncCall",
+        "explanation": "removeFromParent() and removeAllChildren() are deferred. The component tree is not updated immediately upon return. getNumChildComponents() may still return the old count right after the call."
+      }
+    ]
+  },
+  "ScriptedViewport": {
+    "id": "ScriptedViewport",
+    "type": "plugin-component",
+    "llmRef": "ScriptedViewport (UI component)\nCreate via: Content.addViewport(\"name\", x, y)\nScripting API: $API.ScriptedViewport$\n\nMulti-mode viewport supporting scrollable viewport, selectable list, and interactive table modes. Mode is determined at init time: default is a plain scrollable viewport, useList enables list mode, setTableMode() enables table mode.\n\nProperties (component-specific):\n  useList: enable list mode with selectable items\n  items: newline-separated list items (for list mode)\n  scrollBarThickness: scrollbar width in pixels\n  autoHide: auto-hide scrollbar when not scrolling\n  viewPositionX: horizontal scroll position\n  viewPositionY: vertical scroll position (normalised 0.0-1.0 in list/table modes)\n  fontName: font family for list item text\n  fontSize: font size for list items\n  fontStyle: font style for list items\n  alignment: text alignment for list items\n\nList mode: value = selected index, setValue(-1) to deselect. Fixed 30px row height. CSS tr selectors for styling (no LAF).\nTable mode: setup sequence setTableMode() -> setTableColumns() -> setTableCallback() -> setTableRowData(). Cell types: Text, Button, Slider, ComboBox, Image, Hidden. No getTableCellValue() - mirror state in a script-side object.\nPlain viewport: 4000x4000 canvas, child panels for content. Scrollbar overlaps content - reduce child width by scrollBarThickness.\nScroll: control callback fires on item selection only, not scroll. Poll viewPositionY with timer for scroll detection. viewPositionY in onInit may need timer deferral in compiled plugins.\n\nCustomisation:\n  LAF (list mode): none (use CSS)\n  LAF (table mode): drawTableRowBackground, drawTableCell, drawTableHeaderBackground, drawTableHeaderColumn\n  LAF (all modes): drawScrollbar (use obj.handle for thumb bounds, not obj.area)\n  CSS: .scriptviewport with tr (list items), scrollbar; tr supports :hover, :active, :checked\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Using pixel values for viewPositionY",
+        "wrong": "vp.set(\"viewPositionY\", 150) — assuming pixel offset",
+        "right": "vp.set(\"viewPositionY\", 0.5) — use normalized 0.0-1.0 range",
+        "explanation": "viewPositionY is a normalized value (0.0 to 1.0), not a pixel offset. Use (targetRow + 1) / totalRows to scroll to a specific row."
+      },
+      {
+        "title": "Calling setTableMode() outside onInit",
+        "wrong": "Calling setTableMode() or setTableColumns() in a callback",
+        "right": "Call setTableMode() and setTableColumns() during onInit only",
+        "explanation": "Table setup methods report a script error when called after initialisation. All table configuration must happen during onInit."
+      },
+      {
+        "title": "Using component type names as table column Type",
+        "wrong": "\"Type\": \"ScriptComboBox\" in setTableColumns()",
+        "right": "\"Type\": \"ComboBox\" — use the short cell type name, not the component class name",
+        "explanation": "Table column types are short names (Text, Button, Slider, ComboBox, Image, Hidden), not ScriptComponent class names. Using the class name silently falls back to Text."
+      },
+      {
+        "title": "Calling setTableColumns() before setTableMode()",
+        "wrong": "Calling setTableColumns() without calling setTableMode() first",
+        "right": "Always call setTableMode() before setTableColumns()",
+        "explanation": "setTableColumns() requires the internal table model to exist. Calling it before setTableMode() throws a script error because the model has not been created yet."
+      },
+      {
+        "title": "Using obj.rowIndex for data access with sorting enabled",
+        "wrong": "data[obj.rowIndex] — display indices differ from data indices when sorted",
+        "right": "data[getOriginalRowIndex(obj.rowIndex)] to get the original data index",
+        "explanation": "When table sorting is enabled, display row indices no longer match the original data array indices. Use getOriginalRowIndex() to translate."
+      },
+      {
+        "title": "Setting viewPositionY in onInit for compiled plugins",
+        "wrong": "vp.set(\"viewPositionY\", 0.0) in onInit — may not take effect in compiled plugins",
+        "right": "Defer the call with a short timer: Engine.createTimerObject().startTimer(100, function() { vp.set(\"viewPositionY\", 0.0); this.stopTimer(); })",
+        "explanation": "viewPositionY updates are dispatched asynchronously. In compiled plugins, the viewport content may not be laid out yet when onInit runs, so the position reset is ignored. A short timer ensures the content is ready."
+      }
+    ],
+    "properties": {
+      "scrollBarThickness": {
+        "defaultValue": 16.0,
+        "type": "undefined"
+      },
+      "autoHide": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "useList": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "viewPositionX": {
+        "defaultValue": 0.0,
+        "type": "undefined"
+      },
+      "viewPositionY": {
+        "defaultValue": 0.0,
+        "type": "undefined"
+      },
+      "items": {
+        "defaultValue": "",
+        "type": "String"
+      },
+      "fontName": {
+        "defaultValue": "Arial",
+        "type": "String"
+      },
+      "fontSize": {
+        "defaultValue": 13.0,
+        "type": "undefined"
+      },
+      "fontStyle": {
+        "defaultValue": "plain",
+        "type": "String",
+        "options": [
+          "Regular",
+          "Italic",
+          "Bold",
+          "Bold Italic",
+          "Black"
+        ]
+      },
+      "alignment": {
+        "defaultValue": "centred",
+        "type": "String",
+        "options": [
+          "left",
+          "right",
+          "top",
+          "bottom",
+          "centred",
+          "centredTop",
+          "centredBottom",
+          "topLeft",
+          "topRight",
+          "bottomLeft",
+          "bottomRight"
+        ]
+      }
+    }
+  },
+  "ScriptImage": {
+    "id": "ScriptImage",
+    "type": "plugin-component",
+    "llmRef": "ScriptImage (UI component)\nCreate via: Content.addImage(\"name\", x, y)\nScripting API: $API.ScriptImage$\n\nStatic image display component. Shows a single image from the project's image pool\nwith optional filmstrip offset, alpha blending, and Photoshop-style blend modes.\n\nProperties (component-specific):\n  fileName: source image path from the project image pool\n  alpha: opacity (0.0 to 1.0)\n  offset: vertical pixel offset for filmstrip-style multi-frame images\n  scale: image scaling factor\n  blendMode: one of 24 Photoshop-style blend modes (gin library)\n  allowCallbacks: mouse callback level for click interaction\n  popupMenuItems: right-click context menu entries\n  popupOnRightClick: enable right-click popup trigger\n\nCustomisation:\n  LAF: none\n  CSS: img (minimal — basic positioning/sizing only)\n  Filmstrip: yes (via offset property with vertically-stacked image)",
+    "commonMistakes": [
+      {
+        "title": "Using ScriptPanel for static images",
+        "wrong": "Using ScriptPanel with loadImage() + setPaintRoutine() to display a static image",
+        "right": "Use ScriptImage — it avoids paint callback overhead and is purpose-built for static image display",
+        "explanation": "ScriptPanel's paint routine runs a scripting callback on every repaint. ScriptImage renders the image directly without any callback overhead."
+      },
+      {
+        "title": "Expecting forceUseRealFile to bypass the pool",
+        "wrong": "Passing forceUseRealFile=true to setImageFile() expecting a direct disk reload",
+        "right": "Images always load through the pool/expansion handler regardless of this parameter",
+        "explanation": "The forceUseRealFile parameter is ignored in the implementation (marked ignoreUnused in C++)."
+      },
+      {
+        "title": "Image missing after export",
+        "wrong": "Setting fileName to a path that works in the HISE IDE but not in the compiled plugin",
+        "right": "Use the {PROJECT_FOLDER} wildcard: set(\"fileName\", \"{PROJECT_FOLDER}myImage.png\")",
+        "explanation": "Images must be referenced via the project image pool using {PROJECT_FOLDER}. Absolute or ad-hoc paths work in the IDE but fail in exported plugins because the image pool embeds files from the project Images folder."
+      }
+    ],
+    "properties": {
+      "alpha": {
+        "defaultValue": 1.0,
+        "type": "undefined",
+        "description": " Sets the alpha value of the image."
+      },
+      "fileName": {
+        "defaultValue": "",
+        "type": "String",
+        "options": [
+          "Load new File"
+        ],
+        "description": " Select an Image. Defaults to the **Image** Project Folder."
+      },
+      "offset": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " Image offset to the top in `px`"
+      },
+      "scale": {
+        "defaultValue": 1.0,
+        "type": "undefined",
+        "description": " Scales the image."
+      },
+      "blendMode": {
+        "defaultValue": "Normal",
+        "type": "String",
+        "options": [
+          "Normal",
+          "Lighten",
+          "Darken",
+          "Multiply",
+          "Average",
+          "Add",
+          "Subtract",
+          "Difference",
+          "Negation",
+          "Screen",
+          "Exclusion",
+          "Overlay",
+          "SoftLight",
+          "HardLight",
+          "ColorDodge",
+          "ColorBurn",
+          "LinearDodge",
+          "LinearBurn",
+          "LinearLight",
+          "VividLight",
+          "PinLight",
+          "HardMix",
+          "Reflect",
+          "Glow",
+          "Phoenix"
+        ]
+      },
+      "allowCallbacks": {
+        "defaultValue": false,
+        "type": "bool",
+        "options": [
+          "No Callbacks",
+          "Context Menu",
+          "Clicks Only",
+          "Clicks & Hover",
+          "Clicks, Hover & Dragging",
+          "All Callbacks"
+        ]
+      },
+      "popupMenuItems": {
+        "defaultValue": "",
+        "type": "String"
+      },
+      "popupOnRightClick": {
+        "defaultValue": true,
+        "type": "bool"
+      }
+    }
+  },
+  "ScriptLabel": {
+    "id": "ScriptLabel",
+    "type": "plugin-component",
+    "llmRef": "ScriptLabel (UI component)\nCreate via: Content.addLabel(\"name\", x, y)\nScripting API: $API.ScriptLabel$\n\nEditable text label component for displaying and editing interface text.\nIts value is the label text itself (a string, not a number).\n\nProperties (component-specific):\n  fontName: font family for the label text\n  fontSize: font size in pixels\n  fontStyle: font style (plain, bold, italic, bold italic)\n  alignment: text alignment within the component bounds\n  editable: whether the user can click to edit the text\n  multiline: enable multi-line text with automatic line wrapping\n  updateEachKey: fire callbacks on each keystroke (for live search)\n\nCustomisation:\n  LAF: none\n  CSS: label, input, ::selection with :hover, :active, :disabled\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Calling setEditable() after onInit",
+        "wrong": "Calling setEditable() outside of the onInit callback",
+        "right": "Set the editable property during onInit only",
+        "explanation": "setEditable() reports a script error and has no effect when called after initialisation. The editable state must be configured at component creation time."
+      },
+      {
+        "title": "Passing non-string values to setValue()",
+        "wrong": "label.setValue(42) or label.setValue(true)",
+        "right": "label.setValue(\"my text\") — always pass a string",
+        "explanation": "The label's value is a string (the displayed text). Non-string values are silently ignored."
+      },
+      {
+        "title": "Updating text without calling changed()",
+        "wrong": "label.setValue(\"new text\") and expecting onControl to fire",
+        "right": "label.setValue(\"new text\"); label.changed();",
+        "explanation": "setValue() does not trigger the onControl callback. Call changed() explicitly when other logic should react to the text update."
+      },
+      {
+        "title": "Display label text not persisting on DAW session reopen",
+        "wrong": "Using set(\"text\", Engine.getCurrentUserPresetName()) in onInit and expecting it to survive session reload",
+        "right": "Restore the label text in the onPresetLoaded callback or use saveInPreset with a dedicated display label",
+        "explanation": "Labels with saveInPreset=false lose their text when the DAW session is reopened. For display-only labels showing dynamic info (e.g. preset names), restore the text in an appropriate callback after state is reloaded."
+      }
+    ],
+    "properties": {
+      "fontName": {
+        "defaultValue": "Arial",
+        "type": "String",
+        "description": " Select a Font"
+      },
+      "fontSize": {
+        "defaultValue": 13.0,
+        "type": "undefined",
+        "description": " set the size of the Font"
+      },
+      "fontStyle": {
+        "defaultValue": "plain",
+        "type": "String",
+        "options": [
+          "Regular",
+          "Italic",
+          "Bold",
+          "Bold Italic",
+          "Black",
+          "Password"
+        ],
+        "description": " Select one of the font styles"
+      },
+      "alignment": {
+        "defaultValue": "centred",
+        "type": "String",
+        "options": [
+          "left",
+          "right",
+          "top",
+          "bottom",
+          "centred",
+          "centredTop",
+          "centredBottom",
+          "topLeft",
+          "topRight",
+          "bottomLeft",
+          "bottomRight"
+        ],
+        "description": " choose where you want to align the text in its box."
+      },
+      "editable": {
+        "defaultValue": true,
+        "type": "bool",
+        "description": " Turn this off to make the text consistent."
+      },
+      "multiline": {
+        "defaultValue": false,
+        "type": "bool",
+        "description": " Enable this to turn on the multiline mode, that automatically breaks the text into multiple lines."
+      },
+      "updateEachKey": {
+        "defaultValue": false,
+        "type": "bool"
+      }
+    }
+  },
+  "ScriptSlider": {
+    "id": "ScriptSlider",
+    "type": "plugin-component",
+    "llmRef": "ScriptSlider (UI component)\nCreate via: Content.addKnob(\"name\", x, y)\nScripting API: $API.ScriptSlider$\n\nSingle-value slider or knob for editing numeric values. Supports mode-aware ranges and formatting (Frequency, Decibel, Time, TempoSync, Linear, Discrete, Pan, NormalizedPercentage), four visual styles (Knob, Horizontal, Vertical, Range), filmstrip rendering, matrix modulation integration, and custom value popups.\n\nProperties (component-specific):\n  mode: value mode (Frequency, Decibel, Time, TempoSync, Linear, Discrete, Pan, NormalizedPercentage)\n  style: visual style (Knob, Horizontal, Vertical, Range)\n  stepSize: value step resolution\n  middlePosition: midpoint for skewed display\n  suffix: value suffix string\n  filmstripImage: filmstrip image path\n  numStrips: number of filmstrip frames\n  isVertical: filmstrip orientation\n  scaleFactor: filmstrip scale factor\n  mouseSensitivity: mouse drag sensitivity\n  dragDirection: drag direction (Diagonal, Vertical, Horizontal)\n  showValuePopup: value popup display (No, Above, Below, Left, Right)\n  showTextBox: show text box below slider\n  scrollWheel: enable scroll wheel control\n  enableMidiLearn: allow MIDI CC learn\n  sendValueOnDrag: send value during drag vs on release\n  matrixTargetId: matrix modulation target ID\n\nCustomisation:\n  LAF: drawRotarySlider (Knob style), drawLinearSlider (Horizontal, Vertical, Range styles)\n  CSS: .scriptslider with :hover, :active, :disabled; --value variable; label, input sub-selectors\n  Filmstrip: yes",
+    "commonMistakes": [
+      {
+        "title": "Calling setMinValue/setMaxValue outside Range style",
+        "wrong": "slider.setMinValue(0.5) when style is Knob, Horizontal, or Vertical",
+        "right": "Only use setMinValue/setMaxValue when style is set to Range",
+        "explanation": "Range helper methods only work with Range-style sliders. Calling them on other styles logs an error and has no effect."
+      },
+      {
+        "title": "Using invalid mode strings",
+        "wrong": "slider.set(\"mode\", \"Db\") or slider.set(\"mode\", \"dB\")",
+        "right": "slider.set(\"mode\", \"Decibel\") — use exact mode names",
+        "explanation": "Mode names are case-sensitive. Invalid strings cause a silent fallback to the previous mode, leading to unexpected range and display behaviour."
+      },
+      {
+        "title": "Stale UI after processor state restore",
+        "wrong": "Restoring module state without refreshing connected sliders",
+        "right": "Call updateValueFromProcessorConnection() on all connected sliders after state restore",
+        "explanation": "When processor parameters change outside slider interaction (preset load, undo), the slider UI shows stale values until the next manual drag. Explicitly pull the current value after restore."
+      },
+      {
+        "title": "Expecting LAF to override filmstrip",
+        "wrong": "Setting both filmstripImage and a custom LAF, expecting LAF to render",
+        "right": "Clear filmstripImage (set to 'Use default skin') before applying a custom LAF",
+        "explanation": "When a filmstrip image is set, it takes precedence over LAF rendering. The LAF draw function is not called."
+      },
+      {
+        "title": "Custom LAF hides the knob name and value text",
+        "wrong": "Registering drawRotarySlider and expecting the name and value to appear automatically",
+        "right": "Draw text manually in the LAF callback using g.drawAlignedText(obj.text, ...) and g.drawAlignedText(obj.valueAsText, ...)",
+        "explanation": "A custom LAF takes over all rendering. The default name label and value display are part of the default renderer — once you register a custom draw function, you are responsible for drawing everything including text. Use obj.text for the component name and obj.valueAsText for the formatted value."
+      }
+    ],
+    "properties": {
+      "mode": {
+        "defaultValue": "Linear",
+        "type": "String",
+        "options": [
+          "Frequency",
+          "Decibel",
+          "Time",
+          "TempoSync",
+          "Linear",
+          "Discrete",
+          "Pan",
+          "NormalizedPercentage"
+        ],
+        "description": " Select between, Linear, Frequency, Decibel, Time... to adjust the sliders value display to its connected modules domain type."
+      },
+      "style": {
+        "defaultValue": "Knob",
+        "type": "String",
+        "options": [
+          "Knob",
+          "Horizontal",
+          "Vertical",
+          "Range"
+        ],
+        "description": " Display the Slider as a knob, vertical or horizontal slider."
+      },
+      "stepSize": {
+        "defaultValue": 0.01,
+        "type": "undefined",
+        "options": [
+          "0.0",
+          "0.01",
+          "0.1",
+          "1.0"
+        ],
+        "description": " Select the resolution of the value display"
+      },
+      "middlePosition": {
+        "defaultValue": -1.0,
+        "type": "undefined",
+        "description": " Set the value of the sliders middle position. If this value is skewed, the scale of the values will adapt accordingly."
+      },
+      "suffix": {
+        "defaultValue": "",
+        "type": "String",
+        "description": " Set a custom suffix"
+      },
+      "filmstripImage": {
+        "defaultValue": "Use default skin",
+        "type": "String",
+        "options": [
+          "Load new File",
+          "Use default skin"
+        ],
+        "description": " Select a filmstrip to replace the default slider skin. See more below"
+      },
+      "numStrips": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " Set the amount your filmstrips strips."
+      },
+      "isVertical": {
+        "defaultValue": true,
+        "type": "bool",
+        "description": " Set to false if not vertical (depreciated)"
+      },
+      "scaleFactor": {
+        "defaultValue": 1.0,
+        "type": "undefined",
+        "description": " if you use a filmstrip, this scalefactor will be used to resize the image. You can use this to support Retina displays."
+      },
+      "mouseSensitivity": {
+        "defaultValue": 1.0,
+        "type": "undefined",
+        "description": " Adjust this value to finetune how quick/slow you can drag the slider."
+      },
+      "dragDirection": {
+        "defaultValue": "Diagonal",
+        "type": "String",
+        "options": [
+          "Diagonal",
+          "Vertical",
+          "Horizontal"
+        ],
+        "description": " Select a drag direction"
+      },
+      "showValuePopup": {
+        "defaultValue": "No",
+        "type": "String",
+        "options": [
+          "No",
+          "Above",
+          "Below",
+          "Left",
+          "Right"
+        ],
+        "description": " Displays a Value Popup that shows the sliders value"
+      },
+      "showTextBox": {
+        "defaultValue": true,
+        "type": "bool",
+        "description": " If in horizontal or vertical mode: show slider value or not."
+      },
+      "scrollWheel": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "enableMidiLearn": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "sendValueOnDrag": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "matrixTargetId": {
+        "defaultValue": "",
+        "type": "String",
+        "description": " This property registers this UI knob as modulation target for the matrix modulation system. If the string corresponds to a target ID of one (or more) Matrix modulator(s), then it will connect to this module and update it's value parameter, otherwise it will create a custom modulation slot which will be periodically updated with the modulation value. |"
+      }
+    }
+  },
+  "ScriptSliderPack": {
+    "id": "ScriptSliderPack",
+    "type": "plugin-component",
+    "llmRef": "ScriptSliderPack (UI component)\nCreate via: Content.addSliderPack(\"name\", x, y)\nScripting API: $API.ScriptSliderPack$\n\nMulti-slider array editor for SliderPackData values. Edits internal data, a processor external-data slot, or a referred SliderPackData source. Used for step-lane editing, shared multi-view data editing, and bulk value operations.\n\nProperties (component-specific):\n  sliderAmount: number of sliders in the pack\n  stepSize: value step resolution\n  flashActive: flash the active slider step\n  showValueOverlay: show value text overlay on drag\n  SliderPackIndex: slider pack data slot index (PascalCase exception)\n  mouseUpCallback: fire callback only on mouse release\n  stepSequencerMode: step sequencer interaction mode\n\nCustomisation:\n  LAF: drawSliderPackBackground, drawSliderPackFlashOverlay, drawSliderPackRightClickLine, drawSliderPackTextPopup\n  CSS: .scriptsliderpack with :hover, :active; .packslider sub-selector with --value, --flash variables; .sliderpackline, label\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Treating callback value as slider amplitude",
+        "wrong": "Using the value parameter directly as the slider's new value",
+        "right": "Use parseInt(value) as the edited index, then call getSliderValueAt(index) for the actual value",
+        "explanation": "The control callback's second argument is the index of the edited slider, not its value. Fetch the actual slider value with getSliderValueAt()."
+      },
+      {
+        "title": "Importing many values with callbacks enabled",
+        "wrong": "Setting slider values in a loop without suppressing callbacks",
+        "right": "Call setAllValueChangeCausesCallback(false) during bulk import, then run one explicit downstream refresh",
+        "explanation": "Each slider value change fires a callback by default. Bulk imports cause callback storms that degrade performance. Suppress during import and trigger one update afterward."
+      },
+      {
+        "title": "Mismatched setWidthArray length",
+        "wrong": "Calling setWidthArray with an array whose length differs from sliderAmount",
+        "right": "Ensure the width array length matches the current sliderAmount",
+        "explanation": "A length mismatch causes the layout to fall back to equal widths and breaks hit-testing assumptions."
+      },
+      {
+        "title": "Confusing SliderPackIndex with parameterId",
+        "wrong": "Using parameterId to select a slider pack data slot",
+        "right": "Use SliderPackIndex to select the data slot, processorId to select the processor",
+        "explanation": "Slider pack binding uses the complex data path (processorId + SliderPackIndex), not the normal parameter path. parameterId targets processor parameters."
+      },
+      {
+        "title": "Indexing into callback value as an array",
+        "wrong": "Console.print(value[0]) — treating the callback value as an array",
+        "right": "var index = parseInt(value); var amp = component.getSliderValueAt(index);",
+        "explanation": "The callback value is a single number (the edited slider's index), not an array of all slider values. Treating it as an array causes 'API call with undefined parameter' errors."
+      }
+    ],
+    "properties": {
+      "sliderAmount": {
+        "defaultValue": 16,
+        "type": "int"
+      },
+      "stepSize": {
+        "defaultValue": 0.01,
+        "type": "undefined",
+        "options": [
+          "0.01",
+          "0.1",
+          "1.0"
+        ]
+      },
+      "flashActive": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "showValueOverlay": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "SliderPackIndex": {
+        "defaultValue": 0,
+        "type": "int"
+      },
+      "mouseUpCallback": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "stepSequencerMode": {
+        "defaultValue": false,
+        "type": "bool"
+      }
+    }
+  },
+  "ScriptTable": {
+    "id": "ScriptTable",
+    "type": "plugin-component",
+    "llmRef": "ScriptTable (UI component)\nCreate via: Content.addTable(\"name\", x, y)\nScripting API: $API.ScriptTable$\n\nTable curve editor component for editing transfer curves (velocity, CC, waveshaping). Binds to ExternalData::Table via processorId and tableIndex. Supports internal ownership, processor-slot binding, and shared-table binding via referToData().\n\nProperties (component-specific):\n  tableIndex: table slot index on connected processor (0-based)\n  customColours: enable flat design with custom colours (hex colour, non-zero = enabled)\n\nCustomisation:\n  LAF: drawTableBackground, drawTablePath, drawTablePoint, drawTableMidPoint, drawTableRuler\n  CSS: .scripttable with :hover, :active; .tablepoint, .tablemidpoint, .playhead sub-selectors; --tablePath, --playhead variables\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Passing raw MIDI values to getTableValue",
+        "wrong": "table.getTableValue(Message.getVelocity()) — input 0-127",
+        "right": "table.getTableValue(Message.getVelocity() / 127.0) — normalise to 0.0-1.0 first",
+        "explanation": "getTableValue() expects normalised input (0.0–1.0). Passing unnormalised MIDI values collapses the curve behaviour because only a tiny portion of the table is used."
+      },
+      {
+        "title": "Calling registerAtParent in note callbacks",
+        "wrong": "Calling registerAtParent() inside onNoteOn or other real-time callbacks",
+        "right": "Call registerAtParent() once during onInit and cache the returned handle",
+        "explanation": "registerAtParent() is a setup operation that should run once during initialisation. Calling it repeatedly in note callbacks adds unnecessary overhead."
+      },
+      {
+        "title": "Confusing tableIndex with parameterId",
+        "wrong": "Using parameterId to select a table slot",
+        "right": "Use tableIndex to select the table slot, processorId to select the processor",
+        "explanation": "Table binding uses the complex data path (processorId + tableIndex), not the normal parameter path (processorId + parameterId). parameterId is deactivated for ScriptTable."
+      },
+      {
+        "title": "Setting colour properties without enabling customColours",
+        "wrong": "table.set('bgColour', 0xFF444444) — colours have no visible effect",
+        "right": "table.set('customColours', '0xFFFFFFFF'); table.set('bgColour', 0xFF444444);",
+        "explanation": "Colour properties (bgColour, itemColour, itemColour2) are only used when customColours is set to a non-zero value. The default 3D appearance ignores them entirely."
+      }
+    ],
+    "properties": {
+      "tableIndex": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " the table index (starting with 0) of the table that you want to control. In most cases it will just be zero, but eg. the Table Envelope has two tables (0 = Attack, 1 = Release). It might be possible that you have to [rebuild](/working-with-hise/hise-interface/interface-designer#canvas) the interface after changing this value to apply the changes."
+      },
+      "customColours": {
+        "defaultValue": 0,
+        "type": "int",
+        "description": " if true, it will use a flat design with customizable colours, otherwise it will look like the thing above."
+      }
+    }
+  },
+  "AHDSRGraph": {
+    "id": "AHDSRGraph",
+    "type": "floating-tile",
+    "llmRef": "AHDSRGraph (FloatingTile)\nContentType string: \"AHDSRGraph\"\nSet via: FloatingTile.set(\"ContentType\", \"AHDSRGraph\")\n\nDisplays a real-time AHDSR envelope graph with an animated ball that tracks the current envelope position. Connect to an AHDSR modulator via ProcessorId.\n\nJSON Properties:\n  ProcessorId: The ID of the connected AHDSR modulator\n  Index: Unused for this panel (leave at default)\n\nCustomisation:\n  LAF: drawAhdsrBackground, drawAhdsrPath, drawAhdsrBall\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Missing ProcessorId connection",
+        "wrong": "Adding an AHDSRGraph floating tile without setting the ProcessorId property",
+        "right": "Set ProcessorId to the ID of the AHDSR modulator you want to visualise",
+        "explanation": "Without a connected processor, the graph renders empty. The floating tile needs a valid AHDSR modulator reference to display envelope data."
+      },
+      {
+        "title": "Not handling the dual drawAhdsrPath call",
+        "wrong": "Writing a single drawAhdsrPath implementation without checking obj.isActive",
+        "right": "Check obj.isActive to distinguish: false = full path outline, true = active section highlight",
+        "explanation": "drawAhdsrPath is called twice per repaint — once for the full envelope curve and once for the currently active section. Without the isActive check, both calls render identically and the active section highlight is lost."
+      }
+    ]
+  },
+  "Keyboard": {
+    "id": "Keyboard",
+    "type": "floating-tile",
+    "llmRef": "Keyboard (FloatingTile)\nContentType string: \"Keyboard\"\nSet via: FloatingTile.set(\"ContentType\", \"Keyboard\")\n\nA virtual MIDI keyboard that sends and displays note events. Supports vector graphics, flat style, custom key images, CSS styling, MPE mode, and per-key colouring via Engine.setKeyColour().\n\nJSON Properties:\n  CustomGraphics: Use custom key images from Images/keyboard/ (default: false)\n  KeyWidth: Width per key in pixels (default: 14)\n  LowKey: Lowest visible MIDI note number (default: 9)\n  HiKey: Highest visible MIDI note number (default: 127)\n  BlackKeyRatio: Height ratio of black keys to total height (default: 0.7)\n  DefaultAppearance: Use standard HISE appearance with fixed height (default: true)\n  DisplayOctaveNumber: Show octave labels on C keys (default: false)\n  ToggleMode: Keys stay pressed until clicked again (default: false)\n  MidiChannel: MIDI channel 1-16 (default: 1)\n  MPEKeyboard: Enable MPE-style multi-touch keyboard (default: false)\n  MPEStartChannel: MPE start channel (default: 2)\n  MPEEndChannel: MPE end channel (default: 16)\n  UseVectorGraphics: Use vector rendering instead of filmstrip (default: true)\n  UseFlatStyle: Use flat style when vector graphics are active (default: false)\n\nCustomisation:\n  LAF: drawKeyboardBackground, drawWhiteNote, drawBlackNote\n  CSS: .keyboard, .whitekey, .blackkey (requires CustomGraphics=false, DefaultAppearance=false)",
+    "commonMistakes": [
+      {
+        "title": "CSS not rendering on the keyboard",
+        "wrong": "Assigning a CSS stylesheet without disabling CustomGraphics and DefaultAppearance",
+        "right": "Set CustomGraphics to false and DefaultAppearance to false before applying CSS",
+        "explanation": "The CSS renderer is only active when both CustomGraphics and DefaultAppearance are disabled. With DefaultAppearance enabled, the keyboard uses fixed dimensions and the stock HISE skin."
+      },
+      {
+        "title": "Keyboard stuck at fixed 72px height",
+        "wrong": "Trying to resize the keyboard height while DefaultAppearance is true",
+        "right": "Set DefaultAppearance to false to allow the keyboard to fill its parent bounds",
+        "explanation": "When DefaultAppearance is true, the keyboard is locked to a fixed 72px height centred in its container. Set it to false for fully resizable layout."
+      },
+      {
+        "title": "MidiChannel does not isolate sound generators",
+        "wrong": "Setting MidiChannel to 2 expecting only the sampler on channel 2 to respond",
+        "right": "Use Message.ignoreEvent(true) in a MIDI processor on each child synth that should not respond to the keyboard",
+        "explanation": "The MidiChannel property controls which channel the keyboard sends notes on and which channel's activity it displays — it does not filter MIDI routing. The keyboard injects MIDI at the root of the processing chain, so all sound generators receive the events regardless of channel."
+      },
+      {
+        "title": "No key colours or hover with CustomGraphics",
+        "wrong": "Enabling CustomGraphics and expecting Engine.setKeyColour() or hover highlighting to work",
+        "right": "Use LAF or CSS for custom visuals that require key colouring or hover feedback",
+        "explanation": "CustomGraphics mode renders static filmstrip images and does not support Engine.setKeyColour() overlays or mouse-over highlighting. Switch to LAF (drawWhiteNote/drawBlackNote) or CSS styling for full interactivity."
+      }
+    ]
+  },
+  "MidiOverlayPanel": {
+    "id": "MidiOverlayPanel",
+    "type": "floating-tile",
+    "llmRef": "MidiOverlayPanel (FloatingTile)\nContentType string: \"MidiOverlayPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"MidiOverlayPanel\")\n\nMIDI file drag-and-drop area that connects to a MIDI Player module. Supports loading MIDI files via drag-and-drop and dragging the current MIDI content to external targets (e.g., DAWs).\n\nJSON Properties:\n  ProcessorId: The ID of the connected MIDI Player\n  Index: Usually 0\n\nCustomisation:\n  LAF: drawMidiDropper\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Missing ProcessorId connection",
+        "wrong": "Adding a MidiOverlayPanel floating tile without setting the ProcessorId property",
+        "right": "Set ProcessorId to the ID of the MIDI Player you want to connect",
+        "explanation": "Without a connected processor, the dropper has no MIDI data to display or export. Set ProcessorId to a valid MIDI Player ID."
+      },
+      {
+        "title": "Confusing with ScriptAudioWaveform",
+        "wrong": "Expecting drawMidiDropper to be part of the ScriptAudioWaveform LAF",
+        "right": "drawMidiDropper is a MidiOverlayPanel LAF function — set it on the FloatingTile's LAF, not the AudioWaveform's",
+        "explanation": "Although the laf_style_guide.json groups drawMidiDropper under ScriptAudioWaveform, it is architecturally part of MidiOverlayPanel (MidiFileDragAndDropper). Register it on the LAF applied to the FloatingTile containing the MidiOverlayPanel."
+      }
+    ]
+  },
+  "PerformanceLabel": {
+    "id": "PerformanceLabel",
+    "type": "floating-tile",
+    "llmRef": "PerformanceLabel (FloatingTile)\nContentType string: \"PerformanceLabel\"\nSet via: FloatingTile.set(\"ContentType\", \"PerformanceLabel\")\n\nDisplays real-time CPU usage, memory consumption, and voice count for the plugin. No module connection required — reads global engine statistics.\n\nJSON Properties:\n  Font: Font family name\n  FontSize: Font size in points\n  ColourData.textColour: Text colour\n  ColourData.bgColour: Background colour\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Expecting per-module statistics",
+        "wrong": "Using PerformanceLabel to monitor CPU usage of a specific processor",
+        "right": "Use Engine.getCpuUsage() for global stats, or the HISE profiler for per-module analysis",
+        "explanation": "PerformanceLabel shows global engine performance (total CPU, memory, voice count), not per-processor metrics. There is no floating tile for per-module CPU monitoring."
+      }
+    ]
+  },
+  "PresetBrowser": {
+    "id": "PresetBrowser",
+    "type": "floating-tile",
+    "llmRef": "PresetBrowser (FloatingTile)\nContentType string: \"PresetBrowser\"\nSet via: FloatingTile.set(\"ContentType\", \"PresetBrowser\")\n\nA fully-featured preset management interface for loading, saving, renaming, and deleting user presets. Displays a multi-column browser (banks, categories, presets) with search, favourites, tags, and notes. Saves and recalls all interface elements where saveInPreset is true.\n\nJSON Properties:\n  ShowFolderButton: Show the \"more\" options button (default: true)\n  ShowSaveButton: Show the save preset button (default: true)\n  ShowNotes: Show the notes bar (default: true)\n  ShowEditButtons: Show add/rename/delete buttons (default: true)\n  ShowAddButton: Show the add button individually (default: true)\n  ShowRenameButton: Show the rename button individually (default: true)\n  ShowDeleteButton: Show the delete button individually (default: true)\n  ShowSearchBar: Show the search bar (default: true)\n  ShowFavoriteIcon: Show the favourite star icon (default: true)\n  ShowExpansionsAsColumn: Show expansions as an additional column (default: false)\n  NumColumns: Number of columns 1-3 (default: 3)\n  ColumnWidthRatio: Array of relative column widths (default: [0.333, 0.333, 0.333])\n  EditButtonOffset: Vertical offset for edit buttons in pixels (default: 10)\n  ListAreaOffset: Margin offsets for the list area [top, right, bottom, left] (default: [0,0,0,0])\n  ColumnRowPadding: Padding between columns and rows [top, right, bottom, left] (default: [0,0,0,0])\n  ButtonsInsideBorder: Place buttons inside the border (default: false)\n  SearchBarBounds: Custom bounds for search bar [x, y, w, h] (default: auto)\n  SaveButtonBounds: Custom bounds for save button [x, y, w, h] (default: auto)\n  MoreButtonBounds: Custom bounds for more button [x, y, w, h] (default: auto)\n  FavoriteButtonBounds: Custom bounds for favourite button [x, y, w, h] (default: auto)\n  FullPathFavorites: Use full path for favourite matching (default: false)\n  FavoriteIconOffset: Horizontal offset for the favourite icon (default: 0)\n\nCustomisation:\n  LAF: drawPresetBrowserBackground, drawPresetBrowserColumnBackground, drawPresetBrowserListItem, drawPresetBrowserDialog, drawPresetBrowserTag, drawPresetBrowserSearchBar, createPresetBrowserIcons\n  CSS: Multiple selectors — see CSS diagrams for full map",
+    "commonMistakes": [
+      {
+        "title": "Forgetting to set saveInPreset on controls",
+        "wrong": "Adding a PresetBrowser but leaving saveInPreset as false on controls that should be recalled",
+        "right": "Set saveInPreset to true on every control whose state should be stored in user presets",
+        "explanation": "The preset browser saves and recalls the values of all interface elements where saveInPreset is enabled. Controls left at the default (false for panels, true for sliders/buttons) may not persist across preset changes."
+      },
+      {
+        "title": "Using wrong column index in drawPresetBrowserListItem",
+        "wrong": "Assuming columnIndex 0 = banks, 1 = categories, 2 = presets when NumColumns < 3",
+        "right": "The preset column always has columnIndex 2 regardless of NumColumns. When NumColumns is 2, columnIndex 0 = categories and 2 = presets.",
+        "explanation": "The column index mapping is fixed — the preset column is always index 2. When fewer columns are shown, earlier columns are hidden but the indices do not shift."
+      },
+      {
+        "title": "Not handling createPresetBrowserIcons return value",
+        "wrong": "Registering createPresetBrowserIcons like a drawing callback with (g, obj) parameters",
+        "right": "Register it with a single (id) parameter and return a Path object",
+        "explanation": "Unlike all other PresetBrowser LAF functions, createPresetBrowserIcons is not a drawing callback. It receives an icon ID string and must return a Path that HISE will use to render the icon."
+      },
+      {
+        "title": "Using setControlCallback to detect preset changes",
+        "wrong": "Setting a control callback on the preset browser FloatingTile to react when a preset is loaded",
+        "right": "Use UserPresetHandler.setPostCallback() to get notified after a preset is loaded",
+        "explanation": "The PresetBrowser floating tile does not fire a control callback when presets are loaded. To react to preset changes (e.g. updating a label with the current preset name), use UserPresetHandler.setPostCallback() instead."
+      }
+    ]
+  },
+  "ScriptFloatingTile": {
+    "id": "ScriptFloatingTile",
+    "type": "",
+    "properties": {
+      "itemColour3": {
+        "defaultValue": 0,
+        "type": "int"
+      },
+      "updateAfterInit": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "ContentType": {
+        "defaultValue": "Empty",
+        "type": "String",
+        "options": [
+          "Empty",
+          "PresetBrowser",
+          "AboutPagePanel",
+          "Keyboard",
+          "PerformanceLabel",
+          "MidiOverlayPanel",
+          "ActivityLed",
+          "CustomSettings",
+          "MidiSources",
+          "MidiChannelList",
+          "TooltipPanel",
+          "MidiLearnPanel",
+          "FrontendMacroPanel",
+          "Plotter",
+          "AudioAnalyser",
+          "Waveform",
+          "FilterDisplay",
+          "DraggableFilterPanel",
+          "WavetableWaterfall",
+          "MPEPanel",
+          "ModulationMatrix",
+          "ModulationMatrixController",
+          "AHDSRGraph",
+          "FlexAHDSRGraph",
+          "MarkdownPanel",
+          "MatrixPeakMeter"
+        ]
+      },
+      "Font": {
+        "defaultValue": "Default",
+        "type": "String"
+      },
+      "FontSize": {
+        "defaultValue": 14.0,
+        "type": "undefined"
+      },
+      "Data": {
+        "defaultValue": "{\n}",
+        "type": "String"
+      }
+    }
+  },
+  "ScriptPanel": {
+    "id": "ScriptPanel",
+    "type": "",
+    "properties": {
+      "borderSize": {
+        "defaultValue": 2.0,
+        "type": "undefined"
+      },
+      "borderRadius": {
+        "defaultValue": 6.0,
+        "type": "undefined"
+      },
+      "opaque": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "allowDragging": {
+        "defaultValue": 0,
+        "type": "int"
+      },
+      "allowCallbacks": {
+        "defaultValue": "No Callbacks",
+        "type": "String",
+        "options": [
+          "No Callbacks",
+          "Context Menu",
+          "Clicks Only",
+          "Clicks & Hover",
+          "Clicks, Hover & Dragging",
+          "All Callbacks"
+        ]
+      },
+      "popupMenuItems": {
+        "defaultValue": "",
+        "type": "String"
+      },
+      "popupOnRightClick": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "popupMenuAlign": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "selectedPopupIndex": {
+        "defaultValue": -1,
+        "type": "int"
+      },
+      "stepSize": {
+        "defaultValue": 0.0,
+        "type": "undefined"
+      },
+      "enableMidiLearn": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "holdIsRightClick": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "isPopupPanel": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "bufferToImage": {
+        "defaultValue": false,
+        "type": "bool"
+      }
+    }
+  },
+  "ScriptMultipageDialog": {
+    "id": "ScriptMultipageDialog",
+    "type": "",
+    "properties": {
+      "Font": {
+        "defaultValue": "Default",
+        "type": "String"
+      },
+      "FontSize": {
+        "defaultValue": 16.0,
+        "type": "undefined"
+      },
+      "EnableConsoleOutput": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "DialogWidth": {
+        "defaultValue": 500,
+        "type": "int"
+      },
+      "DialogHeight": {
+        "defaultValue": 400,
+        "type": "int"
+      },
+      "UseViewport": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "StyleSheet": {
+        "defaultValue": "Dark",
+        "type": "String",
+        "options": [
+          "None",
+          "Property Editor",
+          "RawHTML",
+          "Dark",
+          "Bright",
+          "ModalPopup"
+        ]
+      },
+      "ConfirmClose": {
+        "defaultValue": false,
+        "type": "bool"
+      }
+    }
+  }
+}

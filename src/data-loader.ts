@@ -73,6 +73,26 @@ export class HISEDataLoader {
   // Index: functionName -> { componentType, category, description, properties }
   private lafFunctionIndex: Map<string, LAFQueryResult> = new Map();
 
+  // Enriched component-level data (from ui_components.json)
+  private uiComponentEnriched: Map<string, { llmRef?: string; commonMistakes?: any[]; seeAlso?: any[] }> = new Map();
+
+  // Enriched module-level data (from processors.json)
+  private moduleEnriched: Map<string, { llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; cpuProfile?: any; customEquivalent?: any; tags?: string[] }> = new Map();
+
+  // Scriptnode node data (from scriptnode.json)
+  private scriptnodeIndex: Map<string, { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any }> = new Map();
+
+  // Cross-domain explore index (modules, scriptnode, UI enrichment for explore_hise)
+  private exploreEnrichmentIndex: Map<string, {
+    name: string;
+    category: 'module' | 'scriptnode' | 'ui';
+    domainTag: string;
+    brief: string;
+    whenToUse: string;
+    commonMistakes: string[];
+    tags: string[];
+  }> = new Map();
+
   // Class survey data (loaded lazily)
   private surveyData: ClassSurveyData | null = null;
   private surveyLoaded = false;
@@ -108,7 +128,11 @@ export class HISEDataLoader {
 
       console.error('Building HISE data indexes...');
       
-      const uiPropertiesData = readFileSync(join(__dirname, '..', 'data', 'ui_component_properties.json'), 'utf8');
+      // Load UI components (enriched format with llmRef, or legacy format)
+      const uiPath = existsSync(join(__dirname, '..', 'data', 'ui_components.json'))
+        ? join(__dirname, '..', 'data', 'ui_components.json')
+        : join(__dirname, '..', 'data', 'ui_component_properties.json');
+      const uiPropertiesData = readFileSync(uiPath, 'utf8');
       const uiProperties = JSON.parse(uiPropertiesData);
       
       const apiMethodsData = readFileSync(join(__dirname, '..', 'data', 'scripting_api.json'), 'utf8');
@@ -116,6 +140,13 @@ export class HISEDataLoader {
       
       const processorsData = readFileSync(join(__dirname, '..', 'data', 'processors.json'), 'utf8');
       const processors = JSON.parse(processorsData);
+
+      // Load scriptnode data (optional)
+      let scriptnodeData: any = null;
+      const snPath = join(__dirname, '..', 'data', 'scriptnode.json');
+      if (existsSync(snPath)) {
+        scriptnodeData = JSON.parse(readFileSync(snPath, 'utf8'));
+      }
       
       // Optimization #2: Don't load snippets yet (lazy load)
       this.data = {
@@ -124,6 +155,14 @@ export class HISEDataLoader {
         moduleParameters: this.transformProcessors(processors),
         codeSnippets: [] // Will be loaded lazily
       };
+
+      // Store enriched data for component/module/scriptnode-level queries
+      this.storeEnrichedUI(uiProperties);
+      this.storeEnrichedModules(processors);
+      if (scriptnodeData) {
+        this.storeScriptnodeData(scriptnodeData);
+      }
+      this.buildExploreEnrichmentIndex();
       
       this.buildIndexes();
       
@@ -148,14 +187,18 @@ export class HISEDataLoader {
 
       // Check cache version (invalidate if data files changed)
       const dataDir = join(__dirname, '..', 'data');
-      const uiMtime = this.getFileMtime(join(dataDir, 'ui_component_properties.json'));
+      const uiFile = existsSync(join(dataDir, 'ui_components.json'))
+        ? 'ui_components.json' : 'ui_component_properties.json';
+      const uiMtime = this.getFileMtime(join(dataDir, uiFile));
       const apiMtime = this.getFileMtime(join(dataDir, 'scripting_api.json'));
       const procMtime = this.getFileMtime(join(dataDir, 'processors.json'));
+      const snMtime = this.getFileMtime(join(dataDir, 'scriptnode.json'));
 
-      if (cache.version !== '1.3' || 
+      if (cache.version !== '1.4' || 
           cache.uiMtime !== uiMtime || 
           cache.apiMtime !== apiMtime || 
-          cache.procMtime !== procMtime) {
+          cache.procMtime !== procMtime ||
+          cache.snMtime !== snMtime) {
         console.error('Cache invalidated due to data file changes');
         return false;
       }
@@ -164,6 +207,10 @@ export class HISEDataLoader {
       this.data = cache.data;
       this.snippetsLoaded = false;
       this.cacheLoadedAt = cache.cachedAt || null;
+
+      // Reload enriched data from source files (not stored in cache)
+      this.reloadEnrichedData();
+
       this.buildIndexes();
 
       return true;
@@ -180,12 +227,15 @@ export class HISEDataLoader {
 
       // Only cache the transformed data, not the indexes (they're quick to rebuild)
       const cachedAt = new Date().toISOString();
+      const uiFile = existsSync(join(dataDir, 'ui_components.json'))
+        ? 'ui_components.json' : 'ui_component_properties.json';
       const cache = {
-        version: '1.3',
+        version: '1.4',
         cachedAt,
-        uiMtime: this.getFileMtime(join(dataDir, 'ui_component_properties.json')),
+        uiMtime: this.getFileMtime(join(dataDir, uiFile)),
         apiMtime: this.getFileMtime(join(dataDir, 'scripting_api.json')),
         procMtime: this.getFileMtime(join(dataDir, 'processors.json')),
+        snMtime: this.getFileMtime(join(dataDir, 'scriptnode.json')),
         data: this.data
       };
       this.cacheLoadedAt = cachedAt;
@@ -245,20 +295,41 @@ export class HISEDataLoader {
   private transformUIProperties(data: Record<string, any>): UIComponentProperty[] {
     const properties: UIComponentProperty[] = [];
 
-    for (const [componentType, props] of Object.entries(data)) {
-      if (typeof props !== 'object' || props === null) continue;
+    for (const [componentType, compData] of Object.entries(data)) {
+      if (typeof compData !== 'object' || compData === null) continue;
 
-      for (const [propertyName, propData] of Object.entries(props)) {
-        const pd = propData as Record<string, any>;
-        properties.push({
-          id: `${componentType}.${propertyName}`,
-          componentType,
-          propertyName,
-          propertyType: pd.type || 'unknown',
-          defaultValue: pd.defaultValue ?? null,
-          description: pd.description || '',
-          possibleValues: pd.options || null
-        });
+      // New enriched format: { id, type, llmRef, properties: { propName: {...} } }
+      // Legacy format: { propName: { type, defaultValue, ... } }
+      const props = compData.properties || compData;
+      // Skip non-property top-level keys from enriched format
+      if (compData.properties && typeof compData.properties === 'object') {
+        for (const [propertyName, propData] of Object.entries(compData.properties)) {
+          const pd = propData as Record<string, any>;
+          properties.push({
+            id: `${componentType}.${propertyName}`,
+            componentType,
+            propertyName,
+            propertyType: pd.type || 'unknown',
+            defaultValue: pd.defaultValue ?? null,
+            description: pd.description || '',
+            possibleValues: pd.options || null
+          });
+        }
+      } else {
+        // Legacy flat format
+        for (const [propertyName, propData] of Object.entries(props)) {
+          if (typeof propData !== 'object' || propData === null) continue;
+          const pd = propData as Record<string, any>;
+          properties.push({
+            id: `${componentType}.${propertyName}`,
+            componentType,
+            propertyName,
+            propertyType: pd.type || 'unknown',
+            defaultValue: pd.defaultValue ?? null,
+            description: pd.description || '',
+            possibleValues: pd.options || null
+          });
+        }
       }
     }
 
@@ -340,6 +411,8 @@ export class HISEDataLoader {
 
       for (const [paramId, paramData] of Object.entries(procData.parameters)) {
         const pd = paramData as Record<string, any>;
+        // Support both old format (string description) and new format (object with description/range/default)
+        const desc = typeof pd === 'string' ? pd : (pd.description || pd.desc || '');
         parameters.push({
           id: `${processorType}.${paramId}`,
           moduleType: processorType,
@@ -348,13 +421,210 @@ export class HISEDataLoader {
           min: pd.min ?? 0,
           max: pd.max ?? 0,
           step: pd.step ?? 0,
-          defaultValue: pd.defaultValue ?? 0,
-          description: pd.description || ''
+          defaultValue: pd.defaultValue ?? pd.default ?? 0,
+          description: desc
         });
       }
     }
 
     return parameters;
+  }
+
+  private storeEnrichedModules(data: Record<string, any>): void {
+    this.moduleEnriched.clear();
+    for (const [moduleId, modData] of Object.entries(data)) {
+      if (modData.llmRef || modData.commonMistakes) {
+        this.moduleEnriched.set(moduleId.toLowerCase(), {
+          llmRef: modData.llmRef,
+          commonMistakes: modData.commonMistakes,
+          seeAlso: modData.seeAlso,
+          cpuProfile: modData.cpuProfile,
+          customEquivalent: modData.customEquivalent,
+          tags: modData.tags,
+        });
+      }
+    }
+  }
+
+  private storeEnrichedUI(data: Record<string, any>): void {
+    this.uiComponentEnriched.clear();
+    for (const [compId, compData] of Object.entries(data)) {
+      if (compData.llmRef || compData.commonMistakes) {
+        this.uiComponentEnriched.set(compId.toLowerCase(), {
+          llmRef: compData.llmRef,
+          commonMistakes: compData.commonMistakes,
+          seeAlso: compData.seeAlso,
+        });
+      }
+    }
+  }
+
+  private storeScriptnodeData(data: any): void {
+    this.scriptnodeIndex.clear();
+    const nodes = data?.nodes || {};
+    for (const [factoryPath, nodeData] of Object.entries(nodes)) {
+      const nd = nodeData as any;
+      this.scriptnodeIndex.set(factoryPath.toLowerCase(), {
+        factoryPath: nd.factoryPath || factoryPath,
+        factory: nd.factory || '',
+        title: nd.title || '',
+        description: nd.description || '',
+        llmRef: nd.llmRef,
+        commonMistakes: nd.commonMistakes,
+        seeAlso: nd.seeAlso,
+        tags: nd.tags,
+        polyphonic: nd.polyphonic,
+        cpuProfile: nd.cpuProfile,
+        parameters: nd.parameters,
+      });
+    }
+  }
+
+  /**
+   * Reload enriched data from source JSON files.
+   * Called both during fresh load and cache restore.
+   */
+  private reloadEnrichedData(): void {
+    const dataDir = join(__dirname, '..', 'data');
+    try {
+      // UI enrichment
+      const uiPath = existsSync(join(dataDir, 'ui_components.json'))
+        ? join(dataDir, 'ui_components.json')
+        : join(dataDir, 'ui_component_properties.json');
+      const uiData = JSON.parse(readFileSync(uiPath, 'utf8'));
+      this.storeEnrichedUI(uiData);
+
+      // Module enrichment
+      const procData = JSON.parse(readFileSync(join(dataDir, 'processors.json'), 'utf8'));
+      this.storeEnrichedModules(procData);
+
+      // Scriptnode
+      const snPath = join(dataDir, 'scriptnode.json');
+      if (existsSync(snPath)) {
+        const snData = JSON.parse(readFileSync(snPath, 'utf8'));
+        this.storeScriptnodeData(snData);
+      }
+      // Build cross-domain explore index
+      this.buildExploreEnrichmentIndex();
+    } catch (error) {
+      console.error('Failed to reload enriched data:', error);
+    }
+  }
+
+  /**
+   * Extract a named section from an llmRef text block.
+   * Sections start with "SectionName:" at the start of a line and end at the next section or EOF.
+   */
+  private extractLlmRefSection(llmRef: string, sectionName: string): string {
+    const pattern = new RegExp(`^\\s*${sectionName}:\\s*\\n((?:[ \\t]+.+\\n?)*)`, 'm');
+    const match = llmRef.match(pattern);
+    if (!match) return '';
+    return match[1].replace(/^[ \t]+/gm, '').trim();
+  }
+
+  /**
+   * Extract the first line/paragraph from an llmRef as a brief.
+   * Skips the header line (e.g., "LFO Modulator (Modulator/TimeVariantModulator)")
+   * and returns the next non-empty paragraph.
+   */
+  private extractLlmRefBrief(llmRef: string): string {
+    const lines = llmRef.split('\n');
+    // Skip first line (title/header) and empty lines
+    let started = false;
+    const briefLines: string[] = [];
+    for (const line of lines) {
+      if (!started) {
+        // Skip until we find a non-empty content line (after header)
+        if (line.trim() === '' || line.includes('(') && !line.startsWith(' ')) continue;
+        started = true;
+      }
+      if (started) {
+        if (line.trim() === '' && briefLines.length > 0) break;
+        if (line.match(/^\s*(Signal flow|CPU|Parameters|When to use|Common mistakes|Custom equivalent|See also|Modulation chains|Customisation):/)) break;
+        briefLines.push(line.trim());
+      }
+    }
+    return briefLines.join(' ').trim();
+  }
+
+  /**
+   * Build the cross-domain explore enrichment index from modules, scriptnode, and UI data.
+   */
+  private buildExploreEnrichmentIndex(): void {
+    this.exploreEnrichmentIndex.clear();
+
+    // Modules
+    for (const [key, mod] of this.moduleEnriched) {
+      if (!mod.llmRef) continue;
+      const whenToUse = this.extractLlmRefSection(mod.llmRef, 'When to use');
+      const brief = this.extractLlmRefBrief(mod.llmRef);
+      const mistakes = (mod.commonMistakes || [])
+        .slice(0, 3)
+        .map((m: any) => m.title || m.wrong || String(m));
+
+      // Extract name and type from first line of llmRef, e.g., "LFO Modulator (Modulator/TimeVariantModulator)"
+      const firstLine = mod.llmRef.split('\n')[0] || '';
+      const typeMatch = firstLine.match(/\(([^)]+)\)/);
+      const domainTag = typeMatch ? `module/${typeMatch[1]}` : 'module';
+      // Use first word(s) before the parenthesized type as the display name
+      const nameFromRef = firstLine.replace(/\s*\(.*\)\s*$/, '').trim();
+
+      this.exploreEnrichmentIndex.set(key, {
+        name: nameFromRef || key,
+        category: 'module',
+        domainTag,
+        brief: brief || firstLine,
+        whenToUse,
+        commonMistakes: mistakes,
+        tags: mod.tags || [],
+      });
+    }
+
+    // Scriptnode nodes
+    for (const [key, node] of this.scriptnodeIndex) {
+      if (!node.llmRef) continue;
+      const whenToUse = this.extractLlmRefSection(node.llmRef, 'When to use');
+      const brief = this.extractLlmRefBrief(node.llmRef) || node.description;
+      const mistakes = (node.commonMistakes || [])
+        .slice(0, 3)
+        .map((m: any) => m.title || m.wrong || String(m));
+
+      this.exploreEnrichmentIndex.set(key, {
+        name: node.factoryPath,
+        category: 'scriptnode',
+        domainTag: `scriptnode/${node.factory}`,
+        brief,
+        whenToUse,
+        commonMistakes: mistakes,
+        tags: node.tags || [],
+      });
+    }
+
+    // UI components
+    for (const [key, comp] of this.uiComponentEnriched) {
+      if (!comp.llmRef) continue;
+      const whenToUse = this.extractLlmRefSection(comp.llmRef, 'When to use');
+      const brief = this.extractLlmRefBrief(comp.llmRef);
+      const mistakes = (comp.commonMistakes || [])
+        .slice(0, 3)
+        .map((m: any) => m.title || m.wrong || String(m));
+
+      // Extract name from first line of llmRef, e.g., "ScriptSlider (UI component)"
+      const uiFirstLine = comp.llmRef.split('\n')[0] || '';
+      const uiName = uiFirstLine.replace(/\s*\(.*\)\s*$/, '').trim();
+
+      this.exploreEnrichmentIndex.set(key, {
+        name: uiName || key,
+        category: 'ui',
+        domainTag: 'ui/component',
+        brief,
+        whenToUse,
+        commonMistakes: mistakes,
+        tags: [],
+      });
+    }
+
+    console.error(`Built explore enrichment index (${this.exploreEnrichmentIndex.size} items)`);
   }
 
   private transformSnippets(data: any[]): CodeSnippet[] {
@@ -511,6 +781,39 @@ export class HISEDataLoader {
         description: param.description,
         keywords
       });
+    }
+
+    // Index scriptnode nodes
+    for (const [key, node] of this.scriptnodeIndex) {
+      const keywords = this.extractKeywords(
+        node.factoryPath, node.title, node.description, node.factory,
+        ...(node.tags || [])
+      );
+      this.addToKeywordIndex(key, keywords);
+      this.allItems.push({
+        id: key,
+        domain: 'scriptnode',
+        name: node.factoryPath,
+        description: node.description,
+        keywords
+      });
+    }
+
+    // Index enriched modules at module level (for module-level search results)
+    for (const [key, mod] of this.moduleEnriched) {
+      // Only add if not already indexed via parameters
+      const alreadyIndexed = this.allItems.some(i => i.id === key && i.domain === 'modules');
+      if (!alreadyIndexed) {
+        const keywords = this.extractKeywords(key, ...(mod.tags || []));
+        this.addToKeywordIndex(key, keywords);
+        this.allItems.push({
+          id: key,
+          domain: 'modules',
+          name: key,
+          description: mod.llmRef?.split('\n')[0] || '',
+          keywords
+        });
+      }
     }
 
     // Note: Snippets are now loaded lazily via ensureSnippetsLoaded()
@@ -707,6 +1010,21 @@ export class HISEDataLoader {
           domain: 'snippets',
           name: exactSnippet.title,
           description: exactSnippet.description,
+          score: 1.0,
+          matchType: 'exact'
+        });
+        seen.add(normalized);
+      }
+    }
+
+    if (domain === 'all' || domain === 'scriptnode') {
+      const exactNode = this.scriptnodeIndex.get(normalized);
+      if (exactNode) {
+        results.push({
+          id: exactNode.factoryPath,
+          domain: 'scriptnode',
+          name: exactNode.factoryPath,
+          description: exactNode.description,
           score: 1.0,
           matchType: 'exact'
         });
@@ -922,6 +1240,43 @@ export class HISEDataLoader {
     };
   }
 
+  /**
+   * Get enriched module-level data (llmRef, commonMistakes, etc.)
+   * Query with just the module name, e.g., "LFO"
+   */
+  queryModuleEnriched(moduleName: string): { llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; cpuProfile?: any; customEquivalent?: any; tags?: string[] } | null {
+    return this.moduleEnriched.get(moduleName.toLowerCase()) || null;
+  }
+
+  /**
+   * Get enriched UI component-level data (llmRef, commonMistakes, etc.)
+   * Query with just the component name, e.g., "ScriptSlider"
+   */
+  queryUIComponentEnriched(componentName: string): { llmRef?: string; commonMistakes?: any[]; seeAlso?: any[] } | null {
+    return this.uiComponentEnriched.get(componentName.toLowerCase()) || null;
+  }
+
+  /**
+   * Query a scriptnode node by factory path, e.g., "filters.svf"
+   */
+  queryScriptnodeNode(factoryPath: string): { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any } | null {
+    return this.scriptnodeIndex.get(factoryPath.toLowerCase()) || null;
+  }
+
+  /**
+   * Get scriptnode statistics for server status
+   */
+  getScriptnodeStats(): { nodeCount: number; factories: string[] } {
+    const factories = new Set<string>();
+    for (const node of this.scriptnodeIndex.values()) {
+      if (node.factory) factories.add(node.factory);
+    }
+    return {
+      nodeCount: this.scriptnodeIndex.size,
+      factories: [...factories].sort(),
+    };
+  }
+
   async listSnippets(): Promise<SnippetSummary[]> {
     await this.ensureSnippetsLoaded();
     
@@ -1039,7 +1394,8 @@ export class HISEDataLoader {
         moduleParameters: data?.moduleParameters.length || 0,
         codeSnippets: data?.codeSnippets.length || 0,
         lafComponents: this.lafComponentIndex.size,
-        lafFunctions: this.lafFunctionIndex.size
+        lafFunctions: this.lafFunctionIndex.size,
+        scriptnodeNodes: this.scriptnodeIndex.size
       }
     };
   }
@@ -1492,9 +1848,72 @@ export class HISEDataLoader {
       }
     }
 
+    // Also score enrichment items (modules, scriptnode, UI)
+    const enrichmentScored: Array<{
+      name: string;
+      item: { name: string; category: string; domainTag: string; brief: string; whenToUse: string; commonMistakes: string[]; tags: string[] };
+      score: number;
+    }> = [];
+
+    for (const [key, item] of this.exploreEnrichmentIndex) {
+      let score = 0;
+
+      // Name match
+      const nameLower = item.name.toLowerCase();
+      if (nameLower === queryLower) {
+        score += 10;
+      } else if (nameLower.includes(queryLower) || key.includes(queryLower)) {
+        score += 5;
+      }
+
+      // Brief/whenToUse text match
+      const textLower = (item.brief + ' ' + item.whenToUse).toLowerCase();
+      if (textLower.includes(queryLower)) {
+        score += 4;
+      } else {
+        const textKeywords = this.extractKeywords(item.brief, item.whenToUse, ...item.tags);
+        const overlap = queryKeywords.filter(k => textKeywords.includes(k)).length;
+        if (overlap > 0) {
+          score += (overlap / Math.max(queryKeywords.length, 1)) * 3;
+        }
+      }
+
+      // Tag match
+      for (const tag of item.tags) {
+        if (queryKeywords.includes(tag.toLowerCase())) { score += 1; break; }
+      }
+
+      if (score > 0) {
+        enrichmentScored.push({ name: item.name, item, score });
+      }
+    }
+
     // Sort by score descending, take top N
     scored.sort((a, b) => b.score - a.score);
-    const topResults = scored.slice(0, limit);
+    enrichmentScored.sort((a, b) => b.score - a.score);
+
+    // Merge: interleave by score
+    type MergedResult = {
+      kind: 'survey' | 'enrichment';
+      name: string;
+      score: number;
+      surveyEntry?: ClassSurveyEntry;
+      bestSeeAlso?: { class: string; distinction: string } | null;
+      enrichmentItem?: typeof enrichmentScored[0]['item'];
+    };
+
+    const merged: MergedResult[] = [];
+    for (const s of scored) {
+      merged.push({ kind: 'survey', name: s.name, score: s.score, surveyEntry: s.entry, bestSeeAlso: s.bestSeeAlso });
+    }
+    for (const e of enrichmentScored) {
+      // Avoid duplicates (survey class with same name as enrichment module)
+      if (!merged.some(m => m.name.toLowerCase() === e.name.toLowerCase())) {
+        merged.push({ kind: 'enrichment', name: e.name, score: e.score, enrichmentItem: e.item });
+      }
+    }
+    merged.sort((a, b) => b.score - a.score);
+    const topResults = merged.slice(0, limit);
 
     if (topResults.length === 0) {
       return `No classes found for "${query}". Try broader keywords or use domain/role filters.`;
@@ -1502,20 +1921,27 @@ export class HISEDataLoader {
 
     // Format as plain text
     const lines: string[] = [];
-    lines.push(`Found ${topResults.length} class${topResults.length > 1 ? 'es' : ''} for "${query}":\n`);
+    lines.push(`Found ${topResults.length} result${topResults.length > 1 ? 's' : ''} for "${query}":\n`);
 
-    for (const { name, entry, bestSeeAlso } of topResults) {
-      lines.push(`${name}  [${entry.domain}/${entry.role}]`);
-      lines.push(`  ${entry.brief}`);
-
-      if (entry.createdBy.length > 0) {
-        lines.push(`  Obtain via: ${entry.createdBy.join(', ')}`);
+    for (const result of topResults) {
+      if (result.kind === 'survey' && result.surveyEntry) {
+        const entry = result.surveyEntry;
+        lines.push(`${result.name}  [${entry.domain}/${entry.role}]`);
+        lines.push(`  ${entry.brief}`);
+        if (entry.createdBy.length > 0) {
+          lines.push(`  Obtain via: ${entry.createdBy.join(', ')}`);
+        }
+        if (result.bestSeeAlso) {
+          lines.push(`  vs ${result.bestSeeAlso.class}: ${result.bestSeeAlso.distinction}`);
+        }
+      } else if (result.kind === 'enrichment' && result.enrichmentItem) {
+        const item = result.enrichmentItem;
+        lines.push(`${item.name}  [${item.domainTag}]`);
+        lines.push(`  ${item.brief}`);
+        if (item.whenToUse) {
+          lines.push(`  When to use: ${item.whenToUse}`);
+        }
       }
-
-      if (bestSeeAlso) {
-        lines.push(`  vs ${bestSeeAlso.class}: ${bestSeeAlso.distinction}`);
-      }
-
       lines.push('');
     }
 
@@ -1533,7 +1959,79 @@ export class HISEDataLoader {
     if (!this.surveyData) return null;
 
     const canonical = this.resolveSurveyClassName(className);
-    if (!canonical) return null;
+
+    // If not in survey, check enrichment index (modules, scriptnode, UI)
+    if (!canonical) {
+      let enriched = this.exploreEnrichmentIndex.get(className.toLowerCase());
+
+      // Fuzzy fallback: try keyword matching against enrichment index
+      if (!enriched) {
+        const queryKeywords = this.extractKeywords(className);
+        let bestScore = 0;
+        let bestItem: { name: string; category: 'module' | 'scriptnode' | 'ui'; domainTag: string; brief: string; whenToUse: string; commonMistakes: string[]; tags: string[] } | undefined = undefined;
+
+        for (const [key, item] of this.exploreEnrichmentIndex) {
+          const nameLower = item.name.toLowerCase();
+          const queryLower = className.toLowerCase();
+          let score = 0;
+
+          // Name contains query or query contains name
+          if (nameLower.includes(queryLower) || queryLower.includes(nameLower)) {
+            score += 5;
+          } else if (key.includes(queryLower) || queryLower.includes(key)) {
+            score += 4;
+          }
+
+          // Keyword overlap with name and tags
+          const itemKeywords = this.extractKeywords(item.name, ...item.tags);
+          const overlap = queryKeywords.filter(k => itemKeywords.includes(k)).length;
+          if (overlap > 0) {
+            score += (overlap / Math.max(queryKeywords.length, 1)) * 3;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestItem = item;
+          }
+        }
+
+        if (bestScore >= 2 && bestItem) {
+          enriched = bestItem;
+        }
+      }
+
+      if (!enriched) return null;
+
+      const lines: string[] = [];
+      lines.push(`${enriched.name}  [${enriched.domainTag}]`);
+      lines.push(`  ${enriched.brief}`);
+      lines.push('');
+
+      if (enriched.whenToUse) {
+        lines.push('When to use:');
+        lines.push(`  ${enriched.whenToUse}`);
+        lines.push('');
+      }
+
+      if (enriched.commonMistakes.length > 0) {
+        lines.push('Common mistakes:');
+        for (const m of enriched.commonMistakes) {
+          lines.push(`  - ${m}`);
+        }
+        lines.push('');
+      }
+
+      if (enriched.tags.length > 0) {
+        lines.push(`Tags: ${enriched.tags.join(', ')}`);
+      }
+
+      const queryTool = enriched.category === 'module' ? 'query_module_parameter'
+        : enriched.category === 'ui' ? 'query_ui_property'
+        : 'search_hise';
+      lines.push(`\nUse ${queryTool}("${enriched.name}") for full reference.`);
+
+      return lines.join('\n');
+    }
 
     const entry = this.surveyIndex.get(canonical.toLowerCase())!;
 
