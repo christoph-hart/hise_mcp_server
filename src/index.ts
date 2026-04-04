@@ -27,6 +27,7 @@ import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contri
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
+import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable } from './semantic-search.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -386,6 +387,25 @@ const DOC_TOOLS: Tool[] = [
         },
       },
       required: ['tids'],
+    },
+  },
+
+  // DOCUMENTATION CONTENT TOOL
+  {
+    name: 'get_doc_content',
+    description: 'Get full markdown documentation content for a HISE page or API method. Use after explore_hise or search_hise to read the actual docs. Accepts a URL path (from search results) or a chunk ID (e.g., "api:Buffer.create").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'URL path from search results (e.g., "/v2/scripting-api/buffer#create")',
+        },
+        id: {
+          type: 'string',
+          description: 'Chunk ID from search results (e.g., "api:Buffer.create")',
+        },
+      },
     },
   },
 
@@ -1098,11 +1118,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        // query mode
+        // query mode — hybrid: semantic search + existing keyword search
         if (query) {
-          const result = await dataLoader.exploreSurveyByQuery(query, { domain, role });
+          // Run both in parallel
+          const [keywordResult, semanticResults] = await Promise.all([
+            dataLoader.exploreSurveyByQuery(query, { domain, role }),
+            isSemanticSearchAvailable()
+              ? semanticSearch(query, { topK: 10, maxResults: 15 })
+              : Promise.resolve([])
+          ]);
+
+          // If semantic search is available, append results
+          if (semanticResults.length > 0) {
+            const lines: string[] = [];
+            lines.push(keywordResult);
+            lines.push('\n--- Semantic search results ---\n');
+            for (const r of semanticResults.slice(0, 8)) {
+              const m = r.metadata;
+              const label = m.class
+                ? `${m.class}${m.method ? '.' + m.method : ''}`
+                : m.title || m.url;
+              const desc = typeof m.description === 'string' ? m.description.split(/\.\s/)[0] + '.' : '';
+              const tag = r.via === 'vector' ? '' : ` [${r.via}]`;
+              lines.push(`${label}${tag}  (${r.score.toFixed(3)})`);
+              lines.push(`  ${m.url}`);
+              if (desc) lines.push(`  ${desc}`);
+              lines.push('');
+            }
+            lines.push('Use get_doc_content({ url: "..." }) to read full documentation for any result.');
+            return {
+              content: [{ type: 'text', text: lines.join('\n') }],
+            };
+          }
+
           return {
-            content: [{ type: 'text', text: result }],
+            content: [{ type: 'text', text: keywordResult }],
           };
         }
 
@@ -2090,6 +2140,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'get_doc_content': {
+        const { url, id } = args as { url?: string; id?: string };
+
+        if (!url && !id) {
+          return {
+            content: [{ type: 'text', text: 'Provide either url or id parameter.' }],
+            isError: true,
+          };
+        }
+
+        if (!isSemanticSearchAvailable()) {
+          return {
+            content: [{ type: 'text', text: 'Documentation content not available. Ensure doc_chunks.json is in the data/ directory.' }],
+            isError: true,
+          };
+        }
+
+        const result = id
+          ? getDocContentById(id)
+          : getDocContent(url!);
+
+        if (!result) {
+          return {
+            content: [{ type: 'text', text: `No documentation found for ${id ? `id "${id}"` : `url "${url}"`}. Use explore_hise or search_hise to find valid URLs.` }],
+          };
+        }
+
+        const header = result.metadata.class
+          ? `# ${result.metadata.class}${result.metadata.method ? '.' + result.metadata.method : ''}`
+          : `# ${result.metadata.title || result.metadata.url}`;
+
+        return {
+          content: [{ type: 'text', text: `${header}\n${result.metadata.url}\n\n${result.body}` }],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -2129,6 +2215,63 @@ async function main() {
         oauthEnabled: oauthConfigured,
         cacheStats: authConfigured ? getTokenCache().stats() : null,
       });
+    });
+
+    // REST API endpoints for website search (reuses semantic-search.ts)
+    app.get('/api/search', async (req: Request, res: Response) => {
+      const q = req.query.q as string | undefined;
+      if (!q) {
+        res.status(400).json({ error: 'Missing q parameter' });
+        return;
+      }
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const domain = req.query.domain as string | undefined;
+      try {
+        const results = await semanticSearch(q, { maxResults: domain ? limit * 3 : limit });
+        const filtered = domain
+          ? results.filter(r => r.metadata.domain === domain).slice(0, limit)
+          : results.slice(0, limit);
+        res.set('Access-Control-Allow-Origin', '*');
+        res.json(filtered.map(r => ({
+          id: r.id,
+          score: r.score,
+          via: r.via,
+          metadata: r.metadata
+        })));
+      } catch (err) {
+        console.error('Search error:', err);
+        res.status(500).json({ error: 'Search failed' });
+      }
+    });
+
+    app.get('/api/search/domains', (_req: Request, res: Response) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.json([
+        { id: 'all', label: 'All' },
+        { id: 'audio', label: 'Audio' },
+        { id: 'ui', label: 'UI' },
+        { id: 'scripting', label: 'Scripting' },
+        { id: 'scriptnode', label: 'Scriptnode' },
+        { id: 'event', label: 'Events' },
+        { id: 'guide', label: 'Guides' },
+        { id: 'architecture', label: 'Architecture' },
+      ]);
+    });
+
+    app.get('/api/doc', (req: Request, res: Response) => {
+      const url = req.query.url as string | undefined;
+      const id = req.query.id as string | undefined;
+      if (!url && !id) {
+        res.status(400).json({ error: 'Missing url or id parameter' });
+        return;
+      }
+      const result = id ? getDocContentById(id) : getDocContent(url!);
+      if (!result) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      res.set('Access-Control-Allow-Origin', '*');
+      res.json(result);
     });
 
     // OAuth routes (Phase 3: Claude Desktop support)
