@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, accessSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -21,6 +21,10 @@ interface ChunkMetadata {
   pageTitle?: string;
   description?: string;
   domain?: string;
+  slug?: string;
+  category?: string;
+  tags?: string[];
+  featured?: boolean;
   url: string;
 }
 
@@ -44,31 +48,10 @@ export interface SemanticSearchResult {
 }
 
 // ============================================================================
-// Lazy-loaded state
+// Shared embedding model (singleton)
 // ============================================================================
 
-let chunks: DocChunk[] | null = null;
-let embeddings: EmbeddingEntry[] | null = null;
-let graph: Record<string, string[]> | null = null;
-let idToChunkIndex: Map<string, number> | null = null;
-let embedder: any = null; // HuggingFace pipeline instance
-
-function ensureDataLoaded(): void {
-  if (chunks && embeddings && graph) return;
-
-  console.error('[semantic-search] Loading data files...');
-
-  chunks = JSON.parse(readFileSync(join(DATA_DIR, 'doc_chunks.json'), 'utf-8'));
-  embeddings = JSON.parse(readFileSync(join(DATA_DIR, 'embeddings.json'), 'utf-8'));
-  graph = JSON.parse(readFileSync(join(DATA_DIR, 'graph.json'), 'utf-8'));
-
-  idToChunkIndex = new Map();
-  for (let i = 0; i < chunks!.length; i++) {
-    idToChunkIndex.set(chunks![i].id, i);
-  }
-
-  console.error(`[semantic-search] Loaded ${chunks!.length} chunks, ${embeddings!.length} embeddings, ${Object.keys(graph!).length} graph nodes`);
-}
+let embedder: any = null;
 
 async function ensureEmbedderLoaded(): Promise<void> {
   if (embedder) return;
@@ -79,145 +62,228 @@ async function ensureEmbedderLoaded(): Promise<void> {
   console.error('[semantic-search] Embedding model ready');
 }
 
-// ============================================================================
-// Core search functions
-// ============================================================================
-
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
   return dot;
 }
 
-function vectorSearch(queryEmbedding: number[], topK: number): SemanticSearchResult[] {
-  const scored = embeddings!.map((item) => ({
-    score: cosineSimilarity(queryEmbedding, item.embedding),
-    id: item.id
-  }));
-  scored.sort((a, b) => b.score - a.score);
+// ============================================================================
+// SearchIndex class — encapsulates one index (chunks + embeddings + graph)
+// ============================================================================
 
-  return scored.slice(0, topK).map(s => {
-    const ci = idToChunkIndex!.get(s.id);
-    return {
-      score: s.score,
-      id: s.id,
-      metadata: ci !== undefined ? chunks![ci].metadata : {} as ChunkMetadata,
-      via: 'vector'
-    };
-  });
-}
+class SearchIndex {
+  private chunks: DocChunk[] | null = null;
+  private embeddings: EmbeddingEntry[] | null = null;
+  private graph: Record<string, string[]> | null = null;
+  private idToChunkIndex: Map<string, number> | null = null;
 
-function graphExpand(vectorResults: SemanticSearchResult[]): SemanticSearchResult[] {
-  const resultMap = new Map<string, SemanticSearchResult>();
+  constructor(
+    private name: string,
+    private chunksFile: string,
+    private embeddingsFile: string,
+    private graphFile: string
+  ) {}
 
-  for (const r of vectorResults) {
-    resultMap.set(r.id, { ...r });
+  ensureLoaded(): void {
+    if (this.chunks && this.embeddings && this.graph) return;
+
+    console.error(`[${this.name}] Loading data files...`);
+
+    this.chunks = JSON.parse(readFileSync(join(DATA_DIR, this.chunksFile), 'utf-8'));
+    this.embeddings = JSON.parse(readFileSync(join(DATA_DIR, this.embeddingsFile), 'utf-8'));
+    this.graph = JSON.parse(readFileSync(join(DATA_DIR, this.graphFile), 'utf-8'));
+
+    this.idToChunkIndex = new Map();
+    for (let i = 0; i < this.chunks!.length; i++) {
+      this.idToChunkIndex.set(this.chunks![i].id, i);
+    }
+
+    console.error(`[${this.name}] Loaded ${this.chunks!.length} chunks, ${this.embeddings!.length} embeddings, ${Object.keys(this.graph!).length} graph nodes`);
   }
 
-  let frontier = vectorResults.map(r => ({ id: r.id, score: r.score, hop: 0 }));
+  isAvailable(): boolean {
+    try {
+      accessSync(join(DATA_DIR, this.chunksFile));
+      accessSync(join(DATA_DIR, this.embeddingsFile));
+      accessSync(join(DATA_DIR, this.graphFile));
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-  for (let hop = 1; hop <= GRAPH_HOPS; hop++) {
-    const nextFrontier: { id: string; score: number; hop: number }[] = [];
-    for (const node of frontier) {
-      const neighbors = graph![node.id] || [];
-      for (const neighborId of neighbors) {
-        if (resultMap.has(neighborId)) continue;
-        const ci = idToChunkIndex!.get(neighborId);
-        if (ci === undefined) continue;
+  vectorSearch(queryEmbedding: number[], topK: number): SemanticSearchResult[] {
+    const scored = this.embeddings!.map((item) => ({
+      score: cosineSimilarity(queryEmbedding, item.embedding),
+      id: item.id
+    }));
+    scored.sort((a, b) => b.score - a.score);
 
-        const score = node.score * GRAPH_DECAY;
-        const entry: SemanticSearchResult = {
-          score,
-          id: neighborId,
-          metadata: chunks![ci].metadata,
-          via: `graph (${hop} hop${hop > 1 ? 's' : ''})`
-        };
-        resultMap.set(neighborId, entry);
-        nextFrontier.push({ id: neighborId, score, hop });
+    return scored.slice(0, topK).map(s => {
+      const ci = this.idToChunkIndex!.get(s.id);
+      return {
+        score: s.score,
+        id: s.id,
+        metadata: ci !== undefined ? this.chunks![ci].metadata : {} as ChunkMetadata,
+        via: 'vector'
+      };
+    });
+  }
+
+  graphExpand(vectorResults: SemanticSearchResult[]): SemanticSearchResult[] {
+    const resultMap = new Map<string, SemanticSearchResult>();
+
+    for (const r of vectorResults) {
+      resultMap.set(r.id, { ...r });
+    }
+
+    let frontier = vectorResults.map(r => ({ id: r.id, score: r.score, hop: 0 }));
+
+    for (let hop = 1; hop <= GRAPH_HOPS; hop++) {
+      const nextFrontier: { id: string; score: number; hop: number }[] = [];
+      for (const node of frontier) {
+        const neighbors = this.graph![node.id] || [];
+        for (const neighborId of neighbors) {
+          if (resultMap.has(neighborId)) continue;
+          const ci = this.idToChunkIndex!.get(neighborId);
+          if (ci === undefined) continue;
+
+          const score = node.score * GRAPH_DECAY;
+          const entry: SemanticSearchResult = {
+            score,
+            id: neighborId,
+            metadata: this.chunks![ci].metadata,
+            via: `graph (${hop} hop${hop > 1 ? 's' : ''})`
+          };
+          resultMap.set(neighborId, entry);
+          nextFrontier.push({ id: neighborId, score, hop });
+        }
+      }
+      frontier = nextFrontier;
+    }
+
+    const all = [...resultMap.values()];
+    all.sort((a, b) => b.score - a.score);
+    return all;
+  }
+
+  getChunkByUrl(url: string): { body: string; metadata: ChunkMetadata } | null {
+    this.ensureLoaded();
+
+    for (const chunk of this.chunks!) {
+      if (chunk.metadata.url === url) {
+        return { body: chunk.body, metadata: chunk.metadata };
       }
     }
-    frontier = nextFrontier;
+
+    const ci = this.idToChunkIndex!.get(`content:${url}`);
+    if (ci !== undefined) {
+      return { body: this.chunks![ci].body, metadata: this.chunks![ci].metadata };
+    }
+
+    return null;
   }
 
-  const all = [...resultMap.values()];
-  all.sort((a, b) => b.score - a.score);
-  return all;
+  getChunkById(id: string): { body: string; metadata: ChunkMetadata } | null {
+    this.ensureLoaded();
+
+    const ci = this.idToChunkIndex!.get(id);
+    if (ci === undefined) return null;
+
+    return { body: this.chunks![ci].body, metadata: this.chunks![ci].metadata };
+  }
+
+  async search(
+    query: string,
+    options?: { topK?: number; maxResults?: number }
+  ): Promise<SemanticSearchResult[]> {
+    this.ensureLoaded();
+    await ensureEmbedderLoaded();
+
+    const topK = options?.topK ?? 15;
+    const maxResults = options?.maxResults ?? 30;
+
+    const output = await embedder(query, { pooling: 'mean', normalize: true });
+    const queryEmbedding = Array.from(output[0].data) as number[];
+
+    const vectorResults = this.vectorSearch(queryEmbedding, topK);
+    const allResults = this.graphExpand(vectorResults);
+
+    return allResults.slice(0, maxResults);
+  }
+
+  listAll(): SemanticSearchResult[] {
+    this.ensureLoaded();
+    return this.chunks!.map(chunk => ({
+      id: chunk.id,
+      score: 1,
+      metadata: chunk.metadata,
+      via: 'browse'
+    }));
+  }
 }
 
 // ============================================================================
-// Public API
+// Index instances
 // ============================================================================
 
-/**
- * Semantic search with vector similarity + graph expansion.
- * Lazy-loads the embedding model on first call.
- */
+const docIndex = new SearchIndex(
+  'doc-search',
+  'doc_chunks.json',
+  'embeddings.json',
+  'graph.json'
+);
+
+const exampleIndex = new SearchIndex(
+  'example-search',
+  'example_chunks.json',
+  'example_embeddings.json',
+  'example_graph.json'
+);
+
+// ============================================================================
+// Public API — backward-compatible doc search
+// ============================================================================
+
 export async function semanticSearch(
   query: string,
   options?: { topK?: number; maxResults?: number }
 ): Promise<SemanticSearchResult[]> {
-  ensureDataLoaded();
-  await ensureEmbedderLoaded();
-
-  const topK = options?.topK ?? 15;
-  const maxResults = options?.maxResults ?? 30;
-
-  const output = await embedder(query, { pooling: 'mean', normalize: true });
-  const queryEmbedding = Array.from(output[0].data) as number[];
-
-  const vectorResults = vectorSearch(queryEmbedding, topK);
-  const allResults = graphExpand(vectorResults);
-
-  return allResults.slice(0, maxResults);
+  return docIndex.search(query, options);
 }
 
-/**
- * Get full markdown body content for a URL path.
- * Returns null if not found.
- */
 export function getDocContent(url: string): { body: string; metadata: ChunkMetadata } | null {
-  ensureDataLoaded();
-
-  // Try exact match first
-  for (const chunk of chunks!) {
-    if (chunk.metadata.url === url) {
-      return { body: chunk.body, metadata: chunk.metadata };
-    }
-  }
-
-  // Try matching by chunk ID
-  const ci = idToChunkIndex!.get(`content:${url}`);
-  if (ci !== undefined) {
-    return { body: chunks![ci].body, metadata: chunks![ci].metadata };
-  }
-
-  return null;
+  return docIndex.getChunkByUrl(url);
 }
 
-/**
- * Get full markdown body content by chunk ID (e.g., "api:Buffer.create").
- * Returns null if not found.
- */
 export function getDocContentById(id: string): { body: string; metadata: ChunkMetadata } | null {
-  ensureDataLoaded();
-
-  const ci = idToChunkIndex!.get(id);
-  if (ci === undefined) return null;
-
-  return { body: chunks![ci].body, metadata: chunks![ci].metadata };
+  return docIndex.getChunkById(id);
 }
 
-/**
- * Check if semantic search data is available.
- */
 export function isAvailable(): boolean {
-  try {
-    // Just check if the data files exist
-    readFileSync(join(DATA_DIR, 'doc_chunks.json'), 'utf-8').slice(0, 1);
-    readFileSync(join(DATA_DIR, 'embeddings.json'), 'utf-8').slice(0, 1);
-    readFileSync(join(DATA_DIR, 'graph.json'), 'utf-8').slice(0, 1);
-    return true;
-  } catch {
-    return false;
-  }
+  return docIndex.isAvailable();
+}
+
+// ============================================================================
+// Public API — example search
+// ============================================================================
+
+export async function searchExamples(
+  query: string,
+  options?: { topK?: number; maxResults?: number }
+): Promise<SemanticSearchResult[]> {
+  return exampleIndex.search(query, options);
+}
+
+export function getExampleById(id: string): { body: string; metadata: ChunkMetadata } | null {
+  return exampleIndex.getChunkById(id);
+}
+
+export function listAllExamples(): SemanticSearchResult[] {
+  return exampleIndex.listAll();
+}
+
+export function isExamplesAvailable(): boolean {
+  return exampleIndex.isAvailable();
 }

@@ -11,3 +11,4 @@ data/embeddings-cache.json
 data/.cache.json
 .claude
 .env
+content
