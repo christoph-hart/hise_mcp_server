@@ -27,7 +27,7 @@ import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contri
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
-import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable } from './semantic-search.js';
+import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable } from './semantic-search.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -217,39 +217,47 @@ const DOC_TOOLS: Tool[] = [
     },
   },
 
-  // SNIPPET TOOLS
+  // CODE EXAMPLE TOOLS
   {
-    name: 'list_snippets',
-    description: `Browse HISE code snippets. Filter by category/difficulty/tags. Use get_snippet for full code.`,
+    name: 'search_examples',
+    description: `Search HISE code examples and snippets by description (e.g., "midi routing", "slider callback", "wavetable"). Returns summaries — use get_example for full code.`,
     inputSchema: {
       type: 'object',
       properties: {
-        category: {
+        query: {
           type: 'string',
-          description: 'Category filter',
+          description: 'What you want to find (e.g., "clone an object before modifying")',
         },
-        difficulty: {
+        source: {
           type: 'string',
-          enum: ['beginner', 'intermediate', 'advanced'],
-          description: 'Difficulty filter',
+          enum: ['all', 'example', 'snippet', 'forum'],
+          description: 'Filter by source type: "example" (API method examples), "snippet" (self-contained code snippets), "forum" (forum code examples), or "all" (default)',
         },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Tag filter',
+        className: {
+          type: 'string',
+          description: 'Optional: filter to API examples from a specific class (e.g., "Array", "Engine")',
+        },
+        featured: {
+          type: 'boolean',
+          description: 'If true, only return featured/high-quality examples',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results (default: 10, max: 30)',
         },
       },
+      required: ['query'],
     },
   },
   {
-    name: 'get_snippet',
-    description: `Get snippet source code and metadata.`,
+    name: 'get_example',
+    description: `Get full code and metadata for a code example or snippet by ID. Use after search_examples to retrieve full source code.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: {
           type: 'string',
-          description: 'Snippet ID',
+          description: 'Example or snippet ID (e.g., "example:Array.clone:clone-template-object" or "snippet:basicsynth")',
         },
       },
       required: ['id'],
@@ -1374,54 +1382,83 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      // SNIPPET TOOLS (with filtering)
-      case 'list_snippets': {
-        const { category, difficulty, tags } = args as {
-          category?: string;
-          difficulty?: "beginner" | "intermediate" | "advanced";
-          tags?: string[];
+      // CODE EXAMPLE TOOLS
+      case 'search_examples': {
+        const { query, source, className, featured, limit: rawLimit } = args as {
+          query: string;
+          source?: 'all' | 'example' | 'snippet' | 'forum';
+          className?: string;
+          featured?: boolean;
+          limit?: number;
         };
 
-        const summaries = await dataLoader.listSnippetsFiltered({ category, difficulty, tags });
+        if (!isExamplesAvailable()) {
+          return {
+            content: [{ type: 'text', text: 'Example search index not available. Run the build pipeline first.' }],
+          };
+        }
+
+        const limit = Math.min(Math.max(rawLimit || 10, 1), 30);
+        const sourceFilter = source || 'all';
+
+        // Fetch more if filtering, to ensure enough results after filtering
+        const fetchLimit = (sourceFilter !== 'all' || className || featured) ? limit * 3 : limit;
+        let results = await searchExamples(query, { maxResults: fetchLimit });
+
+        if (sourceFilter !== 'all') {
+          results = results.filter(r => r.metadata.source === sourceFilter);
+        }
+        if (className) {
+          results = results.filter(r => r.metadata.class?.toLowerCase() === className.toLowerCase());
+        }
+        if (featured) {
+          results = results.filter(r => r.metadata.featured);
+        }
+
+        results = results.slice(0, limit);
+
+        const summaries = results.map(r => ({
+          id: r.id,
+          score: Math.round(r.score * 1000) / 1000,
+          title: r.metadata.title || '',
+          source: r.metadata.source,
+          class: r.metadata.class,
+          method: r.metadata.method,
+          category: r.metadata.category,
+          description: r.metadata.description || '',
+          via: r.via,
+        }));
 
         return {
           content: [{
             type: 'text',
             text: JSON.stringify({
+              query,
               count: summaries.length,
-              filters: { category, difficulty, tags },
-              snippets: summaries
+              filters: { source: sourceFilter, className: className || null },
+              results: summaries,
+              hint: 'Use get_example({ id: "..." }) to retrieve full source code.'
             }, null, 2)
           }],
         };
       }
 
-      case 'get_snippet': {
+      case 'get_example': {
         const { id } = args as { id: string };
-        const enriched = await dataLoader.getSnippetEnriched(id);
+        const result = getExampleById(id);
 
-        if (!enriched) {
-          const allSnippets = await dataLoader.listSnippets();
-          const similarIds = allSnippets
-            .filter(s => s.id.includes(id) || s.title.toLowerCase().includes(id.toLowerCase()))
-            .slice(0, 3)
-            .map(s => s.id);
-
-          if (similarIds.length > 0) {
-            return {
-              content: [{
-                type: 'text',
-                text: `No snippet found with ID "${id}". Similar snippets:\n${similarIds.map(s => `  - ${s}`).join('\n')}`
-              }],
-            };
-          }
+        if (!result) {
           return {
-            content: [{ type: 'text', text: `No snippet found with ID "${id}". Use list_snippets to see available snippets.` }],
+            content: [{ type: 'text', text: `No example found with ID "${id}". Use search_examples to find examples.` }],
           };
         }
 
+        const header = result.metadata.class
+          ? `# ${result.metadata.title}\n**${result.metadata.class}.${result.metadata.method}** | Source: ${result.metadata.source}`
+          : `# ${result.metadata.title}\n**Category:** ${result.metadata.category} | Source: ${result.metadata.source}`;
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(enriched, null, 2) }],
+          content: [{ type: 'text', text: `${header}\n\n${result.body}` }],
         };
       }
 
@@ -2266,6 +2303,63 @@ async function main() {
         return;
       }
       const result = id ? getDocContentById(id) : getDocContent(url!);
+      if (!result) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      res.set('Access-Control-Allow-Origin', '*');
+      res.json(result);
+    });
+
+    // REST API endpoints for code example search
+    app.get('/api/search/examples', async (req: Request, res: Response) => {
+      const q = req.query.q as string | undefined;
+      if (!q) {
+        res.status(400).json({ error: 'Missing q parameter' });
+        return;
+      }
+      if (!isExamplesAvailable()) {
+        res.status(503).json({ error: 'Example search index not available' });
+        return;
+      }
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 200);
+      const source = req.query.source as string | undefined;
+      const className = req.query.className as string | undefined;
+      const featured = req.query.featured === 'true';
+      try {
+        let results = q === '*'
+          ? listAllExamples()
+          : await searchExamples(q, { maxResults: (source || className || featured) ? limit * 3 : limit });
+        if (source && source !== 'all') {
+          results = results.filter(r => r.metadata.source === source);
+        }
+        if (className) {
+          results = results.filter(r => r.metadata.class?.toLowerCase() === className.toLowerCase());
+        }
+        if (featured) {
+          results = results.filter(r => r.metadata.featured);
+        }
+        results = results.slice(0, limit);
+        res.set('Access-Control-Allow-Origin', '*');
+        res.json(results.map(r => ({
+          id: r.id,
+          score: r.score,
+          via: r.via,
+          metadata: r.metadata
+        })));
+      } catch (err) {
+        console.error('Example search error:', err);
+        res.status(500).json({ error: 'Search failed' });
+      }
+    });
+
+    app.get('/api/example', (req: Request, res: Response) => {
+      const id = req.query.id as string | undefined;
+      if (!id) {
+        res.status(400).json({ error: 'Missing id parameter' });
+        return;
+      }
+      const result = getExampleById(id);
       if (!result) {
         res.status(404).json({ error: 'Not found' });
         return;
