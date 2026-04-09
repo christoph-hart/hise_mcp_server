@@ -26,6 +26,10 @@ interface ChunkMetadata {
   tags?: string[];
   featured?: boolean;
   url: string;
+  channel?: string;
+  chapter?: string;
+  summary?: string;
+  timestamp?: number;
 }
 
 interface DocChunk {
@@ -242,6 +246,13 @@ const exampleIndex = new SearchIndex(
   'example_graph.json'
 );
 
+const videoIndex = new SearchIndex(
+  'video-search',
+  'video_chunks.json',
+  'video_embeddings.json',
+  'video_graph.json'
+);
+
 // ============================================================================
 // Public API — backward-compatible doc search
 // ============================================================================
@@ -286,4 +297,23 @@ export function listAllExamples(): SemanticSearchResult[] {
 
 export function isExamplesAvailable(): boolean {
   return exampleIndex.isAvailable();
+}
+
+// ============================================================================
+// Public API — video tutorial search
+// ============================================================================
+
+export async function searchTutorials(
+  query: string,
+  options?: { topK?: number; maxResults?: number }
+): Promise<SemanticSearchResult[]> {
+  return videoIndex.search(query, options);
+}
+
+export function getTutorialById(id: string): { body: string; metadata: ChunkMetadata } | null {
+  return videoIndex.getChunkById(id);
+}
+
+export function isTutorialsAvailable(): boolean {
+  return videoIndex.isAvailable();
 }

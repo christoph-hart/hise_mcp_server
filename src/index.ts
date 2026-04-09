@@ -27,7 +27,7 @@ import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contri
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
-import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable } from './semantic-search.js';
+import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable } from './semantic-search.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -165,6 +165,11 @@ const DOC_TOOLS: Tool[] = [
                  'processor', 'service', 'utility'],
           description: 'Filter by architectural role (factory, handle, container, utility, etc.)',
         },
+        source: {
+          type: 'string',
+          enum: ['all', 'docs', 'tutorials'],
+          description: 'Filter by source: "docs" (API/content only), "tutorials" (video tutorials only), or "all" (default — searches both)',
+        },
       },
     },
   },
@@ -258,6 +263,20 @@ const DOC_TOOLS: Tool[] = [
         id: {
           type: 'string',
           description: 'Example or snippet ID (e.g., "example:Array.clone:clone-template-object" or "snippet:basicsynth")',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'get_tutorial',
+    description: `Get full content and metadata for a video tutorial section by ID. Use after explore_hise to retrieve full tutorial text and code blocks. Returns the section body plus YouTube deep link with timestamp.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Tutorial chunk ID (e.g., "video:dG-7K8cZoLI:using-key-switches-and-manual-round-robin-group-control")',
         },
       },
       required: ['id'],
@@ -1103,12 +1122,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // CLASS EXPLORATION TOOL
       case 'explore_hise': {
-        const { query, className, domain, role } = args as {
+        const { query, className, domain, role, source } = args as {
           query?: string;
           className?: string;
           domain?: string;
           role?: string;
+          source?: 'all' | 'docs' | 'tutorials';
         };
+        const searchSource = source || 'all';
 
         // className mode takes precedence
         if (className) {
@@ -1128,39 +1149,89 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // query mode — hybrid: semantic search + existing keyword search
         if (query) {
-          // Run both in parallel
-          const [keywordResult, semanticResults] = await Promise.all([
-            dataLoader.exploreSurveyByQuery(query, { domain, role }),
-            isSemanticSearchAvailable()
-              ? semanticSearch(query, { topK: 10, maxResults: 15 })
-              : Promise.resolve([])
-          ]);
+          // Build parallel search promises based on source filter
+          const searchPromises: Promise<any>[] = [];
 
-          // If semantic search is available, append results
-          if (semanticResults.length > 0) {
+          // Keyword search (docs only, skip for tutorials-only)
+          if (searchSource !== 'tutorials') {
+            searchPromises.push(dataLoader.exploreSurveyByQuery(query, { domain, role }));
+          } else {
+            searchPromises.push(Promise.resolve(''));
+          }
+
+          // Doc semantic search
+          if (searchSource !== 'tutorials' && isSemanticSearchAvailable()) {
+            searchPromises.push(semanticSearch(query, { topK: 10, maxResults: 15 }));
+          } else {
+            searchPromises.push(Promise.resolve([]));
+          }
+
+          // Video tutorial search
+          if (searchSource !== 'docs' && isTutorialsAvailable()) {
+            searchPromises.push(searchTutorials(query, { topK: 10, maxResults: 15 }));
+          } else {
+            searchPromises.push(Promise.resolve([]));
+          }
+
+          const [keywordResult, semanticResults, tutorialResults] = await Promise.all(searchPromises);
+
+          const hasResults = semanticResults.length > 0 || tutorialResults.length > 0;
+
+          if (hasResults) {
             const lines: string[] = [];
-            lines.push(keywordResult);
-            lines.push('\n--- Semantic search results ---\n');
-            for (const r of semanticResults.slice(0, 8)) {
-              const m = r.metadata;
-              const label = m.class
-                ? `${m.class}${m.method ? '.' + m.method : ''}`
-                : m.title || m.url;
-              const desc = typeof m.description === 'string' ? m.description.split(/\.\s/)[0] + '.' : '';
-              const tag = r.via === 'vector' ? '' : ` [${r.via}]`;
-              lines.push(`${label}${tag}  (${r.score.toFixed(3)})`);
-              lines.push(`  ${m.url}`);
-              if (desc) lines.push(`  ${desc}`);
-              lines.push('');
+
+            if (keywordResult) {
+              lines.push(keywordResult);
             }
-            lines.push('Use get_doc_content({ url: "..." }) to read full documentation for any result.');
+
+            if (semanticResults.length > 0) {
+              lines.push('\n--- Semantic search results ---\n');
+              for (const r of semanticResults.slice(0, 8)) {
+                const m = r.metadata;
+                const label = m.class
+                  ? `${m.class}${m.method ? '.' + m.method : ''}`
+                  : m.title || m.url;
+                const desc = typeof m.description === 'string' ? m.description.split(/\.\s/)[0] + '.' : '';
+                const tag = r.via === 'vector' ? '' : ` [${r.via}]`;
+                lines.push(`${label}${tag}  (${r.score.toFixed(3)})`);
+                lines.push(`  ${m.url}`);
+                if (desc) lines.push(`  ${desc}`);
+                lines.push('');
+              }
+            }
+
+            if (tutorialResults.length > 0) {
+              lines.push('\n--- Video tutorial results ---\n');
+              for (const r of tutorialResults.slice(0, 8)) {
+                const m = r.metadata;
+                const label = m.chapter || m.title || r.id;
+                const videoTitle = m.title || '';
+                const tag = r.via === 'vector' ? '' : ` [${r.via}]`;
+                lines.push(`${label}${tag}  (${r.score.toFixed(3)})`);
+                lines.push(`  ${m.url}`);
+                if (videoTitle && videoTitle !== label) lines.push(`  Video: ${videoTitle} — ${m.channel || ''}`);
+                lines.push('');
+              }
+            }
+
+            const hints: string[] = [];
+            if (semanticResults.length > 0) hints.push('Use get_doc_content({ url: "..." }) to read full documentation for any result.');
+            if (tutorialResults.length > 0) hints.push('Use get_tutorial({ id: "..." }) to read full tutorial content.');
+            lines.push(hints.join('\n'));
+
             return {
               content: [{ type: 'text', text: lines.join('\n') }],
             };
           }
 
+          if (keywordResult) {
+            return {
+              content: [{ type: 'text', text: keywordResult }],
+            };
+          }
+
           return {
-            content: [{ type: 'text', text: keywordResult }],
+            content: [{ type: 'text', text: `No results found for "${query}".` }],
           };
         }
 
@@ -1456,6 +1527,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const header = result.metadata.class
           ? `# ${result.metadata.title}\n**${result.metadata.class}.${result.metadata.method}** | Source: ${result.metadata.source}`
           : `# ${result.metadata.title}\n**Category:** ${result.metadata.category} | Source: ${result.metadata.source}`;
+
+        return {
+          content: [{ type: 'text', text: `${header}\n\n${result.body}` }],
+        };
+      }
+
+      case 'get_tutorial': {
+        const { id } = args as { id: string };
+
+        if (!isTutorialsAvailable()) {
+          return {
+            content: [{ type: 'text', text: 'Tutorial search index not available. Run the video build pipeline first.' }],
+          };
+        }
+
+        const result = getTutorialById(id);
+
+        if (!result) {
+          return {
+            content: [{ type: 'text', text: `No tutorial found with ID "${id}". Use explore_hise({ query: "...", source: "tutorials" }) to find tutorials.` }],
+          };
+        }
+
+        const m = result.metadata;
+        const header = `# ${m.chapter || m.title}\n**Video:** ${m.title} — ${m.channel}\n**URL:** ${m.url}`;
 
         return {
           content: [{ type: 'text', text: `${header}\n\n${result.body}` }],
@@ -2263,10 +2359,21 @@ async function main() {
       }
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const domain = req.query.domain as string | undefined;
+      const source = req.query.source as string | undefined;
       try {
-        const results = await semanticSearch(q, { maxResults: domain ? limit * 3 : limit });
+        const fetchLimit = domain ? limit * 3 : limit;
+
+        const searchPromises: Promise<any[]>[] = [];
+        if (source !== 'tutorials') searchPromises.push(semanticSearch(q, { maxResults: fetchLimit }));
+        else searchPromises.push(Promise.resolve([]));
+        if (source !== 'docs' && isTutorialsAvailable()) searchPromises.push(searchTutorials(q, { maxResults: fetchLimit }));
+        else searchPromises.push(Promise.resolve([]));
+
+        const [docResults, videoResults] = await Promise.all(searchPromises);
+        let results = [...docResults, ...videoResults].sort((a: any, b: any) => b.score - a.score);
+
         const filtered = domain
-          ? results.filter(r => r.metadata.domain === domain).slice(0, limit)
+          ? results.filter((r: any) => r.metadata.domain === domain).slice(0, limit)
           : results.slice(0, limit);
         res.set('Access-Control-Allow-Origin', '*');
         res.json(filtered.map(r => ({
