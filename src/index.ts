@@ -27,7 +27,7 @@ import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contri
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
-import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable } from './semantic-search.js';
+import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
 import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -2333,7 +2333,32 @@ async function main() {
     const app = express();
     app.use(express.json());
 
-    const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+    interface TransportEntry {
+      transport: StreamableHTTPServerTransport;
+      lastActivity: number;
+    }
+    const transports: { [sessionId: string]: TransportEntry } = {};
+    const SESSION_IDLE_MS = 60 * 60 * 1000; // 1 hour
+    const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+    const sweepInterval = setInterval(() => {
+      const now = Date.now();
+      for (const sid of Object.keys(transports)) {
+        const entry = transports[sid];
+        if (!entry) continue;
+        if (now - entry.lastActivity > SESSION_IDLE_MS) {
+          console.error(`Sweeping idle session ${sid} (idle ${Math.round((now - entry.lastActivity) / 1000)}s)`);
+          try {
+            entry.transport.close();
+          } catch (err) {
+            console.error(`Error closing idle transport ${sid}:`, err);
+          }
+          delete transports[sid];
+        }
+      }
+    }, SESSION_SWEEP_INTERVAL_MS);
+    // Don't keep the event loop alive just for the sweeper.
+    if (typeof sweepInterval.unref === 'function') sweepInterval.unref();
 
     app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', server: 'hise-mcp-server' });
@@ -2352,6 +2377,10 @@ async function main() {
 
     // REST API endpoints for website search (reuses semantic-search.ts)
     app.get('/api/search', async (req: Request, res: Response) => {
+      if (!isEmbeddingsReady()) {
+        res.status(503).json({ error: 'Still indexing, try again in a moment' });
+        return;
+      }
       const q = req.query.q as string | undefined;
       if (!q) {
         res.status(400).json({ error: 'Missing q parameter' });
@@ -2420,6 +2449,10 @@ async function main() {
 
     // REST API endpoints for code example search
     app.get('/api/search/examples', async (req: Request, res: Response) => {
+      if (!isEmbeddingsReady()) {
+        res.status(503).json({ error: 'Still indexing, try again in a moment' });
+        return;
+      }
       const q = req.query.q as string | undefined;
       if (!q) {
         res.status(400).json({ error: 'Missing q parameter' });
@@ -2490,19 +2523,26 @@ async function main() {
         console.error(`Received MCP request for session: ${sessionId}`);
       }
 
+      // Tracks a transport we created inside this handler so we can tear it
+      // down if anything fails before it enters the `transports` map.
+      let createdTransport: StreamableHTTPServerTransport | null = null;
+
       try {
         let transport: StreamableHTTPServerTransport;
 
         if (sessionId && transports[sessionId]) {
-          transport = transports[sessionId];
+          const entry = transports[sessionId];
+          entry.lastActivity = Date.now();
+          transport = entry.transport;
         } else if (!sessionId && isInitializeRequest(req.body)) {
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (sid) => {
               console.error(`Session initialized with ID: ${sid}`);
-              transports[sid] = transport;
+              transports[sid] = { transport, lastActivity: Date.now() };
             },
           });
+          createdTransport = transport;
 
           transport.onclose = () => {
             const sid = transport.sessionId;
@@ -2527,6 +2567,20 @@ async function main() {
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
         console.error('Error handling MCP request:', error);
+        // If we created a transport in this handler, make sure it doesn't
+        // leak — either because initialize failed before onsessioninitialized
+        // fired, or because a later step threw.
+        if (createdTransport) {
+          const sid = createdTransport.sessionId;
+          if (sid && transports[sid]) {
+            delete transports[sid];
+          }
+          try {
+            await createdTransport.close();
+          } catch (closeErr) {
+            console.error('Error closing failed transport:', closeErr);
+          }
+        }
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -2552,8 +2606,9 @@ async function main() {
         console.error(`Establishing SSE stream for session ${sessionId}`);
       }
 
-      const transport = transports[sessionId];
-      await transport.handleRequest(req, res);
+      const entry = transports[sessionId];
+      entry.lastActivity = Date.now();
+      await entry.transport.handleRequest(req, res);
     });
 
     app.delete('/mcp', async (req: Request, res: Response) => {
@@ -2567,8 +2622,9 @@ async function main() {
       console.error(`Session termination request for session ${sessionId}`);
 
       try {
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
+        const entry = transports[sessionId];
+        entry.lastActivity = Date.now();
+        await entry.transport.handleRequest(req, res);
       } catch (error) {
         console.error('Error handling session termination:', error);
         if (!res.headersSent) {
@@ -2576,6 +2632,18 @@ async function main() {
         }
       }
     });
+
+    // Warm up embeddings model + indices before accepting traffic so the
+    // first search request doesn't block for ~seconds. On failure we log
+    // and fall back to lazy-load; endpoints that require embeddings return
+    // 503 until `isEmbeddingsReady()` flips.
+    const warmupStart = Date.now();
+    try {
+      await warmupSearch();
+      console.error(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
+    } catch (err) {
+      console.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
+    }
 
     app.listen(port, () => {
       console.error(`HISE MCP server running in production mode on port ${port}`);
@@ -2608,10 +2676,11 @@ async function main() {
         getTokenCache().destroy();
       }
       
+      clearInterval(sweepInterval);
       for (const sessionId in transports) {
         try {
           console.error(`Closing transport for session ${sessionId}`);
-          await transports[sessionId].close();
+          await transports[sessionId].transport.close();
           delete transports[sessionId];
         } catch (error) {
           console.error(`Error closing transport for session ${sessionId}:`, error);
