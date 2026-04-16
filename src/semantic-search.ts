@@ -56,6 +56,7 @@ export interface SemanticSearchResult {
 // ============================================================================
 
 let embedder: any = null;
+let embeddingsReady = false;
 
 async function ensureEmbedderLoaded(): Promise<void> {
   if (embedder) return;
@@ -66,10 +67,39 @@ async function ensureEmbedderLoaded(): Promise<void> {
   console.error('[semantic-search] Embedding model ready');
 }
 
+export function isEmbeddingsReady(): boolean {
+  return embeddingsReady;
+}
+
+/**
+ * Warm up the embedding model + load all index files.
+ * Safe to call multiple times; only loads once.
+ * Any failure is surfaced to the caller — decide to crash or fall back.
+ */
+export async function warmupSearch(): Promise<void> {
+  await ensureEmbedderLoaded();
+  if (docIndex.isAvailable()) docIndex.ensureLoaded();
+  if (exampleIndex.isAvailable()) exampleIndex.ensureLoaded();
+  if (videoIndex.isAvailable()) videoIndex.ensureLoaded();
+  embeddingsReady = true;
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
   return dot;
+}
+
+// ============================================================================
+// Chunk ID validation — defense in depth against any future path-building code
+// ============================================================================
+
+const CHUNK_ID_PATTERN = /^[a-zA-Z0-9:._-]+$/;
+
+function assertValidChunkId(id: string): void {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 512 || !CHUNK_ID_PATTERN.test(id)) {
+    throw new Error(`Invalid chunk id: ${JSON.stringify(id)}`);
+  }
 }
 
 // ============================================================================
@@ -190,6 +220,7 @@ class SearchIndex {
   }
 
   getChunkById(id: string): { body: string; metadata: ChunkMetadata } | null {
+    assertValidChunkId(id);
     this.ensureLoaded();
 
     const ci = this.idToChunkIndex!.get(id);
