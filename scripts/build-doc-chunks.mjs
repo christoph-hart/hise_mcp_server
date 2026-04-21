@@ -22,6 +22,7 @@ const ROOT_DIR = join(SCRIPT_DIR, '..');
 const DATA_DIR = join(ROOT_DIR, 'data');
 const CONTENT_DIR = join(ROOT_DIR, 'content');
 const API_REF = join(DATA_DIR, 'api_reference.json');
+const PREPROCESSOR_DATA = join(DATA_DIR, 'preprocessor.json');
 const SURVEY_DATA = join(DATA_DIR, 'class_survey_data.json');
 const CHUNKS_OUT = join(DATA_DIR, 'doc_chunks.json');
 const GRAPH_OUT = join(DATA_DIR, 'graph.json');
@@ -250,6 +251,84 @@ function collectChunks() {
         }
       }
     }
+  }
+
+  // 1b. Preprocessor flags
+  console.log('Reading preprocessor.json...');
+  try {
+    const pp = JSON.parse(readFileSync(PREPROCESSOR_DATA, 'utf-8'));
+    let ppCount = 0;
+
+    for (const [name, entry] of Object.entries(pp.preprocessors || {})) {
+      if (entry.vestigal) continue;
+
+      const id = `preprocessor:${name}`;
+      const categorySlug = entry['category-slug'] || 'uncategorized';
+      const nameSlug = name.toLowerCase();
+      const url = `/v2/reference/preprocessors/${categorySlug}#${nameSlug}`;
+
+      const textParts = [name];
+      if (entry.brief) textParts.push(entry.brief);
+      if (entry.description) textParts.push(entry.description);
+      const text = textParts.join('\n\n');
+
+      const bodyParts = [`# ${name}`];
+      if (entry.category) bodyParts.push(`**Category:** ${entry.category}`);
+      if (entry.brief) bodyParts.push(`> ${entry.brief}`);
+      if (entry.defaultValue !== undefined) bodyParts.push(`**Default:** \`${entry.defaultValue}\``);
+      if (entry.valueRange) bodyParts.push(`**Range:** ${entry.valueRange}`);
+      if (typeof entry.supportsHotReload === 'boolean') {
+        bodyParts.push(`**Hot reload:** ${entry.supportsHotReload ? 'yes' : 'no'}`);
+      }
+      if (entry.description) bodyParts.push(entry.description);
+      if (entry.crossRefs?.length) {
+        bodyParts.push('**See also:**');
+        for (const ref of entry.crossRefs) bodyParts.push(`- ${ref}`);
+      }
+      const body = bodyParts.join('\n\n');
+
+      chunks.push({
+        id,
+        text,
+        body,
+        metadata: {
+          source: 'preprocessor',
+          type: 'preprocessor',
+          name,
+          title: name,
+          category: entry.category || '',
+          description: entry.brief || '',
+          domain: 'preprocessor',
+          defaultValue: entry.defaultValue,
+          supportsHotReload: !!entry.supportsHotReload,
+          url
+        }
+      });
+
+      graph[id] = graph[id] || [];
+      for (const ref of entry.crossRefs || []) {
+        const ppMatch = ref.match(/^\$PP\.(\w+)\$/);
+        if (ppMatch) {
+          const targetId = `preprocessor:${ppMatch[1]}`;
+          graph[id].push(targetId);
+          graph[targetId] = graph[targetId] || [];
+          graph[targetId].push(id);
+          continue;
+        }
+        const apiMatch = ref.match(/^\$API\.(\w+)\.(\w+)\$/);
+        if (apiMatch) {
+          const targetId = `api:${apiMatch[1]}.${apiMatch[2]}`;
+          graph[id].push(targetId);
+          graph[targetId] = graph[targetId] || [];
+          graph[targetId].push(id);
+        }
+      }
+
+      ppCount++;
+    }
+    console.log(`  Added ${ppCount} preprocessor chunks (skipped vestigal)`);
+  } catch (e) {
+    console.warn('Warning: Could not read preprocessor.json:', e.message);
   }
 
   // 2. Markdown files
