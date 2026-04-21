@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -248,8 +248,7 @@ export class HISEDataLoader {
 
   private getFileMtime(path: string): number {
     try {
-      const fs = require('fs');
-      return fs.statSync(path).mtimeMs;
+      return statSync(path).mtimeMs;
     } catch {
       return 0;
     }
