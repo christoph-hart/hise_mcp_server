@@ -75,7 +75,21 @@ export interface CodeSnippet {
   difficulty: "beginner" | "intermediate" | "advanced";
 }
 
-export type SearchDomain = "all" | "api" | "ui" | "modules" | "snippets" | "scriptnode";
+export type SearchDomain = "all" | "api" | "ui" | "modules" | "snippets" | "scriptnode" | "preprocessor";
+
+export interface PreprocessorEntry {
+  name: string;
+  brief: string;
+  description: string;
+  category: string;
+  categorySlug: string;
+  defaultValue: number | string | boolean | null;
+  valueRange: string;
+  supportsHotReload: boolean;
+  vestigal: boolean;
+  crossRefs: string[];
+  url: string;
+}
 
 export interface SearchResult {
   id: string;
@@ -117,6 +131,7 @@ export interface ServerStatusBase {
     lafComponents: number;
     lafFunctions: number;
     scriptnodeNodes: number;
+    preprocessorFlags: number;
   };
 }
 

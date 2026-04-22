@@ -116,7 +116,7 @@ const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
   {
     name: 'search_hise',
-    description: `Search HISE docs by keyword or pattern (e.g., "midi", "Synth.*"). Returns matches with relevance score. Use query_* tools for full details. Domains: api, ui, modules, snippets, scriptnode.`,
+    description: `Search HISE docs by keyword or pattern (e.g., "midi", "Synth.*"). Returns matches with relevance score. Use query_* tools for full details. Domains: api, ui, modules, snippets, scriptnode, preprocessor.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -126,7 +126,7 @@ const DOC_TOOLS: Tool[] = [
         },
         domain: {
           type: 'string',
-          enum: ['all', 'api', 'ui', 'modules', 'snippets', 'scriptnode'],
+          enum: ['all', 'api', 'ui', 'modules', 'snippets', 'scriptnode', 'preprocessor'],
           description: 'Filter by domain (default: all)',
         },
         limit: {

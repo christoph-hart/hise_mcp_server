@@ -17,7 +17,8 @@ import {
   LAFQueryResult,
   LAFCallbackProperty,
   ClassSurveyData,
-  ClassSurveyEntry
+  ClassSurveyEntry,
+  PreprocessorEntry
 } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -81,6 +82,9 @@ export class HISEDataLoader {
 
   // Scriptnode node data (from scriptnode.json)
   private scriptnodeIndex: Map<string, { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any }> = new Map();
+
+  // Preprocessor flag data (from preprocessor.json). Keyed by lowercase name.
+  private preprocessorIndex: Map<string, PreprocessorEntry> = new Map();
 
   // Cross-domain explore index (modules, scriptnode, UI enrichment for explore_hise)
   private exploreEnrichmentIndex: Map<string, {
@@ -147,6 +151,12 @@ export class HISEDataLoader {
       if (existsSync(snPath)) {
         scriptnodeData = JSON.parse(readFileSync(snPath, 'utf8'));
       }
+
+      // Load preprocessor data (optional)
+      const ppPath = join(__dirname, '..', 'data', 'preprocessor.json');
+      if (existsSync(ppPath)) {
+        this.storePreprocessorData(JSON.parse(readFileSync(ppPath, 'utf8')));
+      }
       
       // Optimization #2: Don't load snippets yet (lazy load)
       this.data = {
@@ -193,12 +203,14 @@ export class HISEDataLoader {
       const apiMtime = this.getFileMtime(join(dataDir, 'scripting_api.json'));
       const procMtime = this.getFileMtime(join(dataDir, 'processors.json'));
       const snMtime = this.getFileMtime(join(dataDir, 'scriptnode.json'));
+      const ppMtime = this.getFileMtime(join(dataDir, 'preprocessor.json'));
 
-      if (cache.version !== '1.4' || 
-          cache.uiMtime !== uiMtime || 
-          cache.apiMtime !== apiMtime || 
+      if (cache.version !== '1.6' ||
+          cache.uiMtime !== uiMtime ||
+          cache.apiMtime !== apiMtime ||
           cache.procMtime !== procMtime ||
-          cache.snMtime !== snMtime) {
+          cache.snMtime !== snMtime ||
+          cache.ppMtime !== ppMtime) {
         console.error('Cache invalidated due to data file changes');
         return false;
       }
@@ -230,12 +242,13 @@ export class HISEDataLoader {
       const uiFile = existsSync(join(dataDir, 'ui_components.json'))
         ? 'ui_components.json' : 'ui_component_properties.json';
       const cache = {
-        version: '1.4',
+        version: '1.6',
         cachedAt,
         uiMtime: this.getFileMtime(join(dataDir, uiFile)),
         apiMtime: this.getFileMtime(join(dataDir, 'scripting_api.json')),
         procMtime: this.getFileMtime(join(dataDir, 'processors.json')),
         snMtime: this.getFileMtime(join(dataDir, 'scriptnode.json')),
+        ppMtime: this.getFileMtime(join(dataDir, 'preprocessor.json')),
         data: this.data
       };
       this.cacheLoadedAt = cachedAt;
@@ -479,6 +492,33 @@ export class HISEDataLoader {
     }
   }
 
+  private storePreprocessorData(data: any): void {
+    this.preprocessorIndex.clear();
+    const flags = data?.preprocessors || {};
+    for (const [name, entry] of Object.entries(flags)) {
+      const e = entry as any;
+      if (e.vestigal) continue;
+      const categorySlug = e['category-slug'] || 'uncategorized';
+      this.preprocessorIndex.set(name.toLowerCase(), {
+        name,
+        brief: e.brief || '',
+        description: e.description || '',
+        category: e.category || '',
+        categorySlug,
+        defaultValue: e.defaultValue ?? null,
+        valueRange: e.valueRange || '',
+        supportsHotReload: !!e.supportsHotReload,
+        vestigal: !!e.vestigal,
+        crossRefs: Array.isArray(e.crossRefs) ? e.crossRefs : [],
+        url: `/v2/reference/preprocessors/${categorySlug}#${name.toLowerCase()}`,
+      });
+    }
+  }
+
+  queryPreprocessor(name: string): PreprocessorEntry | null {
+    return this.preprocessorIndex.get(name.toLowerCase()) || null;
+  }
+
   /**
    * Reload enriched data from source JSON files.
    * Called both during fresh load and cache restore.
@@ -503,6 +543,13 @@ export class HISEDataLoader {
         const snData = JSON.parse(readFileSync(snPath, 'utf8'));
         this.storeScriptnodeData(snData);
       }
+
+      // Preprocessor
+      const ppPath = join(dataDir, 'preprocessor.json');
+      if (existsSync(ppPath)) {
+        this.storePreprocessorData(JSON.parse(readFileSync(ppPath, 'utf8')));
+      }
+
       // Build cross-domain explore index
       this.buildExploreEnrichmentIndex();
     } catch (error) {
@@ -798,6 +845,21 @@ export class HISEDataLoader {
       });
     }
 
+    // Index preprocessor flags
+    for (const [key, pp] of this.preprocessorIndex) {
+      const keywords = this.extractKeywords(
+        pp.name, pp.brief, pp.description, pp.category
+      );
+      this.addToKeywordIndex(key, keywords);
+      this.allItems.push({
+        id: key,
+        domain: 'preprocessor',
+        name: pp.name,
+        description: pp.brief,
+        keywords
+      });
+    }
+
     // Index enriched modules at module level (for module-level search results)
     for (const [key, mod] of this.moduleEnriched) {
       // Only add if not already indexed via parameters
@@ -1024,6 +1086,21 @@ export class HISEDataLoader {
           domain: 'scriptnode',
           name: exactNode.factoryPath,
           description: exactNode.description,
+          score: 1.0,
+          matchType: 'exact'
+        });
+        seen.add(normalized);
+      }
+    }
+
+    if (domain === 'all' || domain === 'preprocessor') {
+      const exactPp = this.preprocessorIndex.get(normalized);
+      if (exactPp) {
+        results.push({
+          id: exactPp.name.toLowerCase(),
+          domain: 'preprocessor',
+          name: exactPp.name,
+          description: exactPp.brief,
           score: 1.0,
           matchType: 'exact'
         });
@@ -1394,7 +1471,8 @@ export class HISEDataLoader {
         codeSnippets: data?.codeSnippets.length || 0,
         lafComponents: this.lafComponentIndex.size,
         lafFunctions: this.lafFunctionIndex.size,
-        scriptnodeNodes: this.scriptnodeIndex.size
+        scriptnodeNodes: this.scriptnodeIndex.size,
+        preprocessorFlags: this.preprocessorIndex.size
       }
     };
   }
