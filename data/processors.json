@@ -7,7 +7,7 @@
     "tags": [
       "generator"
     ],
-    "llmRef": "AHDSR Envelope (Modulator/EnvelopeModulator)\n\nFive-stage envelope: Attack, Hold, Decay, Sustain, Release. Per-voice state machine, control rate. Output 0-1, multiply into voice audio buffer.\n\nSignal flow:\n  noteOn -> capture mod chains -> per-voice coefficients -> ATTACK -> HOLD -> DECAY -> SUSTAIN\n  noteOff -> RELEASE -> IDLE (voice killed)\n\nCPU: low, polyphonic. Heavier than SimpleEnvelope (more stages + curves).\n\nParameters:\n  Attack (0 - 20000 ms, default 20 ms) - time to peak\n  AttackLevel (-100 - 0 dB, default 0 dB) - peak level end of attack\n  Hold (0 - 20000 ms, default 10 ms) - hold at peak before decay\n  Decay (1 - 20000 ms, default 300 ms) - peak to sustain time\n  Sustain (-100 - 0 dB, default 0 dB) - level while note down\n  Release (1 - 20000 ms, default 20 ms) - fall to zero after note-off\n  AttackCurve (0.0 - 1.0, default 0.0) - 0=concave, 0.5=linear, 1=convex\n  DecayCurve (0.0 - 1.0, default 0.0) - 0=steep, 1=gentle\n  Monophonic (Off/On, default dynamic) - shared envelope all voices\n  Retrigger (Off/On, default On) - restart on new note monophonic\n  EcoMode (Off/On, default On) - vestigial, no effect\n\nModulation chains (per-voice, VoiceStartModulator, gain mode):\n  AttackTimeModulation - multiply attack ms\n  AttackLevelModulation - multiply attack level linear gain\n  DecayTimeModulation - multiply decay ms\n  SustainLevelModulation - multiply sustain linear gain\n  ReleaseTimeModulation - multiply release ms\n\nKey behaviours:\n  - AttackLevel < Sustain -> skip Hold + Decay.\n  - DecayCurve shape decay + release both.\n  - Monophonic kill voice no. Add second polyphonic envelope.\n  - Mod chains eval once at note-on, multiply param.\n  - EcoMode vestigial. Downsampling global.\n\nCommon mistakes:\n  DecayCurve shape both same.\n  Level mod multiply linear gain, not dB offset.\n  Monophonic block voice kill.\n\nCustom equivalent:\n  scriptnode via HardcodedEnvelopeModulator (medium), or HISEScript via ScriptEnvelopeModulator.\n\nSee also:\n  alternative FlexAHDSR - independent curves per stage\n  alternative SimpleEnvelope - lighter, attack+release only\n  alternative TableEnvelope - table-driven shapes\n  [scriptnode] envelope.ahdsr -- scriptnode equivalent for DspNetwork",
+    "llmRef": "AHDSR Envelope (Modulator/EnvelopeModulator)\n\nFive-stage envelope modulator: Attack, Hold, Decay, Sustain, Release. Runs as a per-voice state machine at control rate. Produces a 0-1 modulation signal that multiplies into the voice audio buffer.\n\nSignal flow:\n  noteOn -> capture mod chains -> compute per-voice coefficients -> ATTACK -> HOLD -> DECAY -> SUSTAIN\n  noteOff -> RELEASE -> IDLE (voice killed)\n\nCPU: low, polyphonic. Slightly heavier than SimpleEnvelope due to additional stages and curve shaping.\n\nParameters:\n  Attack (0 - 20000 ms, default 20 ms) - time to reach peak level\n  AttackLevel (-100 - 0 dB, default 0 dB) - peak level at end of attack\n  Hold (0 - 20000 ms, default 10 ms) - time held at peak before decay\n  Decay (1 - 20000 ms, default 300 ms) - time to fall from peak to sustain\n  Sustain (-100 - 0 dB, default 0 dB) - level held while note is down\n  Release (1 - 20000 ms, default 20 ms) - time to fall to zero after note-off\n  AttackCurve (0.0 - 1.0, default 0.0) - attack shape: 0.0=concave, 0.5=linear, 1.0=convex\n  DecayCurve (0.0 - 1.0, default 0.0) - decay and release shape: 0.0=steep, 1.0=gentle\n  Monophonic (Off/On, default dynamic) - shared envelope for all voices\n  Retrigger (Off/On, default On) - restart envelope on new note in monophonic mode\n  EcoMode (Off/On, default On) - vestigial, no effect\n\nModulation chains (all per-voice, VoiceStartModulator, gain mode):\n  AttackTimeModulation - multiplies attack time in ms\n  AttackLevelModulation - multiplies attack level as linear gain\n  DecayTimeModulation - multiplies decay time in ms\n  SustainLevelModulation - multiplies sustain level as linear gain\n  ReleaseTimeModulation - multiplies release time in ms\n\nKey behaviours:\n  - If AttackLevel is below Sustain, Hold and Decay are skipped entirely.\n  - DecayCurve controls both decay and release shape (no separate release curve).\n  - Monophonic mode disables voice killing; add a second polyphonic envelope as a workaround.\n  - Mod chains are evaluated once at note-on and multiply the parameter value.\n  - EcoMode is vestigial; downsampling is controlled globally.\n\nCommon mistakes:\n  DecayCurve shapes both decay and release identically.\n  Level modulation multiplies linear gain, not dB offset.\n  Monophonic mode prevents voice killing.\n\nCustom equivalent:\n  scriptnode via HardcodedEnvelopeModulator (medium complexity), or HISEScript via ScriptEnvelopeModulator.\n\nSee also:\n  alternative FlexAHDSR - independent curve controls per stage\n  alternative SimpleEnvelope - lighter, attack+release only\n  alternative TableEnvelope - table-driven shapes",
     "cpuProfile": {
       "baseline": "low",
       "polyphonic": true,
@@ -15,75 +15,84 @@
     },
     "commonMistakes": [
       {
-        "title": "DecayCurve shapes both decay + release",
-        "wrong": "Expect separate curve per phase",
-        "right": "DecayCurve shape both same. Use FlexAHDSR for independent",
-        "explanation": "One curve param drive both shapes. No release curve."
+        "title": "DecayCurve controls both decay and release shape",
+        "wrong": "Expecting separate curve controls for the decay and release phases",
+        "right": "DecayCurve shapes both phases identically - use FlexAHDSR if you need independent curves",
+        "explanation": "A single curve parameter drives both the decay and release shapes. There is no separate release curve control."
       },
       {
-        "title": "EcoMode no effect",
-        "wrong": "Enable EcoMode expect less CPU",
-        "right": "Leave default. Downsampling now global",
-        "explanation": "EcoMode vestigial. Shows in UI, changes nothing."
+        "title": "EcoMode has no effect",
+        "wrong": "Enabling EcoMode expecting reduced CPU usage",
+        "right": "Leave EcoMode at its default - downsampling is now controlled globally",
+        "explanation": "The EcoMode parameter is vestigial. It appears in the interface but does not change processing behaviour."
       },
       {
-        "title": "Levels dB but mod linear gain",
-        "wrong": "Expect mod on AttackLevel/Sustain offset dB (e.g. -6 dB)",
-        "right": "Mod multiply linear gain. 0.5 = half gain (~-6 dB)",
-        "explanation": "AttackLevel, Sustain show dB. Mod chains multiply linear gain."
+        "title": "Level parameters are in dB but modulation operates in linear gain",
+        "wrong": "Expecting a modulator on AttackLevel or Sustain to offset the dB value (e.g. subtract 6 dB)",
+        "right": "Modulators multiply the linear gain value - a modulator outputting 0.5 halves the linear gain (roughly -6 dB)",
+        "explanation": "AttackLevel and Sustain are displayed in dB, but modulation chains operate on the converted linear gain value as a multiplier."
       },
       {
-        "title": "Monophonic kill voice no",
-        "wrong": "Monophonic mode, expect voice killing",
-        "right": "Add second polyphonic envelope for voice kill",
-        "explanation": "Monophonic envelope never signal voice stop. Notes ring forever."
+        "title": "Monophonic mode disables voice killing",
+        "wrong": "Switching to Monophonic mode and expecting voices to be killed normally when the envelope finishes",
+        "right": "Add a second polyphonic envelope to handle voice killing when using monophonic mode",
+        "explanation": "In monophonic mode the envelope never signals the voice to stop, which can cause notes to ring indefinitely."
       }
     ],
     "seeAlso": [
       {
         "id": "FlexAHDSR",
         "type": "alternative",
-        "reason": "Flexible envelope, independent curve per stage"
+        "reason": "More flexible envelope with independent curve controls for each stage"
       },
       {
         "id": "SimpleEnvelope",
         "type": "alternative",
-        "reason": "Lighter. Attack+release only. Lower CPU when no Hold/Decay/curve"
+        "reason": "Lighter envelope with attack and release only - lower CPU when Hold, Decay, and curve shaping are not needed"
       },
       {
         "id": "TableEnvelope",
         "type": "alternative",
-        "reason": "Table-driven shapes. Separate attack/release curves"
-      },
-      {
-        "id": "envelope.ahdsr",
-        "type": "scriptnode",
-        "reason": "Scriptnode equivalent for DspNetwork"
+        "reason": "Table-driven envelope shapes with separate attack and release curves"
       }
     ],
     "customEquivalent": {
       "approach": "scriptnode",
       "moduleType": "HardcodedEnvelopeModulator",
       "complexity": "medium",
-      "description": "Rebuild via scriptnode envelope nodes, or ScriptEnvelopeModulator with HISEScript callbacks"
+      "description": "Rebuild as a scriptnode network using envelope nodes, or use a ScriptEnvelopeModulator with HISEScript callbacks for custom stage logic"
     },
     "parameters": {
-      "Sustain": {
-        "description": "Level while note held",
-        "min": -100.0,
-        "max": 0.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
       "DecayCurve": {
-        "description": "Decay + release shape: 0.0=steep, 1.0=gentle",
+        "description": "Shape of both decay and release phases: 0.0 = steep, 1.0 = gentle",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.0
       },
+      "Decay": {
+        "description": "Time to fall from peak level to sustain level",
+        "min": 1.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 300.0
+      },
+      "Release": {
+        "description": "Time to fall from sustain level to zero after note-off",
+        "min": 1.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 20.0
+      },
+      "AttackLevel": {
+        "description": "Peak level at the end of the attack phase",
+        "min": -100.0,
+        "max": 0.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
       "Retrigger": {
-        "description": "Restart on new note monophonic",
+        "description": "Restarts the envelope on new notes in monophonic mode",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -93,17 +102,42 @@
           "On"
         ]
       },
-      "AttackLevel": {
-        "description": "Peak level end of attack",
-        "min": -100.0,
-        "max": 0.0,
+      "Hold": {
+        "description": "Time held at peak level before decay begins",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 10.0
+      },
+      "Attack": {
+        "description": "Time to reach peak level after note-on",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 20.0
+      },
+      "Monophonic": {
+        "description": "Shares one envelope across all voices instead of per-voice envelopes",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "AttackCurve": {
+        "description": "Shape of the attack phase: 0.0 = concave/logarithmic, 0.5 = linear, 1.0 = convex/exponential",
+        "min": 0.0,
+        "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.0
       },
-      "AttackCurve": {
-        "description": "Attack shape: 0.0=concave, 0.5=linear, 1.0=convex",
-        "min": 0.0,
-        "max": 1.0,
+      "Sustain": {
+        "description": "Level maintained while the note is held",
+        "min": -100.0,
+        "max": 0.0,
         "step": 0.0,
         "defaultValue": 0.0
       },
@@ -117,45 +151,6 @@
           "Off",
           "On"
         ]
-      },
-      "Decay": {
-        "description": "Peak to sustain time",
-        "min": 1.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 300.0
-      },
-      "Monophonic": {
-        "description": "One envelope all voices instead of per-voice",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Release": {
-        "description": "Sustain to zero after note-off",
-        "min": 1.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 20.0
-      },
-      "Attack": {
-        "description": "Time to peak after note-on",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 20.0
-      },
-      "Hold": {
-        "description": "Hold at peak before decay",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 10.0
       }
     }
   },
@@ -268,38 +263,6 @@
       "description": "The Arpeggiator was originally a HISEScript processor. A custom reimplementation would use timer-based sequencing, note capture with held-key tracking, direction algorithms, and slider packs for per-step data."
     },
     "parameters": {
-      "Shuffle": {
-        "description": "Swing amount - alternates even/odd step timing",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "EnableTieNotes": {
-        "description": "Allows 100% length steps to sustain into next step",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "OctaveRange": {
-        "description": "Extends the sequence across octaves (negative = downward)",
-        "min": -2.0,
-        "max": 4.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "Tempo": {
-        "description": "Step rate as a musical note value, synced to host tempo",
-        "min": 0.0,
-        "max": 18.0,
-        "step": 1.0,
-        "defaultValue": 11.0
-      },
       "Direction": {
         "description": "Note traversal mode through the expanded sequence",
         "min": 1.0,
@@ -313,6 +276,93 @@
           "Down-Up",
           "Random",
           "Chords"
+        ]
+      },
+      "Shuffle": {
+        "description": "Swing amount - alternates even/odd step timing",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Stride": {
+        "description": "Slider pack step increment per tick (independent of note traversal)",
+        "min": -12.0,
+        "max": 12.0,
+        "step": 1.0,
+        "defaultValue": 1.0
+      },
+      "Reset": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "OutputChannel": {
+        "description": "",
+        "min": 1.0,
+        "max": 17.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Use input channel",
+          "Channel 1",
+          "Channel 2",
+          "Channel 3",
+          "Channel 4",
+          "Channel 5",
+          "Channel 6",
+          "Channel 7",
+          "Channel 8",
+          "Channel 9",
+          "Channel 10",
+          "Channel 11",
+          "Channel 12",
+          "Channel 13",
+          "Channel 14",
+          "Channel 15",
+          "Channel 16"
+        ]
+      },
+      "Bypass": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Tempo": {
+        "description": "Step rate as a musical note value, synced to host tempo",
+        "min": 0.0,
+        "max": 18.0,
+        "step": 1.0,
+        "defaultValue": 11.0
+      },
+      "StepReset": {
+        "description": "Resets step counters and direction after N master steps (0 = disabled)",
+        "min": 0.0,
+        "max": 128.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "EnableTieNotes": {
+        "description": "Allows 100% length steps to sustain into next step",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
         ]
       },
       "MPEEndChannel": {
@@ -340,8 +390,29 @@
           "Channel 16"
         ]
       },
-      "Bypass": {
+      "OctaveRange": {
+        "description": "Extends the sequence across octaves (negative = downward)",
+        "min": -2.0,
+        "max": 4.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "NumSteps": {
+        "description": "Number of active steps in the slider packs",
+        "min": 1.0,
+        "max": 128.0,
+        "step": 1.0,
+        "defaultValue": 4.0
+      },
+      "CurrentStep": {
         "description": "",
+        "min": 0.0,
+        "max": 128.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "Hold": {
+        "description": "Latches notes after key release",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -377,26 +448,16 @@
           "Channel 16"
         ]
       },
-      "NumSteps": {
-        "description": "Number of active steps in the slider packs",
-        "min": 1.0,
-        "max": 128.0,
-        "step": 1.0,
-        "defaultValue": 4.0
-      },
-      "Stride": {
-        "description": "Slider pack step increment per tick (independent of note traversal)",
-        "min": -12.0,
-        "max": 12.0,
-        "step": 1.0,
-        "defaultValue": 1.0
-      },
-      "StepReset": {
-        "description": "Resets step counters and direction after N master steps (0 = disabled)",
+      "SortKeys": {
+        "description": "Sorts held keys by pitch instead of input order",
         "min": 0.0,
-        "max": 128.0,
+        "max": 1.0,
         "step": 1.0,
-        "defaultValue": 0.0
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       },
       "MPEStartChannel": {
         "description": "",
@@ -421,72 +482,6 @@
           "Channel 14",
           "Channel 15",
           "Channel 16"
-        ]
-      },
-      "CurrentStep": {
-        "description": "",
-        "min": 0.0,
-        "max": 128.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "OutputChannel": {
-        "description": "",
-        "min": 1.0,
-        "max": 17.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Use input channel",
-          "Channel 1",
-          "Channel 2",
-          "Channel 3",
-          "Channel 4",
-          "Channel 5",
-          "Channel 6",
-          "Channel 7",
-          "Channel 8",
-          "Channel 9",
-          "Channel 10",
-          "Channel 11",
-          "Channel 12",
-          "Channel 13",
-          "Channel 14",
-          "Channel 15",
-          "Channel 16"
-        ]
-      },
-      "SortKeys": {
-        "description": "Sorts held keys by pitch instead of input order",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Reset": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Hold": {
-        "description": "Latches notes after key release",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
         ]
       }
     }
@@ -594,12 +589,16 @@
       "description": "A scriptnode file player with custom loop logic and tempo sync for scenarios requiring more control than the built-in module."
     },
     "parameters": {
-      "KillFadeTime": {
-        "description": "",
+      "PitchTracking": {
+        "description": "Transpose playback relative to RootNote",
         "min": 0.0,
-        "max": 20000.0,
+        "max": 1.0,
         "step": 1.0,
-        "defaultValue": 20.0
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       },
       "SampleStartMod": {
         "description": "Random start offset range per note",
@@ -607,6 +606,42 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 0.0
+      },
+      "Reversed": {
+        "description": "Reverse playback direction",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "KillFadeTime": {
+        "description": "",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "LoopEnabled": {
+        "description": "Enables continuous looping",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
       },
       "Balance": {
         "description": "",
@@ -621,35 +656,6 @@
         "max": 256.0,
         "step": 1.0,
         "defaultValue": 256.0
-      },
-      "PitchTracking": {
-        "description": "Transpose playback relative to RootNote",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "LoopEnabled": {
-        "description": "Enables continuous looping",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "RootNote": {
-        "description": "MIDI note at which the file plays at original pitch",
-        "min": 0.0,
-        "max": 127.0,
-        "step": 1.0,
-        "defaultValue": 64.0
       },
       "SyncMode": {
         "description": "Tempo sync division for playback speed",
@@ -669,23 +675,12 @@
           "16 Bars"
         ]
       },
-      "Gain": {
-        "description": "",
+      "RootNote": {
+        "description": "MIDI note at which the file plays at original pitch",
         "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
-      "Reversed": {
-        "description": "Reverse playback direction",
-        "min": 0.0,
-        "max": 1.0,
+        "max": 127.0,
         "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
+        "defaultValue": 64.0
       }
     }
   },
@@ -731,6 +726,13 @@
       "description": "A ScriptProcessor with onNoteOn/onNoteOff/onController callbacks that captures the last note, suppresses note events, and calls Synth.playNote() on matching CC messages."
     },
     "parameters": {
+      "ccSelector": {
+        "description": "Which CC number triggers note generation",
+        "min": 0.0,
+        "max": 127.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
       "Bypass": {
         "description": "Toggles between custom round-robin group cycling (Off) and the Sampler's built-in round-robin (On)",
         "min": 0.0,
@@ -741,13 +743,6 @@
           "Off",
           "On"
         ]
-      },
-      "ccSelector": {
-        "description": "Which CC number triggers note generation",
-        "min": 0.0,
-        "max": 127.0,
-        "step": 1.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -832,19 +827,19 @@
       "description": "A ScriptProcessor checking Message.getChannel() in onNoteOn/onNoteOff/onController and calling Message.ignoreEvent() for non-matching channels."
     },
     "parameters": {
-      "mpeStart": {
-        "description": "First channel in the allowed MPE range (active when MPE is enabled)",
-        "min": 2.0,
-        "max": 16.0,
-        "step": 1.0,
-        "defaultValue": 2.0
-      },
       "channelNumber": {
         "description": "MIDI channel to allow (active when MPE is disabled)",
         "min": 1.0,
         "max": 16.0,
         "step": 1.0,
         "defaultValue": 1.0
+      },
+      "mpeStart": {
+        "description": "First channel in the allowed MPE range (active when MPE is enabled)",
+        "min": 2.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": 2.0
       },
       "mpeEnd": {
         "description": "Last channel in the allowed MPE range (active when MPE is enabled)",
@@ -941,10 +936,10 @@
       "description": "A HISEScript MIDI processor can replicate the choke behaviour using Message.ignoreEvent() for key filtering, Synth.addNoteOff() or Engine.allNotesOff() for voice stopping, and a shared script variable or global lookup for group matching. The sustain pedal tracking and cross-processor communication require additional scripting effort."
     },
     "parameters": {
-      "ChokeGroup": {
-        "description": "Group number for choke matching (0 disables choke behaviour)",
+      "LoKey": {
+        "description": "Lowest note number that passes through and triggers choke",
         "min": 0.0,
-        "max": 16.0,
+        "max": 127.0,
         "step": 1.0,
         "defaultValue": 0.0
       },
@@ -966,10 +961,10 @@
           "On"
         ]
       },
-      "LoKey": {
-        "description": "Lowest note number that passes through and triggers choke",
+      "ChokeGroup": {
+        "description": "Group number for choke matching (0 disables choke behaviour)",
         "min": 0.0,
-        "max": 127.0,
+        "max": 16.0,
         "step": 1.0,
         "defaultValue": 0.0
       }
@@ -1028,6 +1023,13 @@
       "description": "A modulated delay line with feedback in a scriptnode network provides more control over LFO shape, stereo offset, and wet/dry mix"
     },
     "parameters": {
+      "Delay": {
+        "description": "Shifts the modulation centre point",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
       "Feedback": {
         "description": "Delay line feedback (-0.95 to +0.95 internally)",
         "min": 0.0,
@@ -1048,13 +1050,6 @@
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.300000011920929
-      },
-      "Delay": {
-        "description": "Shifts the modulation centre point",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
       }
     }
   },
@@ -1188,15 +1183,29 @@
       "description": "The fx.convolution scriptnode node wraps the same two-stage FFT convolution engine"
     },
     "parameters": {
-      "WetGain": {
-        "description": "Wet output level in decibels, applied to the convolved signal",
+      "FFTType": {
+        "description": "",
+        "min": 0.0,
+        "max": 4.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "Latency": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Damping": {
+        "description": "Exponential fadeout applied to the IR (offline, triggers reload)",
         "min": -100.0,
         "max": 0.0,
         "step": 0.1,
         "defaultValue": 0.0
       },
-      "Damping": {
-        "description": "Exponential fadeout applied to the IR (offline, triggers reload)",
+      "WetGain": {
+        "description": "Wet output level in decibels, applied to the convolved signal",
         "min": -100.0,
         "max": 0.0,
         "step": 0.1,
@@ -1212,6 +1221,20 @@
           "Off",
           "On"
         ]
+      },
+      "HiCut": {
+        "description": "Low-pass cutoff applied to the IR (offline, triggers reload)",
+        "min": 20.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 20000.0
+      },
+      "ImpulseLength": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
       },
       "UseBackgroundThread": {
         "description": "",
@@ -1231,40 +1254,12 @@
         "step": 0.1,
         "defaultValue": -100.0
       },
-      "ImpulseLength": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
-      "Latency": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "FFTType": {
-        "description": "",
-        "min": 0.0,
-        "max": 4.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
       "Predelay": {
         "description": "Delay before the reverb tail begins",
         "min": 0.0,
         "max": 200.0,
         "step": 0.0,
         "defaultValue": 0.0
-      },
-      "HiCut": {
-        "description": "Low-pass cutoff applied to the IR (offline, triggers reload)",
-        "min": 20.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 20000.0
       }
     }
   },
@@ -1340,15 +1335,15 @@
         "step": 0,
         "defaultValue": 0
       },
-      "Q": {
-        "description": "Per-band bandwidth / resonance",
+      "Type": {
+        "description": "Per-band filter algorithm",
         "min": 0,
         "max": 0,
         "step": 0,
         "defaultValue": 0
       },
-      "Freq": {
-        "description": "Per-band centre frequency",
+      "Q": {
+        "description": "Per-band bandwidth / resonance",
         "min": 0,
         "max": 0,
         "step": 0,
@@ -1361,8 +1356,8 @@
         "step": 0,
         "defaultValue": 0
       },
-      "Type": {
-        "description": "Per-band filter algorithm",
+      "Freq": {
+        "description": "Per-band centre frequency",
         "min": 0,
         "max": 0,
         "step": 0,
@@ -1432,12 +1427,40 @@
       "description": "Delay line nodes with feedback and tempo sync in a scriptnode network"
     },
     "parameters": {
+      "LowPassFreq": {
+        "description": "",
+        "min": 20.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 20000.0
+      },
+      "DelayTimeRight": {
+        "description": "Right channel delay time in ms or synced note value",
+        "min": 0.0,
+        "max": 3000.0,
+        "step": 1.0,
+        "defaultValue": 0
+      },
       "Mix": {
         "description": "Overlap fader dry/wet blend",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.5
+      },
+      "HiPassFreq": {
+        "description": "",
+        "min": 20.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 40.0
+      },
+      "DelayTimeLeft": {
+        "description": "Left channel delay time in ms or synced note value",
+        "min": 0.0,
+        "max": 3000.0,
+        "step": 1.0,
+        "defaultValue": 0
       },
       "FeedbackLeft": {
         "description": "Left channel feedback amount",
@@ -1446,12 +1469,12 @@
         "step": 0.0,
         "defaultValue": 0.300000011920929
       },
-      "HiPassFreq": {
-        "description": "",
-        "min": 20.0,
-        "max": 20000.0,
+      "FeedbackRight": {
+        "description": "Right channel feedback amount",
+        "min": 0.0,
+        "max": 1.0,
         "step": 0.0,
-        "defaultValue": 40.0
+        "defaultValue": 0.300000011920929
       },
       "TempoSync": {
         "description": "Sync delay times to host tempo",
@@ -1463,34 +1486,6 @@
           "Off",
           "On"
         ]
-      },
-      "FeedbackRight": {
-        "description": "Right channel feedback amount",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.300000011920929
-      },
-      "DelayTimeRight": {
-        "description": "Right channel delay time in ms or synced note value",
-        "min": 0.0,
-        "max": 3000.0,
-        "step": 1.0,
-        "defaultValue": 0
-      },
-      "LowPassFreq": {
-        "description": "",
-        "min": 20.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 20000.0
-      },
-      "DelayTimeLeft": {
-        "description": "Left channel delay time in ms or synced note value",
-        "min": 0.0,
-        "max": 3000.0,
-        "step": 1.0,
-        "defaultValue": 0
       }
     }
   },
@@ -1576,25 +1571,11 @@
       "description": "A scriptnode network with gate, compressor, and limiter nodes in series can replicate this module's three-stage dynamics chain"
     },
     "parameters": {
-      "CompressorThreshold": {
-        "description": "Level above which compression begins",
-        "min": -100.0,
-        "max": 0.0,
+      "CompressorRatio": {
+        "description": "Compression ratio (e.g. 4 means 4:1)",
+        "min": 1.0,
+        "max": 32.0,
         "step": 0.1,
-        "defaultValue": 0.0
-      },
-      "CompressorAttack": {
-        "description": "Compressor response time",
-        "min": 0.0,
-        "max": 100.0,
-        "step": 0.01,
-        "defaultValue": 10.0
-      },
-      "LimiterAttack": {
-        "description": "Limiter response time",
-        "min": 0.0,
-        "max": 100.0,
-        "step": 0.01,
         "defaultValue": 1.0
       },
       "GateReduction": {
@@ -1604,36 +1585,33 @@
         "step": 0.0,
         "defaultValue": 0.0
       },
-      "GateAttack": {
-        "description": "Time for the gate to open",
+      "GateEnabled": {
+        "description": "Enables the noise gate stage",
         "min": 0.0,
-        "max": 100.0,
-        "step": 0.01,
-        "defaultValue": 1.0
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       },
-      "GateThreshold": {
-        "description": "Level below which the gate attenuates the signal",
-        "min": -100.0,
-        "max": 0.0,
-        "step": 0.01,
+      "LimiterReduction": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
         "defaultValue": 0.0
       },
-      "LimiterRelease": {
-        "description": "Limiter recovery time",
-        "min": 0.0,
-        "max": 300.0,
-        "step": 0.01,
-        "defaultValue": 10.0
-      },
-      "LimiterThreshold": {
-        "description": "Maximum output level ceiling",
+      "CompressorThreshold": {
+        "description": "Level above which compression begins",
         "min": -100.0,
         "max": 0.0,
         "step": 0.1,
         "defaultValue": 0.0
       },
-      "GateEnabled": {
-        "description": "Enables the noise gate stage",
+      "LimiterMakeup": {
+        "description": "Enables auto makeup gain after limiting",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -1654,29 +1632,8 @@
           "On"
         ]
       },
-      "LimiterReduction": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "GateRelease": {
-        "description": "Time for the gate to close",
-        "min": 0.0,
-        "max": 300.0,
-        "step": 0.01,
-        "defaultValue": 100.0
-      },
-      "CompressorRatio": {
-        "description": "Compression ratio (e.g. 4 means 4:1)",
-        "min": 1.0,
-        "max": 32.0,
-        "step": 0.1,
-        "defaultValue": 1.0
-      },
-      "LimiterMakeup": {
-        "description": "Enables auto makeup gain after limiting",
+      "LimiterEnabled": {
+        "description": "Enables the brick-wall limiter stage",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -1693,13 +1650,6 @@
         "step": 0.01,
         "defaultValue": 100.0
       },
-      "CompressorReduction": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
       "CompressorMakeup": {
         "description": "Enables auto makeup gain after compression",
         "min": 0.0,
@@ -1711,16 +1661,61 @@
           "On"
         ]
       },
-      "LimiterEnabled": {
-        "description": "Enables the brick-wall limiter stage",
+      "CompressorReduction": {
+        "description": "",
         "min": 0.0,
         "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "GateRelease": {
+        "description": "Time for the gate to close",
+        "min": 0.0,
+        "max": 300.0,
+        "step": 0.01,
+        "defaultValue": 100.0
+      },
+      "GateAttack": {
+        "description": "Time for the gate to open",
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.01,
+        "defaultValue": 1.0
+      },
+      "LimiterAttack": {
+        "description": "Limiter response time",
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.01,
+        "defaultValue": 1.0
+      },
+      "LimiterThreshold": {
+        "description": "Maximum output level ceiling",
+        "min": -100.0,
+        "max": 0.0,
+        "step": 0.1,
+        "defaultValue": 0.0
+      },
+      "GateThreshold": {
+        "description": "Level below which the gate attenuates the signal",
+        "min": -100.0,
+        "max": 0.0,
+        "step": 0.01,
+        "defaultValue": 0.0
+      },
+      "CompressorAttack": {
+        "description": "Compressor response time",
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.01,
+        "defaultValue": 10.0
+      },
+      "LimiterRelease": {
+        "description": "Limiter recovery time",
+        "min": 0.0,
+        "max": 300.0,
+        "step": 0.01,
+        "defaultValue": 10.0
       }
     }
   },
@@ -1824,6 +1819,13 @@
           "On"
         ]
       },
+      "SlotIndex": {
+        "description": "Which event data slot (0-15) to read",
+        "min": 0.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
       "Monophonic": {
         "description": "",
         "min": 0.0,
@@ -1834,13 +1836,6 @@
           "Off",
           "On"
         ]
-      },
-      "SlotIndex": {
-        "description": "Which event data slot (0-15) to read",
-        "min": 0.0,
-        "max": 16.0,
-        "step": 1.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -1976,12 +1971,16 @@
       "description": "Use the envelope.flex_ahdsr scriptnode node for identical behaviour inside a HardcodedEnvelopeModulator network"
     },
     "parameters": {
-      "Sustain": {
-        "description": "Level maintained while the note is held (linear amplitude)",
+      "Monophonic": {
+        "description": "",
         "min": 0.0,
         "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
       },
       "DecayCurve": {
         "description": "Curvature of the decay stage (0.5 = linear)",
@@ -1989,6 +1988,59 @@
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.5
+      },
+      "Decay": {
+        "description": "Time to fall from AttackLevel to Sustain level",
+        "min": 0.0,
+        "max": 30000.0,
+        "step": 0.0,
+        "defaultValue": 100.0
+      },
+      "Release": {
+        "description": "Time to fall from the current level to zero after note-off",
+        "min": 0.0,
+        "max": 30000.0,
+        "step": 0.0,
+        "defaultValue": 300.0
+      },
+      "ReleaseCurve": {
+        "description": "Curvature of the release stage (0.5 = linear)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
+      "AttackLevel": {
+        "description": "Peak level reached at the end of the attack stage (linear amplitude)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "Retrigger": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Hold": {
+        "description": "Time held at AttackLevel before decay begins",
+        "min": 0.0,
+        "max": 30000.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Attack": {
+        "description": "Time to ramp from zero to AttackLevel",
+        "min": 0.0,
+        "max": 30000.0,
+        "step": 0.0,
+        "defaultValue": 5.0
       },
       "Mode": {
         "description": "Playback behaviour: Trigger (one-shot), Note (standard), Loop (repeating)",
@@ -2002,24 +2054,6 @@
           "Loop"
         ]
       },
-      "Retrigger": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "AttackLevel": {
-        "description": "Peak level reached at the end of the attack stage (linear amplitude)",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
       "AttackCurve": {
         "description": "Curvature of the attack stage (0.5 = linear)",
         "min": 0.0,
@@ -2027,51 +2061,12 @@
         "step": 0.0,
         "defaultValue": 0.5
       },
-      "Decay": {
-        "description": "Time to fall from AttackLevel to Sustain level",
-        "min": 0.0,
-        "max": 30000.0,
-        "step": 0.0,
-        "defaultValue": 100.0
-      },
-      "Monophonic": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "ReleaseCurve": {
-        "description": "Curvature of the release stage (0.5 = linear)",
+      "Sustain": {
+        "description": "Level maintained while the note is held (linear amplitude)",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.5
-      },
-      "Release": {
-        "description": "Time to fall from the current level to zero after note-off",
-        "min": 0.0,
-        "max": 30000.0,
-        "step": 0.0,
-        "defaultValue": 300.0
-      },
-      "Attack": {
-        "description": "Time to ramp from zero to AttackLevel",
-        "min": 0.0,
-        "max": 30000.0,
-        "step": 0.0,
-        "defaultValue": 5.0
-      },
-      "Hold": {
-        "description": "Time held at AttackLevel before decay begins",
-        "min": 0.0,
-        "max": 30000.0,
-        "step": 0.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -2136,6 +2131,28 @@
       "description": "A global cable receiving envelope values with optional table lookup node"
     },
     "parameters": {
+      "Inverted": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Retrigger": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
       "UseTable": {
         "description": "Enables the lookup table for value transformation",
         "min": 0.0,
@@ -2153,28 +2170,6 @@
         "max": 1.0,
         "step": 1.0,
         "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Retrigger": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Inverted": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
         "items": [
           "Off",
           "On"
@@ -2259,20 +2254,6 @@
       "description": "No direct scriptnode equivalent. The global modulation system is a module-tree-level routing mechanism. In scriptnode, use global cables for similar cross-module value sharing."
     },
     "parameters": {
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "Maximum number of phantom voices for polyphonic modulator context",
         "min": 1.0,
@@ -2286,6 +2267,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -2341,8 +2336,8 @@
       "description": "A global cable with sample-and-hold at voice start, plus optional table lookup"
     },
     "parameters": {
-      "UseTable": {
-        "description": "Enables the lookup table for value transformation",
+      "Inverted": {
+        "description": "Inverts the modulation output (1 - value)",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2352,8 +2347,8 @@
           "On"
         ]
       },
-      "Inverted": {
-        "description": "Inverts the modulation output (1 - value)",
+      "UseTable": {
+        "description": "Enables the lookup table for value transformation",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2426,8 +2421,8 @@
       "description": "A global cable receiving time-variant buffer with optional table lookup node"
     },
     "parameters": {
-      "UseTable": {
-        "description": "Enables the lookup table for value transformation",
+      "Inverted": {
+        "description": "Inverts the modulation output (1 - value). Does not work when UseTable is enabled.",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2437,8 +2432,8 @@
           "On"
         ]
       },
-      "Inverted": {
-        "description": "Inverts the modulation output (1 - value). Does not work when UseTable is enabled.",
+      "UseTable": {
+        "description": "Enables the lookup table for value transformation",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2503,8 +2498,8 @@
       "description": "A global cable receiving voice-start values with optional table lookup node"
     },
     "parameters": {
-      "UseTable": {
-        "description": "Enables the lookup table for value transformation",
+      "Inverted": {
+        "description": "Inverts the modulation output (1 - value)",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2514,8 +2509,8 @@
           "On"
         ]
       },
-      "Inverted": {
-        "description": "Inverts the modulation output (1 - value)",
+      "UseTable": {
+        "description": "Enables the lookup table for value transformation",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -2608,23 +2603,23 @@
       }
     ],
     "parameters": {
-      "Monophonic": {
-        "description": "Shares one envelope across all voices instead of per-voice envelopes",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "Retrigger": {
         "description": "Restarts the envelope on new notes in monophonic mode",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
         "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Monophonic": {
+        "description": "Shares one envelope across all voices instead of per-voice envelopes",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
         "items": [
           "Off",
           "On"
@@ -2868,20 +2863,6 @@
       }
     ],
     "parameters": {
-      "Balance": {
-        "description": "Stereo balance",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "Maximum number of simultaneous voices",
         "min": 1.0,
@@ -2895,6 +2876,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "Stereo balance",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -3024,6 +3019,20 @@
       "description": "Requires a bank of peak EQ nodes with per-voice frequency calculation from the MIDI note, slider pack data routing, and A/B crossfade logic. Non-trivial due to the dynamic band count and harmonic frequency tracking."
     },
     "parameters": {
+      "QFactor": {
+        "description": "Filter resonance applied uniformly to all bands. Higher values produce narrower peaks.",
+        "min": 4.0,
+        "max": 48.0,
+        "step": 1.0,
+        "defaultValue": 12.0
+      },
+      "CrossfadeValue": {
+        "description": "Blend position between slider pack A and B gain configurations",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
       "NumFilterBands": {
         "description": "Number of active harmonic peak filter bands (1, 2, 4, 8, or 16)",
         "min": 1.0,
@@ -3038,26 +3047,12 @@
           "16 Filter Bands"
         ]
       },
-      "CrossfadeValue": {
-        "description": "Blend position between slider pack A and B gain configurations",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
-      },
       "SemitoneTranspose": {
         "description": "Shifts the base frequency and entire harmonic series in semitones",
         "min": -24.0,
         "max": 24.0,
         "step": 1.0,
         "defaultValue": 0.0
-      },
-      "QFactor": {
-        "description": "Filter resonance applied uniformly to all bands. Higher values produce narrower peaks.",
-        "min": 4.0,
-        "max": 48.0,
-        "step": 1.0,
-        "defaultValue": 12.0
       }
     }
   },
@@ -3114,6 +3109,41 @@
       "description": "Read Message.getNoteNumber() in the onVoiceStart callback and divide by 127"
     }
   },
+  "LegatoWithRetrigger": {
+    "id": "LegatoWithRetrigger",
+    "type": "MidiProcessor",
+    "subtype": "MidiProcessor",
+    "builderPath": "b.MidiProcessors.LegatoWithRetrigger",
+    "tags": [
+      "note_processing"
+    ],
+    "llmRef": "LegatoWithRetrigger (MidiProcessor)\n\nEnforces monophonic note behaviour with single-depth retrigger. When a new note arrives while one is held, the previous note is killed and stored as a retrigger candidate. When the active note is released and a candidate exists, the candidate is retriggered as a new note.\n\nSignal flow:\n  noteOn: make artificial -> kill previous if held -> store retrigger candidate -> pass through\n  noteOff (active note released): kill active -> retrigger candidate if available, else go idle\n\nCPU: negligible (pure event manipulation, no DSP).\n\nParameters: none.\n\nRetrigger stack depth: 1. Only the single most recent previous note is remembered.\n\nVelocity behaviour: retriggered notes use the velocity of the most recently played note, not the original velocity of the retriggered note.\n\nWhen to use:\n  Lead lines and expressive legato phrasing where releasing a note should return to the previous pitch, similar to classic monosynth behaviour.\n\nCommon mistakes:\n  Stack is only 1 deep - playing A, B, C in legato means A is forgotten when C arrives.\n  Retriggered notes inherit the last-played velocity, not their original velocity.\n\nSee also: (none)",
+    "cpuProfile": {
+      "baseline": "negligible",
+      "polyphonic": false,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "Only most recent note retriggered",
+        "wrong": "Playing three or more notes in legato and expecting all previous notes to retrigger in sequence",
+        "right": "Only the single most recent previous note is stored for retrigger",
+        "explanation": "The retrigger stack is one note deep. In a legato sequence A-B-C, releasing C retriggers B, but releasing B then produces silence because A was never stored."
+      },
+      {
+        "title": "Retriggered notes use last velocity",
+        "wrong": "Expecting a retriggered note to sound at its original velocity",
+        "right": "The retriggered note always uses the velocity of the most recently played note",
+        "explanation": "If you play A at velocity 100 then B at velocity 50, releasing B retriggers A at velocity 50, not 100."
+      }
+    ],
+    "customEquivalent": {
+      "approach": "hisescript",
+      "moduleType": "ScriptProcessor",
+      "complexity": "simple",
+      "description": "Reproducible with a ScriptProcessor using onNoteOn/onNoteOff callbacks, Message.makeArtificial(), Synth.noteOffByEventId(), and Synth.addNoteOn() with a few tracking variables."
+    }
+  },
   "LFO": {
     "id": "LFO",
     "type": "Modulator",
@@ -3168,39 +3198,12 @@
       "description": "Build with an oscillator node, envelope node for fade-in, and a tempo sync node for clock-locked rate control"
     },
     "parameters": {
-      "WaveformType": {
-        "description": "Selects the waveform: Sine, Triangle, Saw, Square, Random, Custom, or Steps",
-        "min": 1.0,
-        "max": 7.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Sine",
-          "Triangle",
-          "Saw",
-          "Square",
-          "Random",
-          "Custom",
-          "Steps"
-        ]
-      },
       "SyncToMasterClock": {
         "description": "Aligns the LFO phase to the host transport position (requires TempoSync)",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
         "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Legato": {
-        "description": "Prevents phase reset when overlapping notes are played",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
         "items": [
           "Off",
           "On"
@@ -3213,19 +3216,19 @@
         "step": 0.0,
         "defaultValue": 5.0
       },
-      "IgnoreNoteOn": {
-        "description": "Free-run mode - LFO phase is not reset by note events",
+      "Legato": {
+        "description": "Prevents phase reset when overlapping notes are played",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
-        "defaultValue": 0.0,
+        "defaultValue": 1.0,
         "items": [
           "Off",
           "On"
         ]
       },
-      "TempoSync": {
-        "description": "Switches Frequency from Hz to tempo-synced note divisions",
+      "IgnoreNoteOn": {
+        "description": "Free-run mode - LFO phase is not reset by note events",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
@@ -3246,19 +3249,26 @@
           "On"
         ]
       },
-      "Frequency": {
-        "description": "LFO rate in Hz or as a tempo-synced note division",
-        "min": 0.01,
-        "max": 40.0,
-        "step": 0.0,
-        "defaultValue": 0
-      },
       "NumSteps": {
         "description": "Number of steps in the step sequencer (Steps mode only)",
         "min": 1.0,
         "max": 128.0,
         "step": 1.0,
         "defaultValue": 16.0
+      },
+      "PhaseOffset": {
+        "description": "Initial phase offset applied when the LFO resets",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Frequency": {
+        "description": "LFO rate in Hz or as a tempo-synced note division",
+        "min": 0.01,
+        "max": 40.0,
+        "step": 0.0,
+        "defaultValue": 0
       },
       "FadeIn": {
         "description": "Fade-in time after note trigger",
@@ -3267,159 +3277,32 @@
         "step": 0.0,
         "defaultValue": 1000.0
       },
-      "PhaseOffset": {
-        "description": "Initial phase offset applied when the LFO resets",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      }
-    }
-  },
-  "LegatoWithRetrigger": {
-    "id": "LegatoWithRetrigger",
-    "type": "MidiProcessor",
-    "subtype": "MidiProcessor",
-    "builderPath": "b.MidiProcessors.LegatoWithRetrigger",
-    "tags": [
-      "note_processing"
-    ],
-    "llmRef": "LegatoWithRetrigger (MidiProcessor)\n\nEnforces monophonic note behaviour with single-depth retrigger. When a new note arrives while one is held, the previous note is killed and stored as a retrigger candidate. When the active note is released and a candidate exists, the candidate is retriggered as a new note.\n\nSignal flow:\n  noteOn: make artificial -> kill previous if held -> store retrigger candidate -> pass through\n  noteOff (active note released): kill active -> retrigger candidate if available, else go idle\n\nCPU: negligible (pure event manipulation, no DSP).\n\nParameters: none.\n\nRetrigger stack depth: 1. Only the single most recent previous note is remembered.\n\nVelocity behaviour: retriggered notes use the velocity of the most recently played note, not the original velocity of the retriggered note.\n\nWhen to use:\n  Lead lines and expressive legato phrasing where releasing a note should return to the previous pitch, similar to classic monosynth behaviour.\n\nCommon mistakes:\n  Stack is only 1 deep - playing A, B, C in legato means A is forgotten when C arrives.\n  Retriggered notes inherit the last-played velocity, not their original velocity.\n\nSee also: (none)",
-    "cpuProfile": {
-      "baseline": "negligible",
-      "polyphonic": false,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "Only most recent note retriggered",
-        "wrong": "Playing three or more notes in legato and expecting all previous notes to retrigger in sequence",
-        "right": "Only the single most recent previous note is stored for retrigger",
-        "explanation": "The retrigger stack is one note deep. In a legato sequence A-B-C, releasing C retriggers B, but releasing B then produces silence because A was never stored."
-      },
-      {
-        "title": "Retriggered notes use last velocity",
-        "wrong": "Expecting a retriggered note to sound at its original velocity",
-        "right": "The retriggered note always uses the velocity of the most recently played note",
-        "explanation": "If you play A at velocity 100 then B at velocity 50, releasing B retriggers A at velocity 50, not 100."
-      }
-    ],
-    "customEquivalent": {
-      "approach": "hisescript",
-      "moduleType": "ScriptProcessor",
-      "complexity": "simple",
-      "description": "Reproducible with a ScriptProcessor using onNoteOn/onNoteOff callbacks, Message.makeArtificial(), Synth.noteOffByEventId(), and Synth.addNoteOn() with a few tracking variables."
-    }
-  },
-  "MPEModulator": {
-    "id": "MPEModulator",
-    "type": "Modulator",
-    "subtype": "EnvelopeModulator",
-    "builderPath": "b.Modulators.MPEModulator",
-    "tags": [
-      "input"
-    ],
-    "llmRef": "MPE Modulator (Modulator/EnvelopeModulator)\n\nConverts MPE gesture data into per-voice modulation signals. Five gesture types: Press (channel aftertouch), Slide (CC#74), Glide (pitch bend per channel), Stroke (note-on velocity), Lift (note-off velocity). Press, Slide, and Glide are continuous; Stroke and Lift fire once.\n\nSignal flow:\n  MIDI event -> gesture type filter -> normalise to 0-1 -> table lookup -> one-pole smoother -> intensity scaling -> modulation out\n\nCPU: low, polyphonic (per-voice per-sample smoothing, scales with voice count)\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares a single voice state; aggregates max value across all channels\n  Retrigger (Off/On, default On) - resets smoother on new notes in monophonic mode\n  GestureCC (Press/Slide/Glide/Stroke/Lift, default dynamic) - selects which MPE gesture type to track\n  SmoothingTime (0-2000 ms, default 200 ms) - one-pole smoothing time constant for gesture values\n  DefaultValue (0-100%, default dynamic) - initial value when voice starts and no gesture data is available\n  SmoothedIntensity (0-100%, default 100%) - modulation depth/amplitude (not a smoothing control)\n\nWhen to use:\n  Per-voice expressive control from MPE controllers. Map pressure to filter cutoff, slide to timbre, glide to pitch. Requires an MPE panel in the interface for activation.\n\nCommon mistakes:\n  MPE modulators start bypassed - an MPE panel widget must be in the interface for them to activate.\n  Stroke/Lift are one-shot (note-on/off only), not continuous like Press/Slide/Glide.\n  SmoothedIntensity is the modulation depth, not a smoothing control.\n\nCustom equivalent:\n  complex - MPE per-voice channel routing is deeply integrated into the voice system and not straightforward to replicate.\n\nSee also:\n  alternative PitchWheel - monophonic pitch bend modulator\n  alternative MidiController - monophonic CC modulator",
-    "cpuProfile": {
-      "baseline": "low",
-      "polyphonic": true,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "MPE panel required for activation",
-        "wrong": "Adding an MPE Modulator to the module tree and expecting it to work immediately",
-        "right": "Include an MPE panel widget in the interface so the end user can enable MPE mode",
-        "explanation": "MPE modulators start bypassed and only activate when global MPE mode is enabled through the MPE panel. Without the panel, the modulators never receive gesture data."
-      },
-      {
-        "title": "Stroke and Lift are one-shot, not continuous",
-        "wrong": "Using Stroke mode and expecting continuous velocity tracking during the note",
-        "right": "Use Press, Slide, or Glide for continuous per-voice modulation during a note",
-        "explanation": "Stroke reads the velocity at note-on and Lift reads the velocity at note-off. Neither updates continuously. For ongoing gesture control, use one of the three continuous gesture types."
-      },
-      {
-        "title": "SmoothedIntensity controls modulation depth, not smoothing",
-        "wrong": "Adjusting SmoothedIntensity to change the smoothing amount",
-        "right": "Use SmoothingTime to control smoothing speed; SmoothedIntensity sets overall modulation depth",
-        "explanation": "Despite the name, SmoothedIntensity is the modulator intensity (depth/amplitude). Setting it to zero disables the modulation output entirely."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "PitchWheel",
-        "type": "alternative",
-        "reason": "Monophonic pitch bend modulator - use when MPE per-voice glide is not needed"
-      },
-      {
-        "id": "MidiController",
-        "type": "alternative",
-        "reason": "Monophonic CC modulator - use when MPE per-voice slide/pressure is not needed"
-      }
-    ],
-    "customEquivalent": {
-      "approach": "scriptnode",
-      "moduleType": "ScriptNode",
-      "complexity": "complex",
-      "description": "MPE per-voice channel routing is deeply integrated into the voice management system. Replicating it requires matching incoming MIDI channels to active voices, which is not straightforward in scriptnode or HISEScript."
-    },
-    "parameters": {
-      "DefaultValue": {
-        "description": "Initial value when the voice starts and no gesture data is available",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0
-      },
-      "SmoothingTime": {
-        "description": "One-pole smoothing time constant for gesture values",
-        "min": 0.0,
-        "max": 2000.0,
-        "step": 0.1,
-        "defaultValue": 200.0
-      },
-      "Retrigger": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
+      "WaveformType": {
+        "description": "Selects the waveform: Sine, Triangle, Saw, Square, Random, Custom, or Steps",
+        "min": 1.0,
+        "max": 7.0,
         "step": 1.0,
         "defaultValue": 1.0,
         "items": [
-          "Off",
-          "On"
+          "Sine",
+          "Triangle",
+          "Saw",
+          "Square",
+          "Random",
+          "Custom",
+          "Steps"
         ]
       },
-      "GestureCC": {
-        "description": "Selects which MPE gesture type to track",
-        "min": 1.0,
-        "max": 5.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Press",
-          "Slide",
-          "Glide",
-          "Stroke",
-          "Lift"
-        ]
-      },
-      "Monophonic": {
-        "description": "Shares a single voice state and aggregates the maximum value across all channels",
+      "TempoSync": {
+        "description": "Switches Frequency from Hz to tempo-synced note divisions",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
-        "defaultValue": 0,
+        "defaultValue": 0.0,
         "items": [
           "Off",
           "On"
         ]
-      },
-      "SmoothedIntensity": {
-        "description": "Modulation depth applied to the final output",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
       }
     }
   },
@@ -3468,20 +3351,6 @@
       "description": "Global cables sending modulation values to macro slots can replicate this pattern in scriptnode"
     },
     "parameters": {
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "",
         "min": 1.0,
@@ -3495,6 +3364,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -3542,6 +3425,27 @@
       "description": "A global cable receiving macro values with optional table lookup and smoothing node"
     },
     "parameters": {
+      "MacroValue": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "SmoothTime": {
+        "description": "Smoothing time for value transitions",
+        "min": 0.0,
+        "max": 1000.0,
+        "step": 0.0,
+        "defaultValue": 200.0
+      },
+      "MacroIndex": {
+        "description": "Which macro slot to listen to (0-7, or -1 for disconnected)",
+        "min": -1.0,
+        "max": 7.0,
+        "step": 1.0,
+        "defaultValue": -1.0
+      },
       "UseTable": {
         "description": "Enables the lookup table for response curve shaping",
         "min": 0.0,
@@ -3552,27 +3456,6 @@
           "Off",
           "On"
         ]
-      },
-      "MacroIndex": {
-        "description": "Which macro slot to listen to (0-7, or -1 for disconnected)",
-        "min": -1.0,
-        "max": 7.0,
-        "step": 1.0,
-        "defaultValue": -1.0
-      },
-      "SmoothTime": {
-        "description": "Smoothing time for value transitions",
-        "min": 0.0,
-        "max": 1000.0,
-        "step": 0.0,
-        "defaultValue": 200.0
-      },
-      "MacroValue": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
       }
     }
   },
@@ -3644,17 +3527,6 @@
       "description": "Multiple global cables feeding into a multiplication/addition network with smoothed base value"
     },
     "parameters": {
-      "Monophonic": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "SmoothingTime": {
         "description": "Smoothing time for base value transitions",
         "min": 0.0,
@@ -3679,6 +3551,17 @@
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0
+      },
+      "Monophonic": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
       }
     }
   },
@@ -3729,19 +3612,19 @@
       "description": "Listen for CC messages in the onController callback and write modulation values via ScriptTimeVariantModulator. Allows custom normalisation, filtering, and multi-CC logic."
     },
     "parameters": {
-      "ControllerNumber": {
-        "description": "Selects which MIDI source to listen to (0-127: CC, 128: pitch wheel, 129: aftertouch)",
-        "min": 0.0,
-        "max": 129.0,
-        "step": 1.0,
-        "defaultValue": 1.0
-      },
       "DefaultValue": {
         "description": "",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.0
+      },
+      "ControllerNumber": {
+        "description": "Selects which MIDI source to listen to (0-127: CC, 128: pitch wheel, 129: aftertouch)",
+        "min": 0.0,
+        "max": 129.0,
+        "step": 1.0,
+        "defaultValue": 1.0
       },
       "UseTable": {
         "description": "Enables the lookup table for custom response curves",
@@ -3798,6 +3681,13 @@
       }
     ],
     "parameters": {
+      "NoiseAmount": {
+        "description": "Blend between sine wave and noise for the click sound",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
       "Volume": {
         "description": "Click volume in decibels",
         "min": -100.0,
@@ -3815,13 +3705,6 @@
           "Off",
           "On"
         ]
-      },
-      "NoiseAmount": {
-        "description": "Blend between sine wave and noise for the click sound",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
       }
     }
   },
@@ -3946,26 +3829,12 @@
       "description": "Requires manual tick-to-sample conversion, host tempo tracking, loop wrap-around logic, and artificial note generation via Message.makeArtificial(). Recording adds further complexity."
     },
     "parameters": {
-      "LoopEnd": {
-        "description": "Playback endpoint in both loop and one-shot modes",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
       "PlaybackSpeed": {
         "description": "Speed multiplier applied on top of host tempo sync",
         "min": 0.01,
         "max": 16.0,
         "step": 0.01,
         "defaultValue": 1.0
-      },
-      "CurrentPosition": {
-        "description": "Normalised playback position (read-write; setting it seeks)",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
       },
       "CurrentSequence": {
         "description": "1-based sequence index; 0 means no sequence selected",
@@ -3985,11 +3854,11 @@
           "On"
         ]
       },
-      "CurrentTrack": {
-        "description": "Selects which track of a multi-track MIDI file to play and edit",
+      "LoopEnd": {
+        "description": "Playback endpoint in both loop and one-shot modes",
         "min": 0.0,
-        "max": 16.0,
-        "step": 1.0,
+        "max": 1.0,
+        "step": 0.0,
         "defaultValue": 1.0
       },
       "LoopStart": {
@@ -3998,6 +3867,132 @@
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 0.0
+      },
+      "CurrentPosition": {
+        "description": "Normalised playback position (read-write; setting it seeks)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "CurrentTrack": {
+        "description": "Selects which track of a multi-track MIDI file to play and edit",
+        "min": 0.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": 1.0
+      }
+    }
+  },
+  "MPEModulator": {
+    "id": "MPEModulator",
+    "type": "Modulator",
+    "subtype": "EnvelopeModulator",
+    "builderPath": "b.Modulators.MPEModulator",
+    "tags": [
+      "input"
+    ],
+    "llmRef": "MPE Modulator (Modulator/EnvelopeModulator)\n\nConverts MPE gesture data into per-voice modulation signals. Five gesture types: Press (channel aftertouch), Slide (CC#74), Glide (pitch bend per channel), Stroke (note-on velocity), Lift (note-off velocity). Press, Slide, and Glide are continuous; Stroke and Lift fire once.\n\nSignal flow:\n  MIDI event -> gesture type filter -> normalise to 0-1 -> table lookup -> one-pole smoother -> intensity scaling -> modulation out\n\nCPU: low, polyphonic (per-voice per-sample smoothing, scales with voice count)\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares a single voice state; aggregates max value across all channels\n  Retrigger (Off/On, default On) - resets smoother on new notes in monophonic mode\n  GestureCC (Press/Slide/Glide/Stroke/Lift, default dynamic) - selects which MPE gesture type to track\n  SmoothingTime (0-2000 ms, default 200 ms) - one-pole smoothing time constant for gesture values\n  DefaultValue (0-100%, default dynamic) - initial value when voice starts and no gesture data is available\n  SmoothedIntensity (0-100%, default 100%) - modulation depth/amplitude (not a smoothing control)\n\nWhen to use:\n  Per-voice expressive control from MPE controllers. Map pressure to filter cutoff, slide to timbre, glide to pitch. Requires an MPE panel in the interface for activation.\n\nCommon mistakes:\n  MPE modulators start bypassed - an MPE panel widget must be in the interface for them to activate.\n  Stroke/Lift are one-shot (note-on/off only), not continuous like Press/Slide/Glide.\n  SmoothedIntensity is the modulation depth, not a smoothing control.\n\nCustom equivalent:\n  complex - MPE per-voice channel routing is deeply integrated into the voice system and not straightforward to replicate.\n\nSee also:\n  alternative PitchWheel - monophonic pitch bend modulator\n  alternative MidiController - monophonic CC modulator",
+    "cpuProfile": {
+      "baseline": "low",
+      "polyphonic": true,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "MPE panel required for activation",
+        "wrong": "Adding an MPE Modulator to the module tree and expecting it to work immediately",
+        "right": "Include an MPE panel widget in the interface so the end user can enable MPE mode",
+        "explanation": "MPE modulators start bypassed and only activate when global MPE mode is enabled through the MPE panel. Without the panel, the modulators never receive gesture data."
+      },
+      {
+        "title": "Stroke and Lift are one-shot, not continuous",
+        "wrong": "Using Stroke mode and expecting continuous velocity tracking during the note",
+        "right": "Use Press, Slide, or Glide for continuous per-voice modulation during a note",
+        "explanation": "Stroke reads the velocity at note-on and Lift reads the velocity at note-off. Neither updates continuously. For ongoing gesture control, use one of the three continuous gesture types."
+      },
+      {
+        "title": "SmoothedIntensity controls modulation depth, not smoothing",
+        "wrong": "Adjusting SmoothedIntensity to change the smoothing amount",
+        "right": "Use SmoothingTime to control smoothing speed; SmoothedIntensity sets overall modulation depth",
+        "explanation": "Despite the name, SmoothedIntensity is the modulator intensity (depth/amplitude). Setting it to zero disables the modulation output entirely."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "PitchWheel",
+        "type": "alternative",
+        "reason": "Monophonic pitch bend modulator - use when MPE per-voice glide is not needed"
+      },
+      {
+        "id": "MidiController",
+        "type": "alternative",
+        "reason": "Monophonic CC modulator - use when MPE per-voice slide/pressure is not needed"
+      }
+    ],
+    "customEquivalent": {
+      "approach": "scriptnode",
+      "moduleType": "ScriptNode",
+      "complexity": "complex",
+      "description": "MPE per-voice channel routing is deeply integrated into the voice management system. Replicating it requires matching incoming MIDI channels to active voices, which is not straightforward in scriptnode or HISEScript."
+    },
+    "parameters": {
+      "DefaultValue": {
+        "description": "Initial value when the voice starts and no gesture data is available",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0
+      },
+      "SmoothingTime": {
+        "description": "One-pole smoothing time constant for gesture values",
+        "min": 0.0,
+        "max": 2000.0,
+        "step": 0.1,
+        "defaultValue": 200.0
+      },
+      "SmoothedIntensity": {
+        "description": "Modulation depth applied to the final output",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "Retrigger": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "GestureCC": {
+        "description": "Selects which MPE gesture type to track",
+        "min": 1.0,
+        "max": 5.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Press",
+          "Slide",
+          "Glide",
+          "Stroke",
+          "Lift"
+        ]
+      },
+      "Monophonic": {
+        "description": "Shares a single voice state and aggregates the maximum value across all channels",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
       }
     }
   },
@@ -4026,20 +4021,6 @@
       }
     ],
     "parameters": {
-      "Balance": {
-        "description": "Stereo balance applied after mono-to-stereo conversion",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "",
         "min": 1.0,
@@ -4053,6 +4034,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "Stereo balance applied after mono-to-stereo conversion",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -4114,8 +4109,8 @@
       "description": "Would require FFT-based sinusoidal-transient-noise separation, a grain scheduler with overlap, and per-sample interpolation with position noise - not practical to replicate in scriptnode"
     },
     "parameters": {
-      "WhiteNoise": {
-        "description": "Randomises per-sample grain read position for a noisier texture",
+      "Position": {
+        "description": "Normalised playback position selecting which grain to play",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
@@ -4136,19 +4131,19 @@
           "8192 Samples"
         ]
       },
+      "WhiteNoise": {
+        "description": "Randomises per-sample grain read position for a noisier texture",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
       "Mix": {
         "description": "Overlap fader crossfade between dry input and grain output",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
         "defaultValue": 1.0
-      },
-      "Position": {
-        "description": "Normalised playback position selecting which grain to play",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -4199,13 +4194,6 @@
       "description": "Chain of allpass nodes with feedback and modulated delay coefficient in a scriptnode network"
     },
     "parameters": {
-      "Frequency1": {
-        "description": "Lower bound of the phaser sweep range",
-        "min": 20.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 400.0
-      },
       "Feedback": {
         "description": "Resonance intensity around the allpass cascade",
         "min": 0.0,
@@ -4213,19 +4201,26 @@
         "step": 0.0,
         "defaultValue": 0.699999988079071
       },
-      "Mix": {
-        "description": "Linear dry/wet crossfade",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
       "Frequency2": {
         "description": "Upper bound of the phaser sweep range",
         "min": 20.0,
         "max": 20000.0,
         "step": 0.0,
         "defaultValue": 1600.0
+      },
+      "Frequency1": {
+        "description": "Lower bound of the phaser sweep range",
+        "min": 20.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 400.0
+      },
+      "Mix": {
+        "description": "Linear dry/wet crossfade",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
       }
     }
   },
@@ -4276,17 +4271,6 @@
       "description": "Read the pitch wheel value via Message.getControllerNumber() == 128 in onController and apply custom processing"
     },
     "parameters": {
-      "UseTable": {
-        "description": "Enables a lookup table for custom pitch wheel response curves",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "Inverted": {
         "description": "Flips the modulation output so pitch bend up produces low values",
         "min": 0.0,
@@ -4304,66 +4288,19 @@
         "max": 1000.0,
         "step": 0.0,
         "defaultValue": 200.0
+      },
+      "UseTable": {
+        "description": "Enables a lookup table for custom pitch wheel response curves",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       }
     }
-  },
-  "PolyScriptFX": {
-    "id": "PolyScriptFX",
-    "type": "Effect",
-    "subtype": "VoiceEffect",
-    "builderPath": "b.Effects.PolyScriptFX",
-    "tags": [
-      "custom"
-    ],
-    "llmRef": "Polyphonic Script FX (Effect/VoiceEffect)\n\nPer-voice effect that processes each voice independently through a scriptnode DSP network. Each voice maintains its own state in the network.\n\nSignal flow:\n  voice audio in -> [voice active?] -> ExtraModChains modulate network params -> init voice on note-on -> network process (per voice) -> voice audio out\n                                    -> bypass (voice silent)\n\nCPU: depends on loaded network, polyphonic\n  Scales linearly with active voices. Includes voice suspension for silent voices.\n\nParameters:\n  No fixed parameters (offset = 0). All parameters come from the loaded network.\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use for per-voice effects like distortion, filtering, or waveshaping that need independent state per voice. For monophonic effects, use ScriptFX instead.\n\nCommon mistakes:\n  Do not use for monophonic effects - wastes CPU on per-voice processing.\n  Must compile network before export.\n  Forgetting to set HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS when needing extra mod slots.\n\nSee also:\n  alternative HardcodedPolyphonicFX - compiled variant for exported plugins\n  alternative ScriptFX - monophonic variant for master effects\n  companion ScriptSynth - scriptnode synthesiser",
-    "cpuProfile": {
-      "baseline": "(depends on loaded network)",
-      "polyphonic": true,
-      "scalingFactors": [
-        {
-          "parameter": "(active voices)",
-          "impact": "linear",
-          "note": "CPU scales with the number of active voices"
-        }
-      ]
-    },
-    "commonMistakes": [
-      {
-        "title": "Using PolyScriptFX for monophonic effects",
-        "wrong": "Adding a PolyScriptFX for an effect that does not need per-voice state (e.g. master reverb)",
-        "right": "Use ScriptFX for monophonic effects - it processes once per buffer instead of once per voice",
-        "explanation": "PolyScriptFX processes the network independently for every active voice. For effects that should be shared across all voices, use ScriptFX instead."
-      },
-      {
-        "title": "Network not compiled before export",
-        "wrong": "Exporting with an uncompiled network",
-        "right": "Compile the network to a DLL before exporting, or switch to HardcodedPolyphonicFX",
-        "explanation": "Uncompiled networks only work in the HISE IDE."
-      },
-      {
-        "title": "Forgetting to enable extra mod chains",
-        "wrong": "Trying to add modulation chains to PolyScriptFX without setting the preprocessor definition",
-        "right": "Add HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS=N to the Extra Definitions field in the project settings",
-        "explanation": "By default, PolyScriptFX has zero extra modulation chain slots. You must set the HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS preprocessor macro to the desired count before compilation."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "HardcodedPolyphonicFX",
-        "type": "alternative",
-        "reason": "Compiled variant for exported plugins"
-      },
-      {
-        "id": "ScriptFX",
-        "type": "alternative",
-        "reason": "Monophonic variant for master effects that do not need per-voice processing"
-      },
-      {
-        "id": "ScriptSynth",
-        "type": "companion",
-        "reason": "Scriptnode synthesiser - PolyScriptFX is typically placed in its FX chain for per-voice effects"
-      }
-    ]
   },
   "PolyphonicFilter": {
     "id": "PolyphonicFilter",
@@ -4441,26 +4378,26 @@
       "description": "A scriptnode network with a polyphonic filter node (e.g. svf, biquad, or ladder) and modulation connections replicates the core behaviour. The bipolar frequency modulation path requires additional math nodes."
     },
     "parameters": {
-      "Q": {
-        "description": "Resonance or bandwidth of the filter",
-        "min": 0.3,
-        "max": 8.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
-      "Mode": {
-        "description": "Selects the filter type (18 modes)",
-        "min": 0.0,
-        "max": 17.0,
-        "step": 1.0,
-        "defaultValue": 6.0
-      },
       "Quality": {
         "description": "",
         "min": 0.0,
         "max": 4096.0,
         "step": 1.0,
         "defaultValue": 512.0
+      },
+      "BipolarIntensity": {
+        "description": "Scales the bipolar frequency modulation offset",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Q": {
+        "description": "Resonance or bandwidth of the filter",
+        "min": 0.3,
+        "max": 8.0,
+        "step": 0.0,
+        "defaultValue": 1.0
       },
       "Frequency": {
         "description": "Cutoff or centre frequency of the filter",
@@ -4469,12 +4406,12 @@
         "step": 0.0,
         "defaultValue": 20000.0
       },
-      "BipolarIntensity": {
-        "description": "Scales the bipolar frequency modulation offset",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
+      "Mode": {
+        "description": "Selects the filter type (18 modes)",
+        "min": 0.0,
+        "max": 17.0,
+        "step": 1.0,
+        "defaultValue": 6.0
       },
       "Gain": {
         "description": "Filter gain in dB for shelf and peak modes only",
@@ -4484,6 +4421,64 @@
         "defaultValue": 0.0
       }
     }
+  },
+  "PolyScriptFX": {
+    "id": "PolyScriptFX",
+    "type": "Effect",
+    "subtype": "VoiceEffect",
+    "builderPath": "b.Effects.PolyScriptFX",
+    "tags": [
+      "custom"
+    ],
+    "llmRef": "Polyphonic Script FX (Effect/VoiceEffect)\n\nPer-voice effect that processes each voice independently through a scriptnode DSP network. Each voice maintains its own state in the network.\n\nSignal flow:\n  voice audio in -> [voice active?] -> ExtraModChains modulate network params -> init voice on note-on -> network process (per voice) -> voice audio out\n                                    -> bypass (voice silent)\n\nCPU: depends on loaded network, polyphonic\n  Scales linearly with active voices. Includes voice suspension for silent voices.\n\nParameters:\n  No fixed parameters (offset = 0). All parameters come from the loaded network.\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use for per-voice effects like distortion, filtering, or waveshaping that need independent state per voice. For monophonic effects, use ScriptFX instead.\n\nCommon mistakes:\n  Do not use for monophonic effects - wastes CPU on per-voice processing.\n  Must compile network before export.\n  Forgetting to set HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS when needing extra mod slots.\n\nSee also:\n  alternative HardcodedPolyphonicFX - compiled variant for exported plugins\n  alternative ScriptFX - monophonic variant for master effects\n  companion ScriptSynth - scriptnode synthesiser",
+    "cpuProfile": {
+      "baseline": "(depends on loaded network)",
+      "polyphonic": true,
+      "scalingFactors": [
+        {
+          "parameter": "(active voices)",
+          "impact": "linear",
+          "note": "CPU scales with the number of active voices"
+        }
+      ]
+    },
+    "commonMistakes": [
+      {
+        "title": "Using PolyScriptFX for monophonic effects",
+        "wrong": "Adding a PolyScriptFX for an effect that does not need per-voice state (e.g. master reverb)",
+        "right": "Use ScriptFX for monophonic effects - it processes once per buffer instead of once per voice",
+        "explanation": "PolyScriptFX processes the network independently for every active voice. For effects that should be shared across all voices, use ScriptFX instead."
+      },
+      {
+        "title": "Network not compiled before export",
+        "wrong": "Exporting with an uncompiled network",
+        "right": "Compile the network to a DLL before exporting, or switch to HardcodedPolyphonicFX",
+        "explanation": "Uncompiled networks only work in the HISE IDE."
+      },
+      {
+        "title": "Forgetting to enable extra mod chains",
+        "wrong": "Trying to add modulation chains to PolyScriptFX without setting the preprocessor definition",
+        "right": "Add HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS=N to the Extra Definitions field in the project settings",
+        "explanation": "By default, PolyScriptFX has zero extra modulation chain slots. You must set the HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS preprocessor macro to the desired count before compilation."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "HardcodedPolyphonicFX",
+        "type": "alternative",
+        "reason": "Compiled variant for exported plugins"
+      },
+      {
+        "id": "ScriptFX",
+        "type": "alternative",
+        "reason": "Monophonic variant for master effects that do not need per-voice processing"
+      },
+      {
+        "id": "ScriptSynth",
+        "type": "companion",
+        "reason": "Scriptnode synthesiser - PolyScriptFX is typically placed in its FX chain for per-voice effects"
+      }
+    ]
   },
   "PolyshapeFX": {
     "id": "PolyshapeFX",
@@ -4550,20 +4545,6 @@
         "step": 0.0,
         "defaultValue": 0.0
       },
-      "Mode": {
-        "description": "Selects the waveshaping function",
-        "min": 0.0,
-        "max": 33.0,
-        "step": 1.0,
-        "defaultValue": 1.0
-      },
-      "Bias": {
-        "description": "DC offset before shaping for asymmetric distortion",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
       "Oversampling": {
         "description": "Enables 4x oversampling for reduced aliasing",
         "min": 0.0,
@@ -4574,6 +4555,20 @@
           "Off",
           "On"
         ]
+      },
+      "Bias": {
+        "description": "DC offset before shaping for asymmetric distortion",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Mode": {
+        "description": "Selects the waveshaping function",
+        "min": 0.0,
+        "max": 33.0,
+        "step": 1.0,
+        "defaultValue": 1.0
       }
     }
   },
@@ -4690,13 +4685,6 @@
         "step": 0.1,
         "defaultValue": 0.0
       },
-      "TimeTable": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
       "TimeAttenuate": {
         "description": "Enables time-based velocity attenuation",
         "min": 0.0,
@@ -4707,6 +4695,13 @@
           "Off",
           "On"
         ]
+      },
+      "TimeTable": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -4867,23 +4862,23 @@
       }
     ],
     "parameters": {
-      "Monophonic": {
-        "description": "Shares one envelope across all voices instead of per-voice envelopes",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "Retrigger": {
         "description": "Restarts the envelope on new notes in monophonic mode",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
         "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Monophonic": {
+        "description": "Shares one envelope across all voices instead of per-voice envelopes",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
         "items": [
           "Off",
           "On"
@@ -4948,6 +4943,76 @@
         "reason": "Required for voice management when using scriptnode envelopes alongside this module"
       }
     ]
+  },
+  "ScriptnodeVoiceKiller": {
+    "id": "ScriptnodeVoiceKiller",
+    "type": "Modulator",
+    "subtype": "EnvelopeModulator",
+    "builderPath": "b.Modulators.ScriptnodeVoiceKiller",
+    "tags": [
+      "custom"
+    ],
+    "llmRef": "Scriptnode Voice Killer (Modulator/EnvelopeModulator)\n\nA structural envelope modulator that monitors a scriptnode envelope's gate signal and terminates voices when the gate closes. Required whenever a ScriptEnvelopeModulator or HardcodedEnvelopeModulator is used for voice management. It produces a constant 1.0 modulation output and does not shape the signal.\n\nSignal flow:\n  noteOn -> voice marked active -> constant 1.0 modulation output\n  scriptnode gate close -> voice marked inactive -> voice killed by HISE\n\nCPU: negligible, polyphonic. Only performs atomic boolean operations and a buffer fill.\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares one envelope state across all voices\n  Retrigger (Off/On, default On) - restarts on new notes in monophonic mode\n\nWhen to use:\n  Add to the Gain Modulation chain of any sound generator that uses a ScriptEnvelopeModulator or HardcodedEnvelopeModulator. Without it, voices will never stop. Not needed for built-in envelopes like AHDSR, which handle voice killing internally.\n\nCommon mistakes:\n  Forgetting to add it causes voices to pile up indefinitely.\n  Placing it outside the Gain Modulation chain renders it inert.\n\nSee also:\n  companion ScriptEnvelopeModulator - scriptnode envelope requiring this voice killer\n  companion HardcodedEnvelopeModulator - compiled scriptnode envelope requiring this voice killer\n  alternative AHDSR - built-in envelope with integrated voice killing",
+    "cpuProfile": {
+      "baseline": "negligible",
+      "polyphonic": true,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "Forgetting to add ScriptnodeVoiceKiller when using scriptnode envelopes",
+        "wrong": "Using a ScriptEnvelopeModulator or HardcodedEnvelopeModulator without a ScriptnodeVoiceKiller",
+        "right": "Add a ScriptnodeVoiceKiller to the Gain Modulation chain of the same sound generator",
+        "explanation": "Without a ScriptnodeVoiceKiller, voices started by the sound generator will never be terminated. Notes will pile up indefinitely, consuming CPU until the voice limit is reached."
+      },
+      {
+        "title": "Placing the voice killer in the wrong modulation chain",
+        "wrong": "Adding the ScriptnodeVoiceKiller to a modulation chain other than Gain Modulation",
+        "right": "Place the ScriptnodeVoiceKiller in the Gain Modulation chain of the parent sound generator",
+        "explanation": "The module only registers itself as the voice killer when placed in the Gain Modulation chain. In any other chain, it does nothing."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "ScriptEnvelopeModulator",
+        "type": "companion",
+        "reason": "Scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
+      },
+      {
+        "id": "HardcodedEnvelopeModulator",
+        "type": "companion",
+        "reason": "Compiled scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
+      },
+      {
+        "id": "AHDSR",
+        "type": "alternative",
+        "reason": "Built-in envelope with integrated voice killing - does not need a separate voice killer"
+      }
+    ],
+    "parameters": {
+      "Retrigger": {
+        "description": "Restarts the voice state when a new note arrives in monophonic mode",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Monophonic": {
+        "description": "Shares one envelope state across all voices instead of per-voice tracking",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      }
+    }
   },
   "ScriptProcessor": {
     "id": "ScriptProcessor",
@@ -5067,20 +5132,6 @@
       }
     ],
     "parameters": {
-      "Balance": {
-        "description": "Stereo panning position",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "Maximum number of simultaneous voices",
         "min": 1.0,
@@ -5094,6 +5145,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "Stereo panning position",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -5196,76 +5261,6 @@
       }
     ]
   },
-  "ScriptnodeVoiceKiller": {
-    "id": "ScriptnodeVoiceKiller",
-    "type": "Modulator",
-    "subtype": "EnvelopeModulator",
-    "builderPath": "b.Modulators.ScriptnodeVoiceKiller",
-    "tags": [
-      "custom"
-    ],
-    "llmRef": "Scriptnode Voice Killer (Modulator/EnvelopeModulator)\n\nA structural envelope modulator that monitors a scriptnode envelope's gate signal and terminates voices when the gate closes. Required whenever a ScriptEnvelopeModulator or HardcodedEnvelopeModulator is used for voice management. It produces a constant 1.0 modulation output and does not shape the signal.\n\nSignal flow:\n  noteOn -> voice marked active -> constant 1.0 modulation output\n  scriptnode gate close -> voice marked inactive -> voice killed by HISE\n\nCPU: negligible, polyphonic. Only performs atomic boolean operations and a buffer fill.\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares one envelope state across all voices\n  Retrigger (Off/On, default On) - restarts on new notes in monophonic mode\n\nWhen to use:\n  Add to the Gain Modulation chain of any sound generator that uses a ScriptEnvelopeModulator or HardcodedEnvelopeModulator. Without it, voices will never stop. Not needed for built-in envelopes like AHDSR, which handle voice killing internally.\n\nCommon mistakes:\n  Forgetting to add it causes voices to pile up indefinitely.\n  Placing it outside the Gain Modulation chain renders it inert.\n\nSee also:\n  companion ScriptEnvelopeModulator - scriptnode envelope requiring this voice killer\n  companion HardcodedEnvelopeModulator - compiled scriptnode envelope requiring this voice killer\n  alternative AHDSR - built-in envelope with integrated voice killing",
-    "cpuProfile": {
-      "baseline": "negligible",
-      "polyphonic": true,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "Forgetting to add ScriptnodeVoiceKiller when using scriptnode envelopes",
-        "wrong": "Using a ScriptEnvelopeModulator or HardcodedEnvelopeModulator without a ScriptnodeVoiceKiller",
-        "right": "Add a ScriptnodeVoiceKiller to the Gain Modulation chain of the same sound generator",
-        "explanation": "Without a ScriptnodeVoiceKiller, voices started by the sound generator will never be terminated. Notes will pile up indefinitely, consuming CPU until the voice limit is reached."
-      },
-      {
-        "title": "Placing the voice killer in the wrong modulation chain",
-        "wrong": "Adding the ScriptnodeVoiceKiller to a modulation chain other than Gain Modulation",
-        "right": "Place the ScriptnodeVoiceKiller in the Gain Modulation chain of the parent sound generator",
-        "explanation": "The module only registers itself as the voice killer when placed in the Gain Modulation chain. In any other chain, it does nothing."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "ScriptEnvelopeModulator",
-        "type": "companion",
-        "reason": "Scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
-      },
-      {
-        "id": "HardcodedEnvelopeModulator",
-        "type": "companion",
-        "reason": "Compiled scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
-      },
-      {
-        "id": "AHDSR",
-        "type": "alternative",
-        "reason": "Built-in envelope with integrated voice killing - does not need a separate voice killer"
-      }
-    ],
-    "parameters": {
-      "Monophonic": {
-        "description": "Shares one envelope state across all voices instead of per-voice tracking",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Retrigger": {
-        "description": "Restarts the voice state when a new note arrives in monophonic mode",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      }
-    }
-  },
   "SendContainer": {
     "id": "SendContainer",
     "type": "SoundGenerator",
@@ -5312,20 +5307,6 @@
       "description": "A routing matrix and effect chain can replicate this pattern in scriptnode, though the send/return workflow is unique to the module tree"
     },
     "parameters": {
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "",
         "min": 1.0,
@@ -5339,6 +5320,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -5403,10 +5398,10 @@
       "description": "A gain node feeding a global send cable can replicate this pattern in scriptnode"
     },
     "parameters": {
-      "ChannelOffset": {
-        "description": "Stereo pair offset within the Send Container's internal buffer",
+      "SendIndex": {
+        "description": "Which Send Container to target (1-based, 0 = disconnected)",
         "min": 0.0,
-        "max": 16.0,
+        "max": 128.0,
         "step": 1.0,
         "defaultValue": 0.0
       },
@@ -5416,6 +5411,13 @@
         "max": 0.0,
         "step": 0.1,
         "defaultValue": -100.0
+      },
+      "ChannelOffset": {
+        "description": "Stereo pair offset within the Send Container's internal buffer",
+        "min": 0.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": 0.0
       },
       "Smoothing": {
         "description": "Enables 80ms block-rate gain smoothing",
@@ -5427,13 +5429,6 @@
           "Off",
           "On"
         ]
-      },
-      "SendIndex": {
-        "description": "Which Send Container to target (1-based, 0 = disconnected)",
-        "min": 0.0,
-        "max": 128.0,
-        "step": 1.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -5491,26 +5486,12 @@
       "description": "A scriptnode network with a waveshaper node, oversampling wrapper, and pre/post filtering can replicate this module's behaviour"
     },
     "parameters": {
-      "Drive": {
-        "description": "",
-        "min": 0.0,
+      "BiasRight": {
+        "description": "DC offset added to the right channel before shaping",
+        "min": -1.0,
         "max": 1.0,
-        "step": 0.0,
+        "step": 0.01,
         "defaultValue": 0.0
-      },
-      "Mix": {
-        "description": "Dry/wet balance",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
-      "HighPass": {
-        "description": "High-pass cutoff frequency applied before shaping",
-        "min": 20.0,
-        "max": 8000.0,
-        "step": 1.0,
-        "defaultValue": 20.0
       },
       "Oversampling": {
         "description": "Oversampling factor for anti-aliasing",
@@ -5526,37 +5507,12 @@
           "16x"
         ]
       },
-      "Mode": {
-        "description": "Selects the waveshaping function",
-        "min": 0.0,
-        "max": 33.0,
+      "LowPass": {
+        "description": "Low-pass cutoff frequency applied before shaping",
+        "min": 200.0,
+        "max": 20000.0,
         "step": 1.0,
-        "defaultValue": 1.0
-      },
-      "BypassFilters": {
-        "description": "Bypasses pre-shaper HP/LP and post-shaper DC removal together",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "BiasLeft": {
-        "description": "DC offset added to the left channel before shaping",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.01,
-        "defaultValue": 0.0
-      },
-      "Reduce": {
-        "description": "Bit reduction depth for lo-fi distortion",
-        "min": 0.0,
-        "max": 14.0,
-        "step": 1.0,
-        "defaultValue": 0.0
+        "defaultValue": 20000.0
       },
       "LimitInput": {
         "description": "Enables a soft limiter before the shaping stage",
@@ -5569,26 +5525,16 @@
           "On"
         ]
       },
-      "LowPass": {
-        "description": "Low-pass cutoff frequency applied before shaping",
-        "min": 200.0,
-        "max": 20000.0,
-        "step": 1.0,
-        "defaultValue": 20000.0
-      },
-      "BiasRight": {
-        "description": "DC offset added to the right channel before shaping",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.01,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "Input gain in decibels applied before shaping",
+      "BypassFilters": {
+        "description": "Bypasses pre-shaper HP/LP and post-shaper DC removal together",
         "min": 0.0,
-        "max": 60.0,
-        "step": 0.1,
-        "defaultValue": 0.0
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       },
       "Autogain": {
         "description": "Automatic output level compensation based on the shaping curve",
@@ -5600,6 +5546,55 @@
           "Off",
           "On"
         ]
+      },
+      "Mix": {
+        "description": "Dry/wet balance",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "Mode": {
+        "description": "Selects the waveshaping function",
+        "min": 0.0,
+        "max": 33.0,
+        "step": 1.0,
+        "defaultValue": 1.0
+      },
+      "Reduce": {
+        "description": "Bit reduction depth for lo-fi distortion",
+        "min": 0.0,
+        "max": 14.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "HighPass": {
+        "description": "High-pass cutoff frequency applied before shaping",
+        "min": 20.0,
+        "max": 8000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "BiasLeft": {
+        "description": "DC offset added to the left channel before shaping",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.01,
+        "defaultValue": 0.0
+      },
+      "Drive": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Gain": {
+        "description": "Input gain in decibels applied before shaping",
+        "min": 0.0,
+        "max": 60.0,
+        "step": 0.1,
+        "defaultValue": 0.0
       }
     }
   },
@@ -5650,20 +5645,6 @@
       }
     ],
     "parameters": {
-      "Balance": {
-        "description": "Stereo balance of the output",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
       "VoiceLimit": {
         "description": "",
         "min": 1.0,
@@ -5677,6 +5658,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "Balance": {
+        "description": "Stereo balance of the output",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -5754,6 +5749,13 @@
           "On"
         ]
       },
+      "Release": {
+        "description": "Release time - ramp duration from current level to silence (shared across all voices)",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 10.0
+      },
       "Retrigger": {
         "description": "",
         "min": 0.0,
@@ -5765,6 +5767,13 @@
           "On"
         ]
       },
+      "Attack": {
+        "description": "Base attack time - ramp duration from silence to full level",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 0.0,
+        "defaultValue": 5.0
+      },
       "Monophonic": {
         "description": "",
         "min": 0.0,
@@ -5775,20 +5784,6 @@
           "Off",
           "On"
         ]
-      },
-      "Release": {
-        "description": "Release time - ramp duration from current level to silence (shared across all voices)",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 10.0
-      },
-      "Attack": {
-        "description": "Base attack time - ramp duration from silence to full level",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 0.0,
-        "defaultValue": 5.0
       }
     }
   },
@@ -5851,13 +5846,6 @@
       "description": "Gain, delay, and mid/side width nodes in a scriptnode network"
     },
     "parameters": {
-      "Delay": {
-        "description": "Static delay time with crossfade on time change",
-        "min": 0.0,
-        "max": 500.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
       "Width": {
         "description": "Stereo width via mid/side processing",
         "min": 0.0,
@@ -5872,6 +5860,20 @@
         "step": 0.0,
         "defaultValue": 0.0
       },
+      "Delay": {
+        "description": "Static delay time with crossfade on time change",
+        "min": 0.0,
+        "max": 500.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Gain": {
+        "description": "Output gain in decibels with 50ms smoothing",
+        "min": -100.0,
+        "max": 36.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
       "InvertPolarity": {
         "description": "Flips signal phase (multiply by -1)",
         "min": 0.0,
@@ -5882,13 +5884,6 @@
           "Off",
           "On"
         ]
-      },
-      "Gain": {
-        "description": "Output gain in decibels with 50ms smoothing",
-        "min": -100.0,
-        "max": 36.0,
-        "step": 1.0,
-        "defaultValue": 0.0
       }
     }
   },
@@ -5934,12 +5929,12 @@
       "description": "The fx.reverb scriptnode node wraps the same Freeverb algorithm with additional routing flexibility"
     },
     "parameters": {
-      "Damping": {
-        "description": "High-frequency absorption in the reverb tail",
+      "DryLevel": {
+        "description": "",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
-        "defaultValue": 0.6000000238418579
+        "defaultValue": 0.800000011920929
       },
       "Width": {
         "description": "Stereo width of the reverb output",
@@ -5948,12 +5943,12 @@
         "step": 0.0,
         "defaultValue": 0.800000011920929
       },
-      "FreezeMode": {
-        "description": "Threshold toggle: below 50% = off, at/above 50% = infinite sustain",
+      "Damping": {
+        "description": "High-frequency absorption in the reverb tail",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
-        "defaultValue": 0.1000000014901161
+        "defaultValue": 0.6000000238418579
       },
       "RoomSize": {
         "description": "Perceived room size controlling reverb decay length",
@@ -5969,12 +5964,12 @@
         "step": 0.0,
         "defaultValue": 0.2000000029802322
       },
-      "DryLevel": {
-        "description": "",
+      "FreezeMode": {
+        "description": "Threshold toggle: below 50% = off, at/above 50% = infinite sustain",
         "min": 0.0,
         "max": 1.0,
         "step": 0.0,
-        "defaultValue": 0.800000011920929
+        "defaultValue": 0.1000000014901161
       }
     }
   },
@@ -6029,12 +6024,19 @@
       "description": "A single sine oscillator node with optional waveshaper and pitch ratio control"
     },
     "parameters": {
-      "CoarseFreqRatio": {
-        "description": "Harmonic frequency multiplier (ratio tuning mode)",
-        "min": -5.0,
-        "max": 16.0,
+      "SaturationAmount": {
+        "description": "Soft-clipping waveshaping amount",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "SemiTones": {
+        "description": "Fine pitch offset in semitones (musical tuning mode)",
+        "min": -12.0,
+        "max": 12.0,
         "step": 1.0,
-        "defaultValue": 1.0
+        "defaultValue": 0.0
       },
       "KillFadeTime": {
         "description": "",
@@ -6043,34 +6045,6 @@
         "step": 1.0,
         "defaultValue": 20.0
       },
-      "Balance": {
-        "description": "Stereo balance applied after mono-to-stereo conversion",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "FineFreqRatio": {
-        "description": "Fractional frequency offset (ratio tuning mode)",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "SaturationAmount": {
-        "description": "Soft-clipping waveshaping amount",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "VoiceLimit": {
-        "description": "",
-        "min": 1.0,
-        "max": 256.0,
-        "step": 1.0,
-        "defaultValue": 256.0
-      },
       "OctaveTranspose": {
         "description": "Coarse pitch offset in octaves (musical tuning mode)",
         "min": -5.0,
@@ -6078,18 +6052,11 @@
         "step": 1.0,
         "defaultValue": 0.0
       },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
+      "Balance": {
+        "description": "Stereo balance applied after mono-to-stereo conversion",
+        "min": -1.0,
         "max": 1.0,
         "step": 0.0,
-        "defaultValue": 0.25
-      },
-      "SemiTones": {
-        "description": "Fine pitch offset in semitones (musical tuning mode)",
-        "min": -12.0,
-        "max": 12.0,
-        "step": 1.0,
         "defaultValue": 0.0
       },
       "UseFreqRatio": {
@@ -6102,6 +6069,34 @@
           "Off",
           "On"
         ]
+      },
+      "VoiceLimit": {
+        "description": "",
+        "min": 1.0,
+        "max": 256.0,
+        "step": 1.0,
+        "defaultValue": 256.0
+      },
+      "CoarseFreqRatio": {
+        "description": "Harmonic frequency multiplier (ratio tuning mode)",
+        "min": -5.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": 1.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "FineFreqRatio": {
+        "description": "Fractional frequency offset (ratio tuning mode)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -6212,17 +6207,17 @@
       "description": "A scriptnode network with a pan node and mid/side width node can replicate this module"
     },
     "parameters": {
-      "Width": {
-        "description": "Stereo width via mid/side processing (0=mono, 100=passthrough, 200=exaggerated)",
-        "min": 0.0,
-        "max": 200.0,
-        "step": 1.0,
-        "defaultValue": 100.0
-      },
       "Pan": {
         "description": "Maximum pan modulation range (-100 to +100). Scales the Pan Modulation output.",
         "min": -100.0,
         "max": 100.0,
+        "step": 1.0,
+        "defaultValue": 100.0
+      },
+      "Width": {
+        "description": "Stereo width via mid/side processing (0=mono, 100=passthrough, 200=exaggerated)",
+        "min": 0.0,
+        "max": 200.0,
         "step": 1.0,
         "defaultValue": 100.0
       }
@@ -6288,74 +6283,6 @@
       "description": "A scriptnode-based sample player for scenarios requiring many independent channels (e.g., drum machines) where per-instance streaming buffer overhead is prohibitive."
     },
     "parameters": {
-      "UseStaticMatrix": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Reversed": {
-        "description": "Reverse playback direction",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "PreloadSize": {
-        "description": "Preload buffer size in samples. -1 loads entire sample.",
-        "min": -1.0,
-        "max": 65536.0,
-        "step": 1.0,
-        "defaultValue": 8192.0
-      },
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "KillFadeTime": {
-        "description": "",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 1.0,
-        "defaultValue": 20.0
-      },
-      "RRGroupAmount": {
-        "description": "Number of round-robin groups",
-        "min": 1.0,
-        "max": 128.0,
-        "step": 1.0,
-        "defaultValue": 1.0
-      },
-      "CrossfadeGroups": {
-        "description": "Play all RR groups simultaneously with crossfade",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "VoiceLimit": {
-        "description": "",
-        "min": 1.0,
-        "max": 256.0,
-        "step": 1.0,
-        "defaultValue": 256.0
-      },
       "PitchTracking": {
         "description": "Transpose playback relative to root note",
         "min": 0.0,
@@ -6366,13 +6293,6 @@
           "Off",
           "On"
         ]
-      },
-      "LowPassEnvelopeOrder": {
-        "description": "",
-        "min": 0.0,
-        "max": 48.0,
-        "step": 6.0,
-        "defaultValue": 0.0
       },
       "SamplerRepeatMode": {
         "description": "Retrigger handling on the same key",
@@ -6388,6 +6308,85 @@
           "Kill Third"
         ]
       },
+      "BufferSize": {
+        "description": "Streaming buffer size per voice (two buffers swapped)",
+        "min": 512.0,
+        "max": 65536.0,
+        "step": 1.0,
+        "defaultValue": 4096.0
+      },
+      "Reversed": {
+        "description": "Reverse playback direction",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "LowPassEnvelopeOrder": {
+        "description": "",
+        "min": 0.0,
+        "max": 48.0,
+        "step": 6.0,
+        "defaultValue": 0.0
+      },
+      "KillFadeTime": {
+        "description": "",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "UseStaticMatrix": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "OneShot": {
+        "description": "Play full sample ignoring note-off",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "CrossfadeGroups": {
+        "description": "Play all RR groups simultaneously with crossfade",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "PreloadSize": {
+        "description": "Preload buffer size in samples. -1 loads entire sample.",
+        "min": -1.0,
+        "max": 65536.0,
+        "step": 1.0,
+        "defaultValue": 8192.0
+      },
       "Purged": {
         "description": "Memory management mode",
         "min": 0.0,
@@ -6400,18 +6399,25 @@
           "Lazy Load"
         ]
       },
-      "BufferSize": {
-        "description": "Streaming buffer size per voice (two buffers swapped)",
-        "min": 512.0,
-        "max": 65536.0,
-        "step": 1.0,
-        "defaultValue": 4096.0
-      },
-      "Gain": {
+      "Balance": {
         "description": "",
-        "min": 0.0,
+        "min": -1.0,
         "max": 1.0,
         "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "VoiceLimit": {
+        "description": "",
+        "min": 1.0,
+        "max": 256.0,
+        "step": 1.0,
+        "defaultValue": 256.0
+      },
+      "RRGroupAmount": {
+        "description": "Number of round-robin groups",
+        "min": 1.0,
+        "max": 128.0,
+        "step": 1.0,
         "defaultValue": 1.0
       },
       "VoiceAmount": {
@@ -6420,17 +6426,6 @@
         "max": 256.0,
         "step": 1.0,
         "defaultValue": 256.0
-      },
-      "OneShot": {
-        "description": "Play full sample ignoring note-off",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
       }
     }
   },
@@ -6487,20 +6482,6 @@
       "description": "A scriptnode container with parallel routing of multiple sound generators and a summing output"
     },
     "parameters": {
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
       "VoiceLimit": {
         "description": "",
         "min": 1.0,
@@ -6514,6 +6495,20 @@
         "max": 20000.0,
         "step": 1.0,
         "defaultValue": 20.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
       }
     }
   },
@@ -6595,41 +6590,6 @@
       "description": "A scriptnode network with parallel oscillators, shared modulation routing, and optional FM feedback path"
     },
     "parameters": {
-      "ModulatorIndex": {
-        "description": "Child synth index used as FM modulator (-1 = not set)",
-        "min": -1.0,
-        "max": 16.0,
-        "step": 1.0,
-        "defaultValue": -1.0
-      },
-      "Gain": {
-        "description": "Output volume as normalised linear gain",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
-      "KillFadeTime": {
-        "description": "",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 1.0,
-        "defaultValue": 20.0
-      },
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "VoiceLimit": {
-        "description": "",
-        "min": 1.0,
-        "max": 256.0,
-        "step": 1.0,
-        "defaultValue": 256.0
-      },
       "EnableFM": {
         "description": "Enables FM synthesis between carrier and modulator children",
         "min": 0.0,
@@ -6641,16 +6601,12 @@
           "On"
         ]
       },
-      "KillSecondVoices": {
+      "VoiceLimit": {
         "description": "",
-        "min": 0.0,
-        "max": 1.0,
+        "min": 1.0,
+        "max": 256.0,
         "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
+        "defaultValue": 256.0
       },
       "UnisonoDetune": {
         "description": "Detune spread in semitones across unison voices",
@@ -6659,18 +6615,32 @@
         "step": 0.01,
         "defaultValue": 0.0
       },
-      "CarrierIndex": {
-        "description": "Child synth index used as FM carrier (-1 = not set)",
-        "min": -1.0,
-        "max": 16.0,
-        "step": 1.0,
-        "defaultValue": -1.0
-      },
       "UnisonoVoiceAmount": {
         "description": "Number of unison voices per note. Direct CPU multiplier.",
         "min": 1.0,
         "max": 16.0,
         "step": 1.0,
+        "defaultValue": 1.0
+      },
+      "KillFadeTime": {
+        "description": "",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "UnisonoSpread": {
+        "description": "Stereo spread of unison voices",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "Gain": {
+        "description": "Output volume as normalised linear gain",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
         "defaultValue": 1.0
       },
       "ForceMono": {
@@ -6684,12 +6654,37 @@
           "On"
         ]
       },
-      "UnisonoSpread": {
-        "description": "Stereo spread of unison voices",
-        "min": 0.0,
+      "CarrierIndex": {
+        "description": "Child synth index used as FM carrier (-1 = not set)",
+        "min": -1.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": -1.0
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
         "max": 1.0,
         "step": 0.0,
-        "defaultValue": 1.0
+        "defaultValue": 0.0
+      },
+      "KillSecondVoices": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "ModulatorIndex": {
+        "description": "Child synth index used as FM modulator (-1 = not set)",
+        "min": -1.0,
+        "max": 16.0,
+        "step": 1.0,
+        "defaultValue": -1.0
       }
     }
   },
@@ -6757,28 +6752,6 @@
       "description": "Use Synth.getTableProcessor() to access the lookup tables and implement timed sweeps in script callbacks"
     },
     "parameters": {
-      "Monophonic": {
-        "description": "Enables single-voice mode where all notes share one envelope state",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Retrigger": {
-        "description": "Restarts the envelope on new notes in monophonic mode with a short glide",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "Release": {
         "description": "Time to sweep through the release table from left to right",
         "min": 1.0,
@@ -6792,6 +6765,28 @@
         "max": 20000.0,
         "step": 0.0,
         "defaultValue": 20.0
+      },
+      "Retrigger": {
+        "description": "Restarts the envelope on new notes in monophonic mode with a short glide",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Monophonic": {
+        "description": "Enables single-voice mode where all notes share one envelope state",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
       }
     }
   },
@@ -6836,325 +6831,6 @@
         "max": 24.0,
         "step": 1.0,
         "defaultValue": 0.0
-      }
-    }
-  },
-  "WaveSynth": {
-    "id": "WaveSynth",
-    "type": "SoundGenerator",
-    "subtype": "SoundGenerator",
-    "builderPath": "b.SoundGenerators.WaveSynth",
-    "tags": [
-      "oscillator"
-    ],
-    "llmRef": "Waveform Generator (SoundGenerator)\n\nDual-oscillator polyphonic synthesiser using band-limited PolyBLEP waveforms. 9 waveform types per oscillator: Sine, Triangle, Saw, Square, Noise, Triangle 2, Square 2, Trapezoid 1, Trapezoid 2. Supports hard sync, independent pitch for FM synthesis, and modulatable mix/pan.\n\nSignal flow:\n  MIDI note -> pitch calculation -> osc1 PolyBLEP -> gain mod\n                                 -> osc2 PolyBLEP (if enabled) -> gain mod\n  -> linear mix crossfade -> equal-power pan -> effect chain -> stereo out\n\nCPU: low per voice, polyphonic. Disabling the second oscillator saves CPU.\n\nParameters:\n  OctaveTranspose1 (-5 to 5, default 0) - coarse pitch offset for osc1 in octaves\n  WaveForm1 (1-9, default Saw) - waveform type for osc1\n  Detune1 (-100 to 100 cents, default 0) - fine pitch detune for osc1\n  Pan1 (-1 to 1, default 0) - stereo panning for osc1\n  SemiTones1 (-12 to 12, default 0) - semitone transpose for osc1\n  PulseWidth1 (0-100%, default 50%) - pulse width for osc1 square waveforms\n  OctaveTranspose2 (-5 to 5, default 0) - coarse pitch offset for osc2\n  WaveForm2 (1-9, default Saw) - waveform type for osc2\n  Detune2 (-100 to 100 cents, default 0) - fine pitch detune for osc2\n  Pan2 (-1 to 1, default 0) - stereo panning for osc2\n  SemiTones2 (-12 to 12, default 0) - semitone transpose for osc2\n  PulseWidth2 (0-100%, default 50%) - pulse width for osc2 square waveforms\n  Mix (0-100%, default 50%) - linear crossfade between osc1 and osc2\n  EnableSecondOscillator (Off/On, default On) - enables/disables osc2\n  HardSync (Off/On, default Off) - resets osc2 phase on each osc1 cycle\n  Gain (0-100%, default 25%) - output volume\n  Balance (-1 to 1, default 0) - stereo balance\n  VoiceLimit (1-256, default 256) - maximum polyphony\n  KillFadeTime (0-20000 ms, default 20 ms) - voice kill fade-out\n\nModulation chains:\n  Gain Modulation - scales the output volume\n  Pitch Modulation - scales the pitch of both oscillators\n  Mix Modulation - modulates the osc1/osc2 balance (audio rate, clamped 0-1)\n  Osc2 Pitch Modulation - independent pitch for osc2 (audio rate, enables FM synthesis)\n\nLimitations:\n  No start phase control - oscillators always reset to phase 0 on note-on.\n  No pulse width modulation - PulseWidth is a static parameter, not modulatable.\n  PolyBLEP falls back to sine above sampleRate/4 to prevent aliasing.\n  Linear mix crossfade produces a level dip at 50%.\n\nCommon mistakes:\n  Expecting random/free-running phase - use scriptnode instead.\n  Expecting equal-power mix crossfade - Mix is linear.\n\nSee also: none",
-    "cpuProfile": {
-      "baseline": "low",
-      "polyphonic": true,
-      "scalingFactors": [
-        "voice count",
-        "second oscillator"
-      ]
-    },
-    "commonMistakes": [
-      {
-        "title": "No start phase control",
-        "wrong": "Looking for a StartPhase parameter to randomise oscillator phase on note-on",
-        "right": "Use a scriptnode patch with oscillator nodes for random or free-running phase",
-        "explanation": "Both oscillators always reset to phase 0 on every note-on. There is no built-in phase control. Scriptnode was designed to handle this kind of oscillator customisation."
-      },
-      {
-        "title": "Mix crossfade is linear, not equal-power",
-        "wrong": "Expecting equal loudness at Mix = 50%",
-        "right": "Compensate for the ~3 dB dip at centre by adjusting levels or using a scriptnode alternative",
-        "explanation": "The Mix parameter uses a linear crossfade (osc1 * (1-mix), osc2 * mix), which produces a perceived level dip at the centre position."
-      }
-    ],
-    "customEquivalent": {
-      "approach": "scriptnode",
-      "moduleType": "SoundGenerator",
-      "complexity": "medium",
-      "description": "A scriptnode patch with two oscillator nodes, split chain for mixing, and converter nodes for detune. Supports features unavailable in the built-in module such as random start phase and pulse width modulation."
-    },
-    "parameters": {
-      "HardSync": {
-        "description": "Resets osc2 phase on each osc1 cycle completion",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Detune2": {
-        "description": "Fine pitch detune for osc2 in cents",
-        "min": -100.0,
-        "max": 100.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "OctaveTranspose1": {
-        "description": "Coarse pitch offset for osc1 in octaves",
-        "min": -5.0,
-        "max": 5.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "PulseWidth1": {
-        "description": "Pulse width for osc1 (affects square-type waveforms)",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
-      },
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "VoiceLimit": {
-        "description": "",
-        "min": 1.0,
-        "max": 256.0,
-        "step": 1.0,
-        "defaultValue": 256.0
-      },
-      "SemiTones1": {
-        "description": "Semitone transpose for osc1",
-        "min": -12.0,
-        "max": 12.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "Mix": {
-        "description": "Linear crossfade between osc1 and osc2",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
-      },
-      "KillFadeTime": {
-        "description": "",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 1.0,
-        "defaultValue": 20.0
-      },
-      "WaveForm2": {
-        "description": "Waveform type for osc2",
-        "min": 1.0,
-        "max": 9.0,
-        "step": 1.0,
-        "defaultValue": 3.0,
-        "items": [
-          "Sine",
-          "Triangle",
-          "Saw",
-          "Square",
-          "Noise",
-          "Triangle 2",
-          "Square 2",
-          "Trapezoid 1",
-          "Trapezoid 2"
-        ]
-      },
-      "Pan1": {
-        "description": "Stereo panning for osc1",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "OctaveTranspose2": {
-        "description": "Coarse pitch offset for osc2 in octaves",
-        "min": -5.0,
-        "max": 5.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "PulseWidth2": {
-        "description": "Pulse width for osc2 (affects square-type waveforms)",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.5
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
-      "SemiTones2": {
-        "description": "Semitone transpose for osc2",
-        "min": -12.0,
-        "max": 12.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "WaveForm1": {
-        "description": "Waveform type for osc1",
-        "min": 1.0,
-        "max": 9.0,
-        "step": 1.0,
-        "defaultValue": 3.0,
-        "items": [
-          "Sine",
-          "Triangle",
-          "Saw",
-          "Square",
-          "Noise",
-          "Triangle 2",
-          "Square 2",
-          "Trapezoid 1",
-          "Trapezoid 2"
-        ]
-      },
-      "EnableSecondOscillator": {
-        "description": "Enables or disables the second oscillator",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Detune1": {
-        "description": "Fine pitch detune for osc1 in cents",
-        "min": -100.0,
-        "max": 100.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Pan2": {
-        "description": "Stereo panning for osc2",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      }
-    }
-  },
-  "WavetableSynth": {
-    "id": "WavetableSynth",
-    "type": "SoundGenerator",
-    "subtype": "SoundGenerator",
-    "builderPath": "b.SoundGenerators.WavetableSynth",
-    "tags": [
-      "oscillator"
-    ],
-    "llmRef": "Wavetable Synthesiser (SoundGenerator)\n\nTwo-dimensional wavetable synthesiser that morphs between waveforms using a table index. Supports audio file resynthesis into band-limited mip-mapped wavetables and precomputed .hwt files. Uses octave-based mip maps to eliminate aliasing at all pitches.\n\nSignal flow:\n  MIDI note -> mip map selection (by octave) -> wavetable interpolation (by Table Index) -> gain modulation -> mono-to-stereo -> effect chain -> stereo out\n\nCPU: medium per voice, polyphonic. HqMode increases quality and CPU cost.\n\nParameters:\n  HqMode (Off/On, default On) - higher-quality interpolation at higher CPU cost\n  LoadedBankIndex (-1 to 128, default 0) - 1-based index of the loaded wavetable bank (alphabetical order)\n  TableIndexValue (0-100%, default 0%) - normalised wavetable morph position\n  RefreshMipMap (Off/On, default Off) - refreshes the mip map when pitch modulation exceeds the current octave range\n  Gain (0-100%, default 25%) - output volume\n  Balance (-1 to 1, default 0) - stereo balance\n  VoiceLimit (1-256, default 256) - maximum polyphony\n  KillFadeTime (0-20000 ms, default 20 ms) - voice kill fade-out\n\nModulation chains:\n  Gain Modulation - scales the output volume\n  Pitch Modulation - scales the pitch of all voices\n  Table Index - scales the wavetable position (unipolar, multiplicative)\n  Table Index Bipolar - adds a bipolar offset to the wavetable position\n\nInterfaces: WavetableController, AudioSampleProcessor, RoutingMatrix\n\nKey API:\n  Synth.getWavetableController(processorId) - returns WavetableController for scripted access\n  WavetableController.saveAsHwt(file) - precomputes and saves .hwt file\n  Engine.getWavetableList() - returns available bank names\n\nLimitations:\n  No hard sync (architectural constraint - destroys band-limiting).\n  No per-voice phase randomisation (unison + detune produces flanger artifacts).\n  setFile() kills all voices and takes 1-2 seconds.\n  HWT files must be deployed separately (not embedded in plugin).\n  Cycle length must be exactly 2048 samples.\n\nCommon mistakes:\n  Non-2048 cycle length -> corrupted wavetable.\n  HWT files not deployed -> no sound in exported plugin.\n  setFile() during playback -> voice kill and audible gap.\n  LoadedBankIndex is 1-based, not 0-based.\n\nSee also: none",
-    "cpuProfile": {
-      "baseline": "medium",
-      "polyphonic": true,
-      "scalingFactors": [
-        "voice count",
-        "HqMode"
-      ]
-    },
-    "commonMistakes": [
-      {
-        "title": "Wavetable cycle length must be exactly 2048 samples",
-        "wrong": "Loading an audio file with arbitrary cycle lengths and expecting correct wavetable conversion",
-        "right": "Ensure each cycle in the source audio is exactly 2048 samples. The total file length must be a multiple of 2048.",
-        "explanation": "The converter derives the number of wavetables by dividing the file length by the cycle length. Non-multiples produce incorrect or corrupted wavetable data."
-      },
-      {
-        "title": "HWT files are not auto-deployed",
-        "wrong": "Expecting .hwt files to be embedded in the compiled plugin automatically",
-        "right": "Include .hwt files in your installer and copy them to the user's AppData/AudioFiles folder",
-        "explanation": "HWT wavetable files are not embedded in the plugin binary. They must be distributed separately via an installer script or post-install copy step."
-      },
-      {
-        "title": "Loading a new wavetable kills all voices",
-        "wrong": "Calling `setFile()` during playback and expecting a seamless transition",
-        "right": "Preload wavetables, or concatenate multiple wavetables into one file and use Table Index offset to switch between sections",
-        "explanation": "Calling `setFile()` triggers a full resynthesis that takes 1-2 seconds and kills all active voices. There is no seamless swap mechanism."
-      },
-      {
-        "title": "LoadedBankIndex is 1-based",
-        "wrong": "Setting `LoadedBankIndex` to 0 to select the first wavetable bank",
-        "right": "Use index 1 for the first bank, 2 for the second, etc. Banks are sorted alphabetically.",
-        "explanation": "The attribute uses 1-based indexing into an alphabetically sorted list of wavetable files. Use `Engine.getWavetableList()` to retrieve the available bank names."
-      }
-    ],
-    "customEquivalent": {
-      "approach": "scriptnode",
-      "moduleType": "SoundGenerator",
-      "complexity": "high",
-      "description": "A scriptnode wavetable oscillator with custom morphing and phase control. Requires manual wavetable loading and interpolation setup."
-    },
-    "parameters": {
-      "TableIndexValue": {
-        "description": "Normalised wavetable morph position",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "Balance": {
-        "description": "",
-        "min": -1.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.0
-      },
-      "KillFadeTime": {
-        "description": "",
-        "min": 0.0,
-        "max": 20000.0,
-        "step": 1.0,
-        "defaultValue": 20.0
-      },
-      "VoiceLimit": {
-        "description": "",
-        "min": 1.0,
-        "max": 256.0,
-        "step": 1.0,
-        "defaultValue": 256.0
-      },
-      "LoadedBankIndex": {
-        "description": "1-based index of the loaded wavetable bank",
-        "min": -1.0,
-        "max": 128.0,
-        "step": 1.0,
-        "defaultValue": 0.0
-      },
-      "HqMode": {
-        "description": "Enables higher-quality interpolation",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Gain": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0.25
-      },
-      "RefreshMipMap": {
-        "description": "Refreshes the mip map when pitch exceeds the current octave range",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
       }
     }
   },
@@ -7211,17 +6887,6 @@
       "description": "Read Message.getVelocity() in the onVoiceStart callback and apply inversion, table lookup, or dB conversion in script"
     },
     "parameters": {
-      "UseTable": {
-        "description": "Enables the lookup table for custom velocity response curves",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
       "Inverted": {
         "description": "Flips the velocity response so high velocities produce low modulation values",
         "min": 0.0,
@@ -7233,8 +6898,338 @@
           "On"
         ]
       },
+      "UseTable": {
+        "description": "Enables the lookup table for custom velocity response curves",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
       "DecibelMode": {
         "description": "Converts output through a -100..0 dB range to linear gain for a logarithmic response",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      }
+    }
+  },
+  "WaveSynth": {
+    "id": "WaveSynth",
+    "type": "SoundGenerator",
+    "subtype": "SoundGenerator",
+    "builderPath": "b.SoundGenerators.WaveSynth",
+    "tags": [
+      "oscillator"
+    ],
+    "llmRef": "Waveform Generator (SoundGenerator)\n\nDual-oscillator polyphonic synthesiser using band-limited PolyBLEP waveforms. 9 waveform types per oscillator: Sine, Triangle, Saw, Square, Noise, Triangle 2, Square 2, Trapezoid 1, Trapezoid 2. Supports hard sync, independent pitch for FM synthesis, and modulatable mix/pan.\n\nSignal flow:\n  MIDI note -> pitch calculation -> osc1 PolyBLEP -> gain mod\n                                 -> osc2 PolyBLEP (if enabled) -> gain mod\n  -> linear mix crossfade -> equal-power pan -> effect chain -> stereo out\n\nCPU: low per voice, polyphonic. Disabling the second oscillator saves CPU.\n\nParameters:\n  OctaveTranspose1 (-5 to 5, default 0) - coarse pitch offset for osc1 in octaves\n  WaveForm1 (1-9, default Saw) - waveform type for osc1\n  Detune1 (-100 to 100 cents, default 0) - fine pitch detune for osc1\n  Pan1 (-1 to 1, default 0) - stereo panning for osc1\n  SemiTones1 (-12 to 12, default 0) - semitone transpose for osc1\n  PulseWidth1 (0-100%, default 50%) - pulse width for osc1 square waveforms\n  OctaveTranspose2 (-5 to 5, default 0) - coarse pitch offset for osc2\n  WaveForm2 (1-9, default Saw) - waveform type for osc2\n  Detune2 (-100 to 100 cents, default 0) - fine pitch detune for osc2\n  Pan2 (-1 to 1, default 0) - stereo panning for osc2\n  SemiTones2 (-12 to 12, default 0) - semitone transpose for osc2\n  PulseWidth2 (0-100%, default 50%) - pulse width for osc2 square waveforms\n  Mix (0-100%, default 50%) - linear crossfade between osc1 and osc2\n  EnableSecondOscillator (Off/On, default On) - enables/disables osc2\n  HardSync (Off/On, default Off) - resets osc2 phase on each osc1 cycle\n  Gain (0-100%, default 25%) - output volume\n  Balance (-1 to 1, default 0) - stereo balance\n  VoiceLimit (1-256, default 256) - maximum polyphony\n  KillFadeTime (0-20000 ms, default 20 ms) - voice kill fade-out\n\nModulation chains:\n  Gain Modulation - scales the output volume\n  Pitch Modulation - scales the pitch of both oscillators\n  Mix Modulation - modulates the osc1/osc2 balance (audio rate, clamped 0-1)\n  Osc2 Pitch Modulation - independent pitch for osc2 (audio rate, enables FM synthesis)\n\nLimitations:\n  No start phase control - oscillators always reset to phase 0 on note-on.\n  No pulse width modulation - PulseWidth is a static parameter, not modulatable.\n  PolyBLEP falls back to sine above sampleRate/4 to prevent aliasing.\n  Linear mix crossfade produces a level dip at 50%.\n\nCommon mistakes:\n  Expecting random/free-running phase - use scriptnode instead.\n  Expecting equal-power mix crossfade - Mix is linear.\n\nSee also: none",
+    "cpuProfile": {
+      "baseline": "low",
+      "polyphonic": true,
+      "scalingFactors": [
+        "voice count",
+        "second oscillator"
+      ]
+    },
+    "commonMistakes": [
+      {
+        "title": "No start phase control",
+        "wrong": "Looking for a StartPhase parameter to randomise oscillator phase on note-on",
+        "right": "Use a scriptnode patch with oscillator nodes for random or free-running phase",
+        "explanation": "Both oscillators always reset to phase 0 on every note-on. There is no built-in phase control. Scriptnode was designed to handle this kind of oscillator customisation."
+      },
+      {
+        "title": "Mix crossfade is linear, not equal-power",
+        "wrong": "Expecting equal loudness at Mix = 50%",
+        "right": "Compensate for the ~3 dB dip at centre by adjusting levels or using a scriptnode alternative",
+        "explanation": "The Mix parameter uses a linear crossfade (osc1 * (1-mix), osc2 * mix), which produces a perceived level dip at the centre position."
+      }
+    ],
+    "customEquivalent": {
+      "approach": "scriptnode",
+      "moduleType": "SoundGenerator",
+      "complexity": "medium",
+      "description": "A scriptnode patch with two oscillator nodes, split chain for mixing, and converter nodes for detune. Supports features unavailable in the built-in module such as random start phase and pulse width modulation."
+    },
+    "parameters": {
+      "SemiTones1": {
+        "description": "Semitone transpose for osc1",
+        "min": -12.0,
+        "max": 12.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "Mix": {
+        "description": "Linear crossfade between osc1 and osc2",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "SemiTones2": {
+        "description": "Semitone transpose for osc2",
+        "min": -12.0,
+        "max": 12.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "PulseWidth1": {
+        "description": "Pulse width for osc1 (affects square-type waveforms)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
+      "OctaveTranspose1": {
+        "description": "Coarse pitch offset for osc1 in octaves",
+        "min": -5.0,
+        "max": 5.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "Pan2": {
+        "description": "Stereo panning for osc2",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "OctaveTranspose2": {
+        "description": "Coarse pitch offset for osc2 in octaves",
+        "min": -5.0,
+        "max": 5.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "EnableSecondOscillator": {
+        "description": "Enables or disables the second oscillator",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "WaveForm2": {
+        "description": "Waveform type for osc2",
+        "min": 1.0,
+        "max": 9.0,
+        "step": 1.0,
+        "defaultValue": 3.0,
+        "items": [
+          "Sine",
+          "Triangle",
+          "Saw",
+          "Square",
+          "Noise",
+          "Triangle 2",
+          "Square 2",
+          "Trapezoid 1",
+          "Trapezoid 2"
+        ]
+      },
+      "KillFadeTime": {
+        "description": "",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "Detune1": {
+        "description": "Fine pitch detune for osc1 in cents",
+        "min": -100.0,
+        "max": 100.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "VoiceLimit": {
+        "description": "",
+        "min": 1.0,
+        "max": 256.0,
+        "step": 1.0,
+        "defaultValue": 256.0
+      },
+      "WaveForm1": {
+        "description": "Waveform type for osc1",
+        "min": 1.0,
+        "max": 9.0,
+        "step": 1.0,
+        "defaultValue": 3.0,
+        "items": [
+          "Sine",
+          "Triangle",
+          "Saw",
+          "Square",
+          "Noise",
+          "Triangle 2",
+          "Square 2",
+          "Trapezoid 1",
+          "Trapezoid 2"
+        ]
+      },
+      "HardSync": {
+        "description": "Resets osc2 phase on each osc1 cycle completion",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Pan1": {
+        "description": "Stereo panning for osc1",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "PulseWidth2": {
+        "description": "Pulse width for osc2 (affects square-type waveforms)",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.5
+      },
+      "Detune2": {
+        "description": "Fine pitch detune for osc2 in cents",
+        "min": -100.0,
+        "max": 100.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      }
+    }
+  },
+  "WavetableSynth": {
+    "id": "WavetableSynth",
+    "type": "SoundGenerator",
+    "subtype": "SoundGenerator",
+    "builderPath": "b.SoundGenerators.WavetableSynth",
+    "tags": [
+      "oscillator"
+    ],
+    "llmRef": "Wavetable Synthesiser (SoundGenerator)\n\nTwo-dimensional wavetable synthesiser that morphs between waveforms using a table index. Supports audio file resynthesis into band-limited mip-mapped wavetables and precomputed .hwt files. Uses octave-based mip maps to eliminate aliasing at all pitches.\n\nSignal flow:\n  MIDI note -> mip map selection (by octave) -> wavetable interpolation (by Table Index) -> gain modulation -> mono-to-stereo -> effect chain -> stereo out\n\nCPU: medium per voice, polyphonic. HqMode increases quality and CPU cost.\n\nParameters:\n  HqMode (Off/On, default On) - higher-quality interpolation at higher CPU cost\n  LoadedBankIndex (-1 to 128, default 0) - 1-based index of the loaded wavetable bank (alphabetical order)\n  TableIndexValue (0-100%, default 0%) - normalised wavetable morph position\n  RefreshMipMap (Off/On, default Off) - refreshes the mip map when pitch modulation exceeds the current octave range\n  Gain (0-100%, default 25%) - output volume\n  Balance (-1 to 1, default 0) - stereo balance\n  VoiceLimit (1-256, default 256) - maximum polyphony\n  KillFadeTime (0-20000 ms, default 20 ms) - voice kill fade-out\n\nModulation chains:\n  Gain Modulation - scales the output volume\n  Pitch Modulation - scales the pitch of all voices\n  Table Index - scales the wavetable position (unipolar, multiplicative)\n  Table Index Bipolar - adds a bipolar offset to the wavetable position\n\nInterfaces: WavetableController, AudioSampleProcessor, RoutingMatrix\n\nKey API:\n  Synth.getWavetableController(processorId) - returns WavetableController for scripted access\n  WavetableController.saveAsHwt(file) - precomputes and saves .hwt file\n  Engine.getWavetableList() - returns available bank names\n\nLimitations:\n  No hard sync (architectural constraint - destroys band-limiting).\n  No per-voice phase randomisation (unison + detune produces flanger artifacts).\n  setFile() kills all voices and takes 1-2 seconds.\n  HWT files must be deployed separately (not embedded in plugin).\n  Cycle length must be exactly 2048 samples.\n\nCommon mistakes:\n  Non-2048 cycle length -> corrupted wavetable.\n  HWT files not deployed -> no sound in exported plugin.\n  setFile() during playback -> voice kill and audible gap.\n  LoadedBankIndex is 1-based, not 0-based.\n\nSee also: none",
+    "cpuProfile": {
+      "baseline": "medium",
+      "polyphonic": true,
+      "scalingFactors": [
+        "voice count",
+        "HqMode"
+      ]
+    },
+    "commonMistakes": [
+      {
+        "title": "Wavetable cycle length must be exactly 2048 samples",
+        "wrong": "Loading an audio file with arbitrary cycle lengths and expecting correct wavetable conversion",
+        "right": "Ensure each cycle in the source audio is exactly 2048 samples. The total file length must be a multiple of 2048.",
+        "explanation": "The converter derives the number of wavetables by dividing the file length by the cycle length. Non-multiples produce incorrect or corrupted wavetable data."
+      },
+      {
+        "title": "HWT files are not auto-deployed",
+        "wrong": "Expecting .hwt files to be embedded in the compiled plugin automatically",
+        "right": "Include .hwt files in your installer and copy them to the user's AppData/AudioFiles folder",
+        "explanation": "HWT wavetable files are not embedded in the plugin binary. They must be distributed separately via an installer script or post-install copy step."
+      },
+      {
+        "title": "Loading a new wavetable kills all voices",
+        "wrong": "Calling `setFile()` during playback and expecting a seamless transition",
+        "right": "Preload wavetables, or concatenate multiple wavetables into one file and use Table Index offset to switch between sections",
+        "explanation": "Calling `setFile()` triggers a full resynthesis that takes 1-2 seconds and kills all active voices. There is no seamless swap mechanism."
+      },
+      {
+        "title": "LoadedBankIndex is 1-based",
+        "wrong": "Setting `LoadedBankIndex` to 0 to select the first wavetable bank",
+        "right": "Use index 1 for the first bank, 2 for the second, etc. Banks are sorted alphabetically.",
+        "explanation": "The attribute uses 1-based indexing into an alphabetically sorted list of wavetable files. Use `Engine.getWavetableList()` to retrieve the available bank names."
+      }
+    ],
+    "customEquivalent": {
+      "approach": "scriptnode",
+      "moduleType": "SoundGenerator",
+      "complexity": "high",
+      "description": "A scriptnode wavetable oscillator with custom morphing and phase control. Requires manual wavetable loading and interpolation setup."
+    },
+    "parameters": {
+      "HqMode": {
+        "description": "Enables higher-quality interpolation",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "KillFadeTime": {
+        "description": "",
+        "min": 0.0,
+        "max": 20000.0,
+        "step": 1.0,
+        "defaultValue": 20.0
+      },
+      "Balance": {
+        "description": "",
+        "min": -1.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "VoiceLimit": {
+        "description": "",
+        "min": 1.0,
+        "max": 256.0,
+        "step": 1.0,
+        "defaultValue": 256.0
+      },
+      "LoadedBankIndex": {
+        "description": "1-based index of the loaded wavetable bank",
+        "min": -1.0,
+        "max": 128.0,
+        "step": 1.0,
+        "defaultValue": 0.0
+      },
+      "TableIndexValue": {
+        "description": "Normalised wavetable morph position",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.0
+      },
+      "Gain": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0.25
+      },
+      "RefreshMipMap": {
+        "description": "Refreshes the mip map when pitch exceeds the current octave range",
         "min": 0.0,
         "max": 1.0,
         "step": 1.0,
