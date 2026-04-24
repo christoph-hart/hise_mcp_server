@@ -1,0 +1,62 @@
+# Axolotl DPO config — runs on top of the SFT adapter.
+# Targets API-fabrication via wrong/right pairs from HISE commonMistakes.
+# Run via: bash run_dpo.sh
+
+base_model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+trust_remote_code: true
+
+# Load the SFT LoRA as the starting adapter
+load_in_4bit: true
+adapter: qlora
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.0
+lora_target_linear: true
+lora_model_dir: ./outputs/hise_sft
+
+# DPO
+rl: dpo
+rl_beta: 0.1
+
+datasets:
+  - path: data/train_dpo.jsonl
+    type: chatml.prompt_pairs
+    field_prompt: prompt
+    field_chosen: chosen
+    field_rejected: rejected
+    field_system: system
+
+val_set_size: 0
+sequence_len: 4096
+max_prompt_len: 2048
+sample_packing: false
+
+num_epochs: 3
+gradient_accumulation_steps: 8
+micro_batch_size: 1
+learning_rate: 5e-6
+lr_scheduler: cosine
+warmup_ratio: 0.1
+optimizer: adamw_torch_fused
+weight_decay: 0.0
+max_grad_norm: 1.0
+
+bf16: auto
+tf32: true
+gradient_checkpointing: true
+flash_attention: true
+
+plugins:
+  - axolotl.integrations.liger.LigerPlugin
+liger_rope: true
+liger_rms_norm: true
+liger_swiglu: true
+
+output_dir: ./outputs/hise_dpo
+save_steps: 100
+save_total_limit: 2
+logging_steps: 5
+
+seed: 42

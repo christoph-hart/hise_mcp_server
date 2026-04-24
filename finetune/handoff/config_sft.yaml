@@ -1,0 +1,81 @@
+# Axolotl QLoRA SFT config — HISE scripting
+# Target: single RTX 3090 (24GB), Qwen3-Coder-30B-A3B-Instruct MoE.
+# Run via: bash run_sft.sh
+
+base_model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+trust_remote_code: true
+
+# 4-bit QLoRA
+load_in_4bit: true
+adapter: qlora
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_linear: true
+lora_modules_to_save: []
+
+# Dataset — ChatML messages format
+datasets:
+  - path: data/train_sft.jsonl
+    type: chat_template
+    chat_template: tokenizer_default
+    field_messages: messages
+    message_property_mappings:
+      role: role
+      content: content
+    roles:
+      system: ["system"]
+      user: ["user"]
+      assistant: ["assistant"]
+
+test_datasets:
+  - path: data/eval_sft.jsonl
+    type: chat_template
+    chat_template: tokenizer_default
+    field_messages: messages
+    message_property_mappings:
+      role: role
+      content: content
+    split: train   # eval_sft.jsonl has no built-in split
+
+val_set_size: 0
+sequence_len: 8192
+sample_packing: false
+pad_to_sequence_len: false
+
+# Training schedule
+num_epochs: 3
+gradient_accumulation_steps: 16
+micro_batch_size: 1
+learning_rate: 2e-4
+lr_scheduler: cosine
+warmup_ratio: 0.03
+optimizer: adamw_torch_fused
+weight_decay: 0.0
+max_grad_norm: 1.0
+
+# Precision + speed
+bf16: auto
+tf32: true
+gradient_checkpointing: true
+flash_attention: true
+
+# Liger kernel — fused Triton kernels, closes most of the perf gap vs Unsloth
+plugins:
+  - axolotl.integrations.liger.LigerPlugin
+liger_rope: true
+liger_rms_norm: true
+liger_swiglu: true
+liger_fused_linear_cross_entropy: true
+
+# I/O
+output_dir: ./outputs/hise_sft
+save_steps: 200
+save_total_limit: 3
+logging_steps: 10
+eval_steps: 200
+save_safetensors: true
+
+seed: 42
