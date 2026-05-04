@@ -25,10 +25,8 @@ import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
-import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
 import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
-import { oauthRouter } from './routes/oauth.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 
@@ -2360,19 +2358,17 @@ async function main() {
     // Don't keep the event loop alive just for the sweeper.
     if (typeof sweepInterval.unref === 'function') sweepInterval.unref();
 
-    app.get('/health', (_req: Request, res: Response) => {
-      res.json({ status: 'ok', server: 'hise-mcp-server' });
+    // CORS for the public REST API (success + error responses).
+    // Per-handler `res.set('Access-Control-Allow-Origin', '*')` only fired on
+    // 200, so 4xx/5xx hit the browser without the header and looked like CORS
+    // failures instead of the actual error.
+    app.use('/api', (_req: Request, res: Response, next) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      next();
     });
 
-    // Auth status endpoint (for debugging)
-    app.get('/auth/status', (_req: Request, res: Response) => {
-      const authConfigured = isAuthConfigured();
-      const oauthConfigured = isOAuthConfigured();
-      res.json({
-        authEnabled: authConfigured,
-        oauthEnabled: oauthConfigured,
-        cacheStats: authConfigured ? getTokenCache().stats() : null,
-      });
+    app.get('/health', (_req: Request, res: Response) => {
+      res.json({ status: 'ok', server: 'hise-mcp-server' });
     });
 
     // REST API endpoints for website search (reuses semantic-search.ts)
@@ -2404,7 +2400,6 @@ async function main() {
         const filtered = domain
           ? results.filter((r: any) => r.metadata.domain === domain).slice(0, limit)
           : results.slice(0, limit);
-        res.set('Access-Control-Allow-Origin', '*');
         res.json(filtered.map(r => ({
           id: r.id,
           score: r.score,
@@ -2418,7 +2413,6 @@ async function main() {
     });
 
     app.get('/api/search/domains', (_req: Request, res: Response) => {
-      res.set('Access-Control-Allow-Origin', '*');
       res.json([
         { id: 'all', label: 'All' },
         { id: 'audio', label: 'Audio' },
@@ -2443,7 +2437,6 @@ async function main() {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      res.set('Access-Control-Allow-Origin', '*');
       res.json(result);
     });
 
@@ -2504,17 +2497,8 @@ async function main() {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      res.set('Access-Control-Allow-Origin', '*');
       res.json(result);
     });
-
-    // OAuth routes (Phase 3: Claude Desktop support)
-    // Mount at root for /.well-known/oauth-authorization-server
-    // and /oauth/* endpoints
-    app.use(oauthRouter);
-
-    // Apply auth middleware to all /mcp routes
-    app.use('/mcp', authMiddleware);
 
     app.post('/mcp', async (req: Request, res: Response) => {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -2647,35 +2631,12 @@ async function main() {
 
     app.listen(port, () => {
       console.error(`HISE MCP server running in production mode on port ${port}`);
-      console.error(`MCP endpoint: http://localhost:${port}/mcp`);
-      
-      // Auth status
-      if (isAuthConfigured()) {
-        console.error(`Auth enabled: validating tokens against ${process.env.MCP_VALIDATE_TOKEN_URL}`);
-      } else {
-        console.error(`WARNING: Auth not configured - MCP endpoints are publicly accessible!`);
-        console.error(`Set MCP_VALIDATE_TOKEN_URL and MCP_SHARED_SECRET to enable auth.`);
-      }
-      
-      // OAuth status
-      if (isOAuthConfigured()) {
-        console.error(`OAuth enabled: Claude Desktop can authenticate via ${process.env.OAUTH_AUTHORIZE_URL}`);
-        console.error(`OAuth metadata: http://localhost:${port}/.well-known/oauth-authorization-server`);
-      } else {
-        console.error(`OAuth not configured - Claude Desktop OAuth flow unavailable.`);
-        console.error(`Set OAUTH_ISSUER, OAUTH_AUTHORIZE_URL, OAUTH_TOKEN_URL, MCP_CLIENT_ID, MCP_CLIENT_SECRET, MCP_SERVER_URL to enable.`);
-      }
+      console.error(`MCP endpoint: http://localhost:${port}/mcp (open, no auth)`);
     });
 
     process.on('SIGINT', async () => {
       console.error('Shutting down server...');
-      
-      // Cleanup token cache
-      if (isAuthConfigured()) {
-        console.error('Cleaning up token cache...');
-        getTokenCache().destroy();
-      }
-      
+
       clearInterval(sweepInterval);
       for (const sessionId in transports) {
         try {
