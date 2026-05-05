@@ -31,6 +31,16 @@ import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { log } from './log.js';
 
+// Process-level safety nets — log and (for unknown state) exit.
+// Installed as early as possible so handler bugs at startup are visible.
+process.on('unhandledRejection', (reason) => {
+  log.error('Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  log.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
 // Read package.json for version info
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,19 +90,15 @@ function extractApiCallFromError(errorMessage: string): string | null {
  * Enrich errors with suggestions from pattern matching and API fuzzy search
  */
 async function enrichErrorsWithSuggestions(errors: HiseError[]): Promise<void> {
-  for (const error of errors) {
+  await Promise.all(errors.map(async (error) => {
     const suggestions: string[] = [];
 
-    // 1. Check error patterns first
     const patternSuggestion = findPatternMatch(
       error.errorMessage,
       error.codeContext?.code
     );
-    if (patternSuggestion) {
-      suggestions.push(patternSuggestion);
-    }
+    if (patternSuggestion) suggestions.push(patternSuggestion);
 
-    // 2. Try fuzzy API search for unknown functions/identifiers
     const apiCall = extractApiCallFromError(error.errorMessage);
     if (apiCall) {
       const similar = await dataLoader.findSimilar(apiCall, 3, 'api');
@@ -101,10 +107,8 @@ async function enrichErrorsWithSuggestions(errors: HiseError[]): Promise<void> {
       }
     }
 
-    if (suggestions.length > 0) {
-      error.suggestions = suggestions;
-    }
-  }
+    if (suggestions.length > 0) error.suggestions = suggestions;
+  }));
 }
 
 // Track server mode (set in main())
@@ -2312,8 +2316,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal error';
+    log.error('Tool handler error:', error);
     return {
-      content: [{ type: 'text', text: `Error: ${error}` }],
+      content: [{ type: 'text', text: `Error: ${message}` }],
       isError: true,
     };
   }
