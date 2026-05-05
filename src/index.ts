@@ -2407,6 +2407,27 @@ async function main() {
       next();
     }
 
+    // Host-header allowlist for /mcp — defends against DNS rebinding attacks
+    // where an attacker tricks a browser into POSTing to 127.0.0.1 via a
+    // rebound hostname. /mcp is open and unauthenticated, so this matters.
+    // Default list covers prod + local dev; extend via ALLOWED_MCP_HOSTS
+    // (comma-separated) if you front the server with multiple hostnames.
+    const allowedMcpHosts = new Set([
+      'mcp.hise.dev',
+      `localhost:${port}`,
+      `127.0.0.1:${port}`,
+      ...(process.env.ALLOWED_MCP_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean),
+    ]);
+    app.use('/mcp', (req: Request, res: Response, next: NextFunction) => {
+      const host = req.headers.host;
+      if (!host || !allowedMcpHosts.has(host)) {
+        log.warn(`Rejected /mcp request with host header: ${host}`);
+        res.status(403).json({ error: 'Forbidden host' });
+        return;
+      }
+      next();
+    });
+
     // CORS for the public REST API (success + error responses).
     // Per-handler `res.set('Access-Control-Allow-Origin', '*')` only fired on
     // 200, so 4xx/5xx hit the browser without the header and looked like CORS
@@ -2414,6 +2435,8 @@ async function main() {
     // intentionally has no CORS headers.
     app.use('/api', (_req: Request, res: Response, next) => {
       res.set('Access-Control-Allow-Origin', '*');
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('Referrer-Policy', 'no-referrer');
       next();
     });
     app.use('/api', rateLimit);
