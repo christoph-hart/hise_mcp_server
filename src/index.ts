@@ -2698,22 +2698,54 @@ async function main() {
     httpServer.headersTimeout = 35_000;     // must exceed requestTimeout
     httpServer.keepAliveTimeout = 65_000;   // a touch above common LB timeouts
 
-    process.on('SIGINT', async () => {
-      log.info('Shutting down server...');
+    let isShuttingDown = false;
+    const shutdown = async (signal: string) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      log.info(`Received ${signal}, shutting down...`);
 
       clearInterval(sweepInterval);
-      for (const sessionId in transports) {
+      clearInterval(rateCleanup);
+
+      // Stop accepting new connections; existing ones drain naturally.
+      httpServer.close((err) => {
+        if (err) log.error('Error closing HTTP server:', err);
+      });
+
+      // Snapshot session IDs first — closing a transport mutates `transports`
+      // via its onclose hook.
+      const sids = Object.keys(transports);
+      for (const sid of sids) {
+        const entry = transports[sid];
+        if (!entry) continue;
         try {
-          log.info(`Closing transport for session ${sessionId}`);
-          await transports[sessionId].transport.close();
-          delete transports[sessionId];
+          log.info(`Closing transport for session ${sid}`);
+          await entry.transport.close();
         } catch (error) {
-          log.error(`Error closing transport for session ${sessionId}:`, error);
+          log.error(`Error closing transport for session ${sid}:`, error);
         }
+        delete transports[sid];
       }
+
       log.info('Server shutdown complete');
       process.exit(0);
-    });
+    };
+
+    process.on('SIGINT', () => { void shutdown('SIGINT'); });
+    process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+
+    // Hard timeout — if shutdown hangs for 15s, force exit so the orchestrator
+    // doesn't have to SIGKILL us.
+    const installForceExit = (signal: string) => {
+      process.once(signal as NodeJS.Signals, () => {
+        setTimeout(() => {
+          log.error(`Shutdown timed out after ${signal}, forcing exit`);
+          process.exit(1);
+        }, 15_000).unref();
+      });
+    };
+    installForceExit('SIGINT');
+    installForceExit('SIGTERM');
   } else {
     // Local mode - start server, HISE tools will error if HISE isn't running
     const transport = new StdioServerTransport();
