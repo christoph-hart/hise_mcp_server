@@ -29,6 +29,7 @@ import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.
 import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
 import express, { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { log } from './log.js';
 
 // Read package.json for version info
 const __filename = fileURLToPath(import.meta.url);
@@ -2327,7 +2328,7 @@ async function main() {
   const port = parseInt(process.env.PORT || '3000', 10);
 
   if (isProductionMode) {
-    console.error('HISE MCP server starting in production mode (documentation only)...');
+    log.info('HISE MCP server starting in production mode (documentation only)...');
     const app = express();
     app.use(express.json());
 
@@ -2345,11 +2346,11 @@ async function main() {
         const entry = transports[sid];
         if (!entry) continue;
         if (now - entry.lastActivity > SESSION_IDLE_MS) {
-          console.error(`Sweeping idle session ${sid} (idle ${Math.round((now - entry.lastActivity) / 1000)}s)`);
+          log.info(`Sweeping idle session ${sid} (idle ${Math.round((now - entry.lastActivity) / 1000)}s)`);
           try {
             entry.transport.close();
           } catch (err) {
-            console.error(`Error closing idle transport ${sid}:`, err);
+            log.error(`Error closing idle transport ${sid}:`, err);
           }
           delete transports[sid];
         }
@@ -2407,7 +2408,7 @@ async function main() {
           metadata: r.metadata
         })));
       } catch (err) {
-        console.error('Search error:', err);
+        log.error('Search error:', err);
         res.status(500).json({ error: 'Search failed' });
       }
     });
@@ -2481,7 +2482,7 @@ async function main() {
           metadata: r.metadata
         })));
       } catch (err) {
-        console.error('Example search error:', err);
+        log.error('Example search error:', err);
         res.status(500).json({ error: 'Search failed' });
       }
     });
@@ -2504,7 +2505,7 @@ async function main() {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
       if (sessionId) {
-        console.error(`Received MCP request for session: ${sessionId}`);
+        log.debug(`Received MCP request for session: ${sessionId}`);
       }
 
       // Tracks a transport we created inside this handler so we can tear it
@@ -2522,7 +2523,7 @@ async function main() {
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (sid) => {
-              console.error(`Session initialized with ID: ${sid}`);
+              log.info(`Session initialized with ID: ${sid}`);
               transports[sid] = { transport, lastActivity: Date.now() };
             },
           });
@@ -2531,7 +2532,7 @@ async function main() {
           transport.onclose = () => {
             const sid = transport.sessionId;
             if (sid && transports[sid]) {
-              console.error(`Transport closed for session ${sid}`);
+              log.info(`Transport closed for session ${sid}`);
               delete transports[sid];
             }
           };
@@ -2550,7 +2551,7 @@ async function main() {
 
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error('Error handling MCP request:', error);
+        log.error('Error handling MCP request:', error);
         // If we created a transport in this handler, make sure it doesn't
         // leak — either because initialize failed before onsessioninitialized
         // fired, or because a later step threw.
@@ -2562,7 +2563,7 @@ async function main() {
           try {
             await createdTransport.close();
           } catch (closeErr) {
-            console.error('Error closing failed transport:', closeErr);
+            log.error('Error closing failed transport:', closeErr);
           }
         }
         if (!res.headersSent) {
@@ -2585,9 +2586,9 @@ async function main() {
 
       const lastEventId = req.headers['last-event-id'];
       if (lastEventId) {
-        console.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+        log.debug(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
       } else {
-        console.error(`Establishing SSE stream for session ${sessionId}`);
+        log.debug(`Establishing SSE stream for session ${sessionId}`);
       }
 
       const entry = transports[sessionId];
@@ -2603,14 +2604,14 @@ async function main() {
         return;
       }
 
-      console.error(`Session termination request for session ${sessionId}`);
+      log.info(`Session termination request for session ${sessionId}`);
 
       try {
         const entry = transports[sessionId];
         entry.lastActivity = Date.now();
         await entry.transport.handleRequest(req, res);
       } catch (error) {
-        console.error('Error handling session termination:', error);
+        log.error('Error handling session termination:', error);
         if (!res.headersSent) {
           res.status(500).send('Error processing session termination');
         }
@@ -2624,41 +2625,41 @@ async function main() {
     const warmupStart = Date.now();
     try {
       await warmupSearch();
-      console.error(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
+      log.info(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
     } catch (err) {
-      console.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
+      log.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
     }
 
     app.listen(port, () => {
-      console.error(`HISE MCP server running in production mode on port ${port}`);
-      console.error(`MCP endpoint: http://localhost:${port}/mcp (open, no auth)`);
+      log.info(`HISE MCP server running in production mode on port ${port}`);
+      log.info(`MCP endpoint: http://localhost:${port}/mcp (open, no auth)`);
     });
 
     process.on('SIGINT', async () => {
-      console.error('Shutting down server...');
+      log.info('Shutting down server...');
 
       clearInterval(sweepInterval);
       for (const sessionId in transports) {
         try {
-          console.error(`Closing transport for session ${sessionId}`);
+          log.info(`Closing transport for session ${sessionId}`);
           await transports[sessionId].transport.close();
           delete transports[sessionId];
         } catch (error) {
-          console.error(`Error closing transport for session ${sessionId}:`, error);
+          log.error(`Error closing transport for session ${sessionId}:`, error);
         }
       }
-      console.error('Server shutdown complete');
+      log.info('Server shutdown complete');
       process.exit(0);
     });
   } else {
     // Local mode - start server, HISE tools will error if HISE isn't running
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('HISE MCP server started in local mode (stdio)');
+    log.info('HISE MCP server started in local mode (stdio)');
   }
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  log.error('Fatal error:', error);
   process.exit(1);
 });
