@@ -27,7 +27,7 @@ import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contri
 import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
 import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
 import { log } from './log.js';
 
@@ -2330,13 +2330,24 @@ async function main() {
   await dataLoader.loadData();
 
   const args = process.argv.slice(2);
-  isProductionMode = args.includes('--production') || args.includes('-p');
+  isProductionMode =
+    args.includes('--production') ||
+    args.includes('-p') ||
+    process.env.NODE_ENV === 'production';
   const port = parseInt(process.env.PORT || '3000', 10);
+  const host = process.env.HOST || '0.0.0.0';
 
   if (isProductionMode) {
     log.info('HISE MCP server starting in production mode (documentation only)...');
     const app = express();
-    app.use(express.json());
+
+    // Behind a reverse proxy (Caddy/nginx) — trust X-Forwarded-* so req.ip
+    // resolves to the real client, which the rate limiter relies on.
+    app.set('trust proxy', 1);
+
+    // MCP requests are tiny JSON-RPC envelopes; cap the body size so a
+    // malicious client can't OOM the process.
+    app.use(express.json({ limit: '256kb' }));
 
     interface TransportEntry {
       transport: StreamableHTTPServerTransport;
@@ -2365,17 +2376,59 @@ async function main() {
     // Don't keep the event loop alive just for the sweeper.
     if (typeof sweepInterval.unref === 'function') sweepInterval.unref();
 
+    // Simple sliding-window rate limiter for /api/* (per-IP, in-memory).
+    // 60 req/min/IP is generous for a docs search frontend; tighten via env
+    // if abuse appears. The bucket map is cleaned opportunistically.
+    const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
+    const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '60', 10);
+    const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+    const rateCleanup = setInterval(() => {
+      const now = Date.now();
+      for (const [ip, b] of rateBuckets) {
+        if (b.resetAt <= now) rateBuckets.delete(ip);
+      }
+    }, RATE_LIMIT_WINDOW_MS);
+    if (typeof rateCleanup.unref === 'function') rateCleanup.unref();
+
+    function rateLimit(req: Request, res: Response, next: NextFunction): void {
+      const ip = (req.ip || req.socket.remoteAddress || 'unknown').toString();
+      const now = Date.now();
+      let bucket = rateBuckets.get(ip);
+      if (!bucket || bucket.resetAt <= now) {
+        bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+        rateBuckets.set(ip, bucket);
+      }
+      bucket.count++;
+      if (bucket.count > RATE_LIMIT_MAX) {
+        res.set('Retry-After', Math.ceil((bucket.resetAt - now) / 1000).toString());
+        res.status(429).json({ error: 'Too many requests' });
+        return;
+      }
+      next();
+    }
+
     // CORS for the public REST API (success + error responses).
     // Per-handler `res.set('Access-Control-Allow-Origin', '*')` only fired on
     // 200, so 4xx/5xx hit the browser without the header and looked like CORS
-    // failures instead of the actual error.
+    // failures instead of the actual error. /mcp is server-to-server and
+    // intentionally has no CORS headers.
     app.use('/api', (_req: Request, res: Response, next) => {
       res.set('Access-Control-Allow-Origin', '*');
       next();
     });
+    app.use('/api', rateLimit);
 
+    // /health: process is up. /ready: warmup complete and able to serve search.
+    // Reverse proxies / orchestrators should route on /ready.
     app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', server: 'hise-mcp-server' });
+    });
+    app.get('/ready', (_req: Request, res: Response) => {
+      if (isEmbeddingsReady()) {
+        res.json({ status: 'ready' });
+      } else {
+        res.status(503).json({ status: 'initializing' });
+      }
     });
 
     // REST API endpoints for website search (reuses semantic-search.ts)
@@ -2480,7 +2533,6 @@ async function main() {
           results = results.filter(r => r.metadata.featured);
         }
         results = results.slice(0, limit);
-        res.set('Access-Control-Allow-Origin', '*');
         res.json(results.map(r => ({
           id: r.id,
           score: r.score,
@@ -2636,10 +2688,15 @@ async function main() {
       log.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
     }
 
-    app.listen(port, () => {
-      log.info(`HISE MCP server running in production mode on port ${port}`);
-      log.info(`MCP endpoint: http://localhost:${port}/mcp (open, no auth)`);
+    const httpServer = app.listen(port, host, () => {
+      log.info(`HISE MCP server running in production mode on ${host}:${port}`);
+      log.info(`MCP endpoint: /mcp (open, no auth)`);
     });
+
+    // Slowloris / idle-socket protections.
+    httpServer.requestTimeout = 30_000;     // total time to receive a request
+    httpServer.headersTimeout = 35_000;     // must exceed requestTimeout
+    httpServer.keepAliveTimeout = 65_000;   // a touch above common LB timeouts
 
     process.on('SIGINT', async () => {
       log.info('Shutting down server...');
