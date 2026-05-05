@@ -1,4 +1,7 @@
 set windows-shell := ["powershell.exe", "-c"]
 
 local:
-    node dist/index.js --production
+    $env:PORT=4406; node dist/index.js
+
+bump version:
+    node scripts/bump-version.mjs {{version}}

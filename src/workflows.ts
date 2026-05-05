@@ -1,8 +1,12 @@
 /**
  * HISE MCP Server - Workflow Definitions
- * 
+ *
  * Workflows provide guidance for AI agents on how to perform common tasks.
  * These are exposed as MCP Resources at hise://workflows/*
+ *
+ * Live HISE control runs through the standalone `hise-cli` (on PATH). The MCP
+ * server is documentation-only — workflows here describe the cli commands the
+ * agent should run, plus which MCP tools to consult for docs/search.
  */
 
 import { Workflow } from './types.js';
@@ -11,52 +15,43 @@ export const WORKFLOWS: Workflow[] = [
   {
     id: 'fix-errors',
     name: 'Iterative Error Fixing',
-    description: 'Fix HISE script compile errors one at a time',
+    description: 'Fix HISE script compile errors one at a time using hise-cli',
     steps: [
-      '1. Call hise_runtime_recompile to get current error',
-      '2. If success=true, done - no errors remain',
-      '3. Analyze errors[0].codeContext for the problematic code',
-      '4. Check errors[0].suggestions - if present, apply the suggested fix directly',
-      '5. If error is "Function / constant not found", use search_hise or query_scripting_api to find the correct API',
-      '6. For inline callback errors, use hise_runtime_edit_script to fix them. For external .js file errors, edit the file on disk with mcp_edit, then call hise_runtime_recompile',
-      '7. If response has errors, repeat from step 3',
+      '1. Run `hise-cli -wizard run recompile` to recompile and surface the current error',
+      '2. If recompile succeeds, done — no errors remain',
+      '3. Read the reported file:line — for inline callbacks, fetch the script via `hise-cli -script "..."` or read the external .js on disk',
+      '4. If the error mentions an unknown function/identifier, use the MCP tools `search_hise` or `query_scripting_api` to find the correct API',
+      '5. Edit the source: external .js with the file Edit tool; inline callbacks via `hise-cli -script "..."` or by editing the script file the cli points at',
+      '6. Run `hise-cli -wizard run recompile` again; repeat from step 3 until clean',
     ],
-    tools: ['hise_runtime_recompile', 'hise_runtime_edit_script', 'search_hise', 'query_scripting_api'],
+    tools: ['search_hise', 'query_scripting_api', 'get_doc_content'],
     tips: [
-      'The compiler stops at the first syntax error - fix iteratively',
-      'If suggestions[] is populated, it contains pattern-matched fix recommendations',
-      'For "Unknown function" errors, search_hise can find similar API methods',
-      'edit_script works like mcp_edit - find exact string match and replace',
-      'For multiple fixes, use compile:false on all but the last edit to save time',
-      'Use codeContext from errors to identify the exact string to replace',
-      'Do NOT use edit_script for external .js files — edit those on disk with mcp_edit, then recompile',
+      'The compiler stops at the first syntax error — fix iteratively',
+      'For "Unknown function" errors, `search_hise` (MCP) often suggests the right API name',
+      'Use `hise-cli diagnose <file.hsc>` to lint a script file before recompiling',
+      'For batches, edit several files first, then run a single recompile',
     ],
   },
   {
     id: 'ui-layout',
     name: 'UI Component Layout',
-    description: 'Position and align UI components efficiently',
+    description: 'Position and align UI components via hise-cli',
     steps: [
-      '1. Call hise_runtime_list_components to see all components',
-      '2. Call hise_runtime_get_selected_components if user selected components in HISE',
-      '3. Plan the layout changes (positions, sizes, alignment)',
-      '4. Call hise_runtime_set_component_properties with batch changes',
-      '5. If recompileRequired=true in response, call hise_runtime_recompile',
-      '6. Optionally call hise_runtime_screenshot to verify the result',
+      '1. Run `hise-cli -ui` (or `hise-cli -ui show <id>`) to inspect existing components and their properties',
+      '2. Plan the layout changes (positions, sizes, alignment)',
+      '3. Apply changes with `hise-cli -ui set <target>.<prop> <value>` (chain multiple via comma-separated commands)',
+      '4. If a recompile is required, run `hise-cli -wizard run recompile`',
+      '5. Optionally `hise-cli -hise screenshot to <path>` to verify the result',
     ],
     tools: [
-      'hise_runtime_list_components',
-      'hise_runtime_get_selected_components',
-      'hise_runtime_get_component_properties',
-      'hise_runtime_set_component_properties',
-      'hise_runtime_recompile',
-      'hise_runtime_screenshot',
+      'list_ui_components',
+      'query_ui_property',
+      'get_laf_functions_for_components',
     ],
     tips: [
-      'Use get_selected_components for user-driven workflows',
-      'Batch multiple component changes in one set_component_properties call',
-      'Properties like x, y, width, height control position and size',
-      'Use compact=true (default) when reading properties to reduce tokens',
+      'Use the MCP `query_ui_property` tool to look up the exact property name and value range before writing a `-ui set`',
+      'Comma-chain `-ui` commands to batch edits in one cli round-trip',
+      'For LAF/styling work, pass the component type (from `-ui show`) to MCP `get_laf_functions_for_components`',
     ],
   },
 ];

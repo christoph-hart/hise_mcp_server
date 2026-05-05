@@ -136,13 +136,6 @@ export interface ServerStatusBase {
 }
 
 export interface ServerStatus extends ServerStatusBase {
-  mode: 'local' | 'production';
-  hiseRuntime: {
-    available: boolean;
-    url: string;
-    project: string | null;
-    error: string | null;
-  };
   hints: {
     resources: string;
   };
@@ -735,7 +728,7 @@ export interface LAFQueryResult {
 }
 
 /**
- * Result from hise_runtime_get_laf_functions
+ * Result from get_laf_functions_for_components
  */
 export interface LAFRuntimeResult {
   componentIds: string[];

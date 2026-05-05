@@ -527,8 +527,8 @@ If the task involves classes you haven't used before, use \`explore_hise\` to di
 
 Before writing or editing code, understand what exists:
 
-- Use \`hise_runtime_get_script\` to read current callbacks and see \`externalFiles[]\` paths
-- Use \`hise_runtime_list_components\` to see existing UI components
+- Run \`hise-cli -script "..."\` (REPL) to read live state, or open the script file on disk to see callbacks and \`include()\`'d \`externalFiles[]\` paths
+- Run \`hise-cli -ui\` / \`hise-cli -ui show <id>\` to see existing UI components and their properties
 - For external .js files, use \`mcp_read\` to read the file on disk
 - Use \`query_scripting_api("ClassName")\` to get a class overview (methods, constants, usage patterns)
 - Use \`query_scripting_api("ClassName.method")\` for individual method details
@@ -540,7 +540,7 @@ Use \`mcp_edit\` to modify external .js files on disk. Avoid editing inline call
 1. Edit the file with \`mcp_edit\`
 2. Read LSP diagnostics - HISE's LSP server runs automatically and provides precise, HiseScript-aware feedback including parameter counts, method names, and runtime inspection
 3. Fix all LSP warnings/errors before proceeding
-4. Call \`hise_runtime_recompile\` to apply changes
+4. Run \`hise-cli -wizard run recompile\` to apply changes
 
 ### Language rules
 
@@ -556,15 +556,15 @@ Load \`get_resource('hisescript-style')\` for variable types, realtime safety, a
 If compilation fails or LSP reports issues:
 
 1. Read the error message carefully - HISE error messages are precise
-2. Use \`hise_verify_parameters\` if the error involves an unknown method or wrong parameter count
-3. Use \`hise_runtime_repl\` to test expressions interactively (note: has side effects - calling \`Synth.playNote()\` will play a note, \`setValue()\` will change a component)
-4. Fix and recompile
+2. Use \`hise_verify_parameters\` (MCP) if the error involves an unknown method or wrong parameter count
+3. Run \`hise-cli -script "..."\` to test expressions interactively (note: has side effects — \`Synth.playNote()\` plays a note, \`setValue()\` changes a component)
+4. Fix and recompile via \`hise-cli -wizard run recompile\`
 
 ## Step 4: Verify (When Needed)
 
-- \`hise_runtime_repl\` - inspect variables, test return values, check runtime state. **Warning:** Expressions have real side effects - API calls execute, values change, notes play.
-- \`hise_runtime_get_component_properties\` - check component state
-- \`hise_runtime_screenshot\` - only use when the developer explicitly requests a screenshot. Costs ~1,000 tokens per image. Target specific components with \`scale: 0.5\` when possible.
+- \`hise-cli -script "..."\` — inspect variables, test return values, check runtime state. **Warning:** Expressions have real side effects — API calls execute, values change, notes play.
+- \`hise-cli -ui show <id>\` — check component state
+- \`hise-cli -hise screenshot to <path>\` — only when the developer explicitly requests a screenshot. Target specific components with \`at <scale>\` when possible.
 `
   },
   {

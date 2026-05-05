@@ -5,7 +5,6 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
@@ -18,13 +17,11 @@ import {
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HISEDataLoader } from './data-loader.js';
-import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus, HiseError, ProfileParams, LaunchParams } from './types.js';
-import { getHiseClient } from './hise-client.js';
-import { findPatternMatch } from './error-patterns.js';
+import { UIComponentProperty, ScriptingAPIMethod, ModuleParameter, SearchDomain, ServerStatus } from './types.js';
 import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
-import { PROMPTS, RUNTIME_PROMPT_NAMES, generateStyleSelectedComponentPrompt, generateContributePrompt } from './prompts.js';
+import { PROMPTS, generateContributePrompt } from './prompts.js';
 import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
 import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
@@ -55,63 +52,7 @@ const server = new Server(
 
 let dataLoader: HISEDataLoader;
 
-// ============================================================================
-// Error Enrichment Helpers
-// ============================================================================
-
-/**
- * Extract potential API call from error message for fuzzy search
- */
-function extractApiCallFromError(errorMessage: string): string | null {
-  const patterns = [
-    /Unknown function '([^']+)'/,
-    /Can't find '([^']+)'/,
-    /Unknown identifier '([^']+)'/,
-    /API call (\w+\.\w+)/,
-  ];
-  
-  for (const pattern of patterns) {
-    const match = errorMessage.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-/**
- * Enrich errors with suggestions from pattern matching and API fuzzy search
- */
-async function enrichErrorsWithSuggestions(errors: HiseError[]): Promise<void> {
-  for (const error of errors) {
-    const suggestions: string[] = [];
-
-    // 1. Check error patterns first
-    const patternSuggestion = findPatternMatch(
-      error.errorMessage,
-      error.codeContext?.code
-    );
-    if (patternSuggestion) {
-      suggestions.push(patternSuggestion);
-    }
-
-    // 2. Try fuzzy API search for unknown functions/identifiers
-    const apiCall = extractApiCallFromError(error.errorMessage);
-    if (apiCall) {
-      const similar = await dataLoader.findSimilar(apiCall, 3, 'api');
-      if (similar.length > 0) {
-        suggestions.push(`Did you mean: ${similar.join(', ')}`);
-      }
-    }
-
-    if (suggestions.length > 0) {
-      error.suggestions = suggestions;
-    }
-  }
-}
-
-// Track server mode (set in main())
-let isProductionMode = false;
-
-// Documentation tools - always available
+// Documentation tools - all tools are static (no local HISE runtime).
 const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
   {
@@ -312,7 +253,7 @@ const DOC_TOOLS: Tool[] = [
   // SERVER INFO TOOL
   {
     name: 'server_status',
-    description: `Get server status, data statistics, and HISE runtime availability.`,
+    description: `Get server status and data statistics.`,
     inputSchema: {
       type: 'object',
       properties: {},
@@ -435,391 +376,6 @@ const DOC_TOOLS: Tool[] = [
       },
     },
   },
-
-];
-
-// HISE Runtime tools - only available in local mode when HISE is connected
-const RUNTIME_TOOLS: Tool[] = [
-  {
-    name: 'hise_runtime_status',
-    description: `Get HISE runtime status. Returns project info, processors, callbacks.`,
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-  {
-    name: 'hise_runtime_get_script',
-    description: `Read script from a processor. Returns {callbacks: {...}, externalFiles: [...]}. Edit external files on disk with mcp_edit (not hise_runtime_edit_script), then call hise_runtime_recompile.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        callback: {
-          type: 'string',
-          description: 'Specific callback (optional)',
-        },
-      },
-      required: ['moduleId'],
-    },
-  },
-  {
-    name: 'hise_runtime_set_script',
-    description: `Set and compile script. RESTRICTION: Only for NEW (empty) callbacks OR callbacks with <50 lines. For larger scripts, use edit_script to make changes.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        callbacks: {
-          type: 'object',
-          description: '{"callbackName": "code", ...}',
-          additionalProperties: { type: 'string' },
-        },
-        compile: {
-          type: 'boolean',
-          description: 'Compile after setting (default: true)',
-        },
-        errorContextLines: {
-          type: 'number',
-          description: 'Error context lines (default: 1)',
-        },
-      },
-      required: ['moduleId', 'callbacks'],
-    },
-  },
-  {
-    name: 'hise_runtime_edit_script',
-    description: `Edit INLINE callback code by replacing oldString with newString. Works like the native mcp_edit tool - find exact string match and replace. This is the primary tool for modifying existing scripts in inline callbacks. For multiple edits, call repeatedly with compile:false, then compile:true on last edit. Does NOT work for external .js files (include()) — edit those on disk with mcp_edit, then call hise_runtime_recompile. See hise_runtime_get_script for externalFiles[] paths.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        callback: {
-          type: 'string',
-          description: 'Callback name (e.g., "onInit")',
-        },
-        oldString: {
-          type: 'string',
-          description: 'Exact string to find and replace',
-        },
-        newString: {
-          type: 'string',
-          description: 'Replacement string',
-        },
-        replaceAll: {
-          type: 'boolean',
-          description: 'Replace all occurrences (default: false)',
-        },
-        compile: {
-          type: 'boolean',
-          description: 'Compile after (default: true)',
-        },
-        errorContextLines: {
-          type: 'number',
-          description: 'Error context lines (default: 1)',
-        },
-      },
-      required: ['moduleId', 'callback', 'oldString', 'newString'],
-    },
-  },
-  {
-    name: 'hise_runtime_recompile',
-    description: `Recompile a processor without changing script. Required after editing external .js files on disk to apply changes. Editing files with mcp_edit only triggers lightweight shadow parser diagnostics — this tool performs the actual recompilation.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        errorContextLines: {
-          type: 'number',
-          description: 'Error context lines (default: 1)',
-        },
-      },
-      required: ['moduleId'],
-    },
-  },
-  {
-    name: 'hise_runtime_screenshot',
-    description: `Screenshot the interface or a component. Returns base64 or saves to file.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        id: {
-          type: 'string',
-          description: 'Component ID (omit for full interface)',
-        },
-        scale: {
-          type: 'number',
-          description: '0.5 or 1.0',
-        },
-        outputPath: {
-          type: 'string',
-          description: 'Save path (.png)',
-        },
-      },
-    },
-  },
-
-  {
-    name: 'hise_runtime_list_components',
-    description: `List UI components. Use hierarchy=true for layout tree.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        hierarchy: {
-          type: 'boolean',
-          description: 'Include layout tree',
-        },
-      },
-      required: ['moduleId'],
-    },
-  },
-  {
-    name: 'hise_runtime_get_component_properties',
-    description: `Get component properties. compact=true returns only non-defaults.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        id: {
-          type: 'string',
-          description: 'Component ID',
-        },
-        compact: {
-          type: 'boolean',
-          description: 'Only non-defaults (default: true)',
-        },
-        properties: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific properties to return',
-        },
-      },
-      required: ['moduleId', 'id'],
-    },
-  },
-  {
-    name: 'hise_runtime_set_component_properties',
-    description: `Set component properties. Pass changes array: [{id, properties: {...}}].`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        changes: {
-          type: 'array',
-          description: '[{id, properties}]',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              properties: { type: 'object' },
-            },
-            required: ['id', 'properties'],
-          },
-        },
-        force: {
-          type: 'boolean',
-          description: 'Bypass lock check',
-        },
-      },
-      required: ['moduleId', 'changes'],
-    },
-  },
-  {
-    name: 'hise_runtime_get_component_value',
-    description: `Get component's runtime value.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        id: {
-          type: 'string',
-          description: 'Component ID',
-        },
-      },
-      required: ['moduleId', 'id'],
-    },
-  },
-  {
-    name: 'hise_runtime_set_component_value',
-    description: `Set component's runtime value. Triggers control callback.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        id: {
-          type: 'string',
-          description: 'Component ID',
-        },
-        value: {
-          type: 'number',
-          description: 'Value to set',
-        },
-        validateRange: {
-          type: 'boolean',
-          description: 'Validate range',
-        },
-      },
-      required: ['moduleId', 'id', 'value'],
-    },
-  },
-  {
-    name: 'hise_runtime_get_selected_components',
-    description: `Get selected components from Interface Designer.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-      },
-    },
-  },
-  {
-    name: 'hise_runtime_repl',
-    description: `Evaluate a HiseScript expression with the current script engine. WARNING: Can modify runtime state as side effect. Use for testing expressions, inspecting variables, or calling functions interactively.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
-        },
-        expression: {
-          type: 'string',
-          description: 'HiseScript expression to evaluate',
-        },
-      },
-      required: ['moduleId', 'expression'],
-    },
-  },
-  {
-    name: 'hise_runtime_profile',
-    description: `Start profiling session or retrieve results. Workflow: call with mode="record" to start, then mode="get" to retrieve. Supports filtering by thread, event type, duration, and wildcard patterns. Use summary=true for aggregated stats.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        mode: {
-          type: 'string',
-          enum: ['record', 'get'],
-          description: '"record" = start session (non-blocking), "get" = retrieve results',
-        },
-        durationMs: {
-          type: 'number',
-          description: '[record] Duration in ms (100-5000, default: 1000)',
-        },
-        threadFilter: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Threads to record/return. Valid: "Audio Thread", "Scripting Thread", "UI Thread", "Loading Thread"',
-        },
-        eventFilter: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '[record] Event types. Valid: "DSP", "Script", "Lock", "Callback", "Trace", "TimerCallback", "Scriptnode"',
-        },
-        summary: {
-          type: 'boolean',
-          description: '[get] Aggregate with count/median/peak/min/total (default: false)',
-        },
-        filter: {
-          type: 'string',
-          description: '[get] Wildcard pattern for event name (e.g., "slow*"). Case-insensitive.',
-        },
-        minDuration: {
-          type: 'number',
-          description: '[get] Only events with duration >= this value in ms',
-        },
-        sourceTypeFilter: {
-          type: 'string',
-          description: '[get] Wildcard pattern for sourceType (e.g., "Script"). Case-insensitive.',
-        },
-        nested: {
-          type: 'boolean',
-          description: '[get] Include children of matched events (default: false)',
-        },
-        limit: {
-          type: 'number',
-          description: '[get] Max results (1-100, default: 15)',
-        },
-        wait: {
-          type: 'boolean',
-          description: '[get] Wait for recording to finish (default: true)',
-        },
-        maxDepth: {
-          type: 'number',
-          description: '[get] Max nesting depth for events (default: 3). Reduces output size.',
-        },
-      },
-      required: ['mode'],
-    },
-  },
-  {
-    name: 'hise_runtime_launch',
-    description: `Launch HISE with REST API server. Sets project folder and waits for server readiness. Returns error if HISE is already running with a different project (use force to shut down and relaunch).`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectFolder: {
-          type: 'string',
-          description: 'Absolute path to the HISE project folder',
-        },
-        debug: {
-          type: 'boolean',
-          description: 'Use HISE Debug build (default: false)',
-        },
-        port: {
-          type: 'number',
-          description: 'REST server port (default: 1900)',
-        },
-        force: {
-          type: 'boolean',
-          description: 'Shut down existing HISE instance if running with a different project (default: false)',
-        },
-      },
-      required: ['projectFolder'],
-    },
-  },
-  {
-    name: 'hise_runtime_shutdown',
-    description: `Gracefully shut down the running HISE instance. Waits for confirmation that HISE has exited.`,
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
   {
     name: 'hise_verify_parameters',
     description: 'Verify method signatures. Returns parameter info for multiple methods.',
@@ -836,31 +392,24 @@ const RUNTIME_TOOLS: Tool[] = [
     }
   },
   {
-    name: 'hise_runtime_get_laf_functions',
-    description: `Get LAF functions for specific components. IMPORTANT: Load get_resource("laf-functions-style") before writing LAF code.`,
+    name: 'get_laf_functions_for_components',
+    description: `Get LAF functions for a list of component types. IMPORTANT: Load get_resource("laf-functions-style") before writing LAF code. Use hise-cli '-ui show <id>' to discover a component's type (and ContentType for ScriptFloatingTile).`,
     inputSchema: {
       type: 'object',
       properties: {
-        componentIds: {
+        componentTypes: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Component IDs (e.g., ["Button1"])',
-        },
-        moduleId: {
-          type: 'string',
-          description: 'Processor ID (e.g., "Interface")',
+          description: 'Component types (e.g., ["ScriptButton", "PresetBrowser"]). For ScriptFloatingTile, pass the ContentType value instead.',
         },
       },
-      required: ['componentIds'],
+      required: ['componentTypes'],
     },
   },
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  // In production mode, only expose documentation tools
-  // In local mode, expose all tools (HISE connection verified at startup)
-  const tools = isProductionMode ? DOC_TOOLS : [...DOC_TOOLS, ...RUNTIME_TOOLS];
-  return { tools };
+  return { tools: DOC_TOOLS };
 });
 
 // ============================================================================
@@ -1022,18 +571,9 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 // MCP Prompt Handlers
 // ============================================================================
 
-/**
- * List available prompts
- * Runtime prompts (e.g., style_selected_component) require local HISE connection.
- * Contribution prompts (contribute) are available in all modes.
- */
 server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  const available = isProductionMode
-    ? PROMPTS.filter(p => !RUNTIME_PROMPT_NAMES.has(p.name))
-    : PROMPTS;
-
   return {
-    prompts: available.map(p => ({
+    prompts: PROMPTS.map(p => ({
       name: p.name,
       title: p.title,
       description: p.description,
@@ -1042,21 +582,10 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
   };
 });
 
-/**
- * Get a specific prompt with generated content
- */
 server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  // Guard: runtime prompts only available in local mode
-  if (isProductionMode && RUNTIME_PROMPT_NAMES.has(name)) {
-    throw new Error(`Prompt "${name}" requires a local HISE runtime connection and is not available in production mode.`);
-  }
-
   switch (name) {
-    case 'style_selected_component':
-      return await generateStyleSelectedComponentPrompt(args, dataLoader);
-
     case 'contribute':
       return generateContributePrompt(args, SERVER_VERSION);
 
@@ -1071,14 +600,6 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-
-  // Guard: reject runtime tools in production mode
-  if (isProductionMode && name.startsWith('hise_runtime_')) {
-    return {
-      content: [{ type: 'text', text: 'HISE runtime tools are not available in production mode.' }],
-      isError: true,
-    };
-  }
 
   try {
     switch (name) {
@@ -1615,52 +1136,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      // SERVER STATUS TOOL
-       case 'hise_verify_parameters': {
-         const { methods } = args as { methods: string[] };
-         const result = dataLoader.lookupMethodsByName(methods);
-         return {
-           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-         };
-       }
+      case 'hise_verify_parameters': {
+        const { methods } = args as { methods: string[] };
+        const result = dataLoader.lookupMethodsByName(methods);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      }
 
-       case 'server_status': {
-        const baseStatus = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
-        const hiseClient = getHiseClient();
-        
-        // Check HISE runtime availability
-        let hiseRuntime: ServerStatus['hiseRuntime'];
-        try {
-          const available = await hiseClient.isAvailable();
-          if (available) {
-            const hiseStatus = await hiseClient.getStatus();
-            hiseRuntime = {
-              available: true,
-              url: hiseClient.getBaseUrl(),
-              project: hiseStatus.project?.name || null,
-              error: null,
-            };
-          } else {
-            hiseRuntime = {
-              available: false,
-              url: hiseClient.getBaseUrl(),
-              project: null,
-              error: 'HISE not reachable',
-            };
-          }
-        } catch (err) {
-          hiseRuntime = {
-            available: false,
-            url: hiseClient.getBaseUrl(),
-            project: null,
-            error: err instanceof Error ? err.message : 'Unknown error',
+      case 'get_laf_functions_for_components': {
+        const { componentTypes } = args as { componentTypes: string[] };
+        if (!componentTypes || componentTypes.length === 0) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Error: componentTypes is required (e.g., ["ScriptButton", "PresetBrowser"]). For ScriptFloatingTile pass the ContentType value instead.'
+            }],
+            isError: true,
           };
         }
+        const uniqueTypes = [...new Set(componentTypes)];
+        const functions = await dataLoader.getLAFFunctionsForTypes(uniqueTypes);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              componentTypes: uniqueTypes,
+              functions,
+              note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns."
+            }, null, 2)
+          }],
+        };
+      }
 
+      case 'server_status': {
+        const baseStatus = dataLoader.getServerStatus(SERVER_NAME, SERVER_VERSION);
         const status: ServerStatus = {
           ...baseStatus,
-          mode: isProductionMode ? 'production' : 'local',
-          hiseRuntime,
           hints: {
             resources: 'Use list_resources tool to discover available workflows and guides',
           },
@@ -1780,458 +1292,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // ========================================================================
-      // HISE RUNTIME BRIDGE TOOLS
-      // These tools are only available in local mode
-      // ========================================================================
-
-      case 'hise_runtime_status': {
-        const hiseClient = getHiseClient();
-        try {
-          const status = await hiseClient.getStatus();
-          return {
-            content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}\n\nEnsure HISE is running with the REST API enabled (default port 1900).`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_get_script': {
-        const { moduleId, callback } = args as { 
-          moduleId: string; 
-          callback?: string;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.getScript(moduleId, callback);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_set_script': {
-        const { moduleId, callbacks, compile, errorContextLines } = args as {
-          moduleId: string;
-          callbacks: Record<string, string>;
-          compile?: boolean;
-          errorContextLines?: number;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.setScript(
-            { moduleId, callbacks, compile },
-            errorContextLines ?? 1
-          );
-          // Enrich errors with suggestions (runtime errors can occur even when success=true)
-          if (result.errors?.length) {
-            await enrichErrorsWithSuggestions(result.errors);
-          }
-          // Add hint for style guide when errors occur
-          const response = result.errors?.length
-            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
-            : result;
-          return {
-            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_recompile': {
-        const { moduleId, errorContextLines } = args as { 
-          moduleId: string;
-          errorContextLines?: number;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.recompile(moduleId, errorContextLines ?? 1);
-          // Enrich errors with suggestions (runtime errors can occur even when success=true)
-          if (result.errors?.length) {
-            await enrichErrorsWithSuggestions(result.errors);
-          }
-          // Add hint for style guide when errors occur
-          const response = result.errors?.length
-            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
-            : result;
-          return {
-            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_screenshot': {
-        const { moduleId, id, scale, outputPath } = args as {
-          moduleId?: string;
-          id?: string;
-          scale?: number;
-          outputPath?: string;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.screenshot({ moduleId, id, scale, outputPath });
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_edit_script': {
-        const { moduleId, callback, oldString, newString, replaceAll, compile, errorContextLines } = args as {
-          moduleId: string;
-          callback: string;
-          oldString: string;
-          newString: string;
-          replaceAll?: boolean;
-          compile?: boolean;
-          errorContextLines?: number;
-        };
-        
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.editScript(
-            { moduleId, callback, oldString, newString, replaceAll, compile },
-            errorContextLines ?? 1
-          );
-          // Enrich errors with suggestions
-          if (result.errors?.length) {
-            await enrichErrorsWithSuggestions(result.errors);
-          }
-          const response = result.errors?.length
-            ? { ...result, _hint: "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference" }
-            : result;
-          return {
-            content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_list_components': {
-        const { moduleId, hierarchy } = args as { moduleId: string; hierarchy?: boolean };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.listComponents(moduleId, hierarchy);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_get_component_properties': {
-        const { moduleId, id, compact, properties } = args as { 
-          moduleId: string; 
-          id: string;
-          compact?: boolean;
-          properties?: string[];
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const options = { compact, properties };
-          const result = await hiseClient.getComponentProperties(moduleId, id, options);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_set_component_properties': {
-        const { moduleId, changes, force } = args as {
-          moduleId: string;
-          changes: { id: string; properties: Record<string, unknown> }[];
-          force?: boolean;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.setComponentProperties({ moduleId, changes, force });
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_get_component_value': {
-        const { moduleId, id } = args as { moduleId: string; id: string };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.getComponentValue(moduleId, id);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_set_component_value': {
-        const { moduleId, id, value, validateRange } = args as {
-          moduleId: string;
-          id: string;
-          value: number;
-          validateRange?: boolean;
-        };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.setComponentValue({ moduleId, id, value, validateRange });
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_get_selected_components': {
-        const { moduleId } = args as { moduleId?: string };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.getSelectedComponents(moduleId);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_repl': {
-        const { moduleId, expression } = args as { moduleId: string; expression: string };
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.repl({ moduleId, expression });
-
-          // Enrich errors with suggestions
-          if (!result.success && result.errors?.length) {
-            await enrichErrorsWithSuggestions(result.errors);
-          }
-
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-            isError: !result.success,
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_profile': {
-        const profileArgs = args as unknown as ProfileParams;
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.profile(profileArgs);
-
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-            isError: !result.success,
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_launch': {
-        const launchArgs = args as unknown as LaunchParams;
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.launch(launchArgs);
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-            isError: !result.success,
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_shutdown': {
-        const hiseClient = getHiseClient();
-        try {
-          const result = await hiseClient.shutdown();
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-            isError: !result.success,
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      case 'hise_runtime_get_laf_functions': {
-        const { componentIds, moduleId } = args as { componentIds: string[]; moduleId?: string };
-        
-        // Validate required parameter
-        if (!componentIds || componentIds.length === 0) {
-          return {
-            content: [{
-              type: 'text',
-              text: 'Error: componentIds is required. Pass component IDs from hise_runtime_get_selected_components (e.g., componentIds=["Button1", "Button2"]). Do NOT pass only moduleId.'
-            }],
-            isError: true,
-          };
-        }
-        
-        const hiseClient = getHiseClient();
-        
-        try {
-          // Get component properties to determine types
-          const lafTargets: string[] = [];
-          
-          for (const componentId of componentIds) {
-            const propsResult = await hiseClient.getComponentProperties(
-              moduleId || 'Interface',
-              componentId,
-              { compact: false }
-            );
-            
-            if (propsResult.success && propsResult.type) {
-              // For ScriptFloatingTile, we need the ContentType property
-              if (propsResult.type === 'ScriptFloatingTile') {
-                const contentTypeProp = propsResult.properties?.find(p => p.id === 'ContentType');
-                if (contentTypeProp && typeof contentTypeProp.value === 'string') {
-                  lafTargets.push(contentTypeProp.value);
-                }
-              } else {
-                lafTargets.push(propsResult.type);
-              }
-            }
-          }
-          
-          // Get unique LAF targets and look up functions
-          const uniqueTargets = [...new Set(lafTargets)];
-          const functions = await dataLoader.getLAFFunctionsForTypes(uniqueTargets);
-          
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                componentIds,
-                functions,
-                note: "Before writing LAF code, use get_resource with IDs 'laf-functions-style' and 'hisescript-style' for correct implementation patterns. Use hise_runtime_set_script for new code, or hise_runtime_edit_script to modify existing code."
-              }, null, 2)
-            }],
-          };
-        } catch (err) {
-          return {
-            content: [{
-              type: 'text',
-              text: `HISE Runtime Error: ${err instanceof Error ? err.message : 'Unknown error'}`
-            }],
-            isError: true,
-          };
-        }
-      }
-
-      // ========================================================================
       // FORUM SEARCH TOOLS
       // ========================================================================
 
@@ -2324,12 +1384,10 @@ async function main() {
   dataLoader = new HISEDataLoader();
   await dataLoader.loadData();
 
-  const args = process.argv.slice(2);
-  isProductionMode = args.includes('--production') || args.includes('-p');
   const port = parseInt(process.env.PORT || '3000', 10);
 
-  if (isProductionMode) {
-    console.error('HISE MCP server starting in production mode (documentation only)...');
+  console.error('HISE MCP server starting (documentation only)...');
+  {
     const app = express();
     app.use(express.json());
 
@@ -2646,7 +1704,7 @@ async function main() {
     }
 
     app.listen(port, () => {
-      console.error(`HISE MCP server running in production mode on port ${port}`);
+      console.error(`HISE MCP server running on port ${port}`);
       console.error(`MCP endpoint: http://localhost:${port}/mcp`);
       
       // Auth status
@@ -2689,11 +1747,6 @@ async function main() {
       console.error('Server shutdown complete');
       process.exit(0);
     });
-  } else {
-    // Local mode - start server, HISE tools will error if HISE isn't running
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error('HISE MCP server started in local mode (stdio)');
   }
 }
 

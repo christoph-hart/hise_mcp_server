@@ -11,9 +11,7 @@
     "build": "tsc",
     "build:configure": "node scripts/build-and-configure.js",
     "start": "node dist/index.js",
-    "start:production": "node dist/index.js --production",
     "dev": "tsc && node dist/index.js",
-    "dev:production": "tsc && node dist/index.js --production",
     "test": "node --test --experimental-strip-types --experimental-transform-types tests/**/*.test.ts",
     "test:watch": "node --test --watch --experimental-strip-types --experimental-transform-types tests/**/*.test.ts"
   },
