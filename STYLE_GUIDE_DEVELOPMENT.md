@@ -46,16 +46,7 @@ export const STYLE_GUIDES: StyleGuide[] = [
 
 ### Auto-Hints
 
-When script-related tools encounter errors, they include a hint:
-```json
-{
-  "success": false,
-  "errors": [...],
-  "_hint": "Tip: Use get_resource('hisescript-style') for HiseScript syntax reference"
-}
-```
-
-Affected tools: `hise_runtime_set_script`, `hise_runtime_fix_script_line`, `hise_runtime_patch_script`, `hise_runtime_recompile`
+The MCP server is documentation-only — runtime/recompile flows live in the standalone `hise-cli`. Style-guide hints are surfaced via the `_hint` field on any MCP tool that returns errors and via the docs themselves.
 
 ## Adding a New Style Guide
 

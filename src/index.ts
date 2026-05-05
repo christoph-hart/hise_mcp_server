@@ -259,6 +259,14 @@ const DOC_TOOLS: Tool[] = [
       properties: {},
     },
   },
+  {
+    name: 'hise_cli_help',
+    description: `Discover the hise-cli command tree for live HISE control. The MCP server is docs-only — runtime ops (launch/shutdown, recompile, REPL, UI/scriptnode/builder editing, screenshots, profiling, publish, assets) live in the standalone hise-cli on the user's PATH. Call this first when you need any live HISE action; it tells you how to invoke hise-cli yourself via Bash.`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 
   // RESOURCE TOOLS - Access static documentation resources
   {
@@ -1180,6 +1188,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         return {
           content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
+        };
+      }
+
+      case 'hise_cli_help': {
+        const text = [
+          '# hise-cli — live HISE control (runs on the user\'s machine)',
+          '',
+          'The MCP server is documentation-only. For any **live** action against a running HISE instance, invoke `hise-cli` via the Bash tool on the user\'s shell — this server cannot reach their HISE.',
+          '',
+          '## Discovering the command tree',
+          '',
+          'Run these directly in the user\'s shell — never paraphrase or cache the help text, it changes between releases:',
+          '',
+          '- `hise-cli --help` — top-level command list',
+          '- `hise-cli -<mode> --help` — per-mode help (e.g. `hise-cli -hise --help`, `hise-cli -script --help`, `hise-cli -ui --help`, `hise-cli -builder --help`, `hise-cli -dsp --help`)',
+          '- `hise-cli --status` — CLI + HISE liveness probe',
+          '- `hise-cli --version` — CLI version',
+          '',
+          '## Modes the agent should reach for',
+          '',
+          '- **Launch / shutdown / screenshot / profile** → `-hise`',
+          '- **Evaluate HiseScript expressions, read/write runtime values** → `-script` (REPL)',
+          '- **Add/remove/edit UI components** → `-ui`',
+          '- **Module tree (synths, FX chains)** → `-builder`',
+          '- **Scriptnode DSP graph** → `-dsp`',
+          '- **Lint a HiseScript file (no HISE needed)** → `hise-cli diagnose <file>`',
+          '',
+          'Other modes exist (`-publish`, `-assets`, `-wizard`, `-api`, `-undo`, etc.) but are user-driven workflows — leave those to the user unless explicitly asked.',
+          '',
+          '## Workflow contract',
+          '',
+          '1. Call `hise-cli --help` (or the relevant `-<mode> --help`) every time before issuing commands you have not used recently — flag set may have changed.',
+          '2. Default output is markdown / raw text (human-readable). Add `--json` if you need machine-readable JSON for parsing.',
+          '3. Multi-step edits: combine into a `-undo plan "<name>"` group, run the steps, then `-undo apply` (or `-undo discard`).',
+        ].join('\n');
+
+        return {
+          content: [{ type: 'text', text }],
         };
       }
 
