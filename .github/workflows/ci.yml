@@ -1,0 +1,31 @@
+name: CI
+
+# Lightweight per-submodule CI: typecheck the MCP server on every push
+# and PR. Does NOT build a Docker image — that lives in the monorepo
+# (christophhart/hise_monorepo → .github/workflows/build-mcp.yml).
+#
+# Job: install deps, run `tsc` (the project's "build" script).
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: tsc
+        run: npm run build
