@@ -1,6 +1,7 @@
 import { readFileSync, accessSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -61,10 +62,10 @@ let embeddingsReady = false;
 async function ensureEmbedderLoaded(): Promise<void> {
   if (embedder) return;
 
-  console.error('[semantic-search] Loading embedding model (first time may download ~80MB)...');
+  log.info('[semantic-search] Loading embedding model (first time may download ~80MB)...');
   const { pipeline } = await import('@huggingface/transformers');
   embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  console.error('[semantic-search] Embedding model ready');
+  log.info('[semantic-search] Embedding model ready');
 }
 
 export function isEmbeddingsReady(): boolean {
@@ -122,7 +123,7 @@ class SearchIndex {
   ensureLoaded(): void {
     if (this.chunks && this.embeddings && this.graph) return;
 
-    console.error(`[${this.name}] Loading data files...`);
+    log.info(`[${this.name}] Loading data files...`);
 
     this.chunks = JSON.parse(readFileSync(join(DATA_DIR, this.chunksFile), 'utf-8'));
     this.embeddings = JSON.parse(readFileSync(join(DATA_DIR, this.embeddingsFile), 'utf-8'));
@@ -133,7 +134,7 @@ class SearchIndex {
       this.idToChunkIndex.set(this.chunks![i].id, i);
     }
 
-    console.error(`[${this.name}] Loaded ${this.chunks!.length} chunks, ${this.embeddings!.length} embeddings, ${Object.keys(this.graph!).length} graph nodes`);
+    log.info(`[${this.name}] Loaded ${this.chunks!.length} chunks, ${this.embeddings!.length} embeddings, ${Object.keys(this.graph!).length} graph nodes`);
   }
 
   isAvailable(): boolean {

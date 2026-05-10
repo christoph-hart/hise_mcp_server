@@ -8,6 +8,7 @@
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './log.js';
 
 // ============================================================================
 // Types
@@ -399,7 +400,7 @@ export async function searchForum(
           page,
         });
       } catch (e) {
-        console.error(`[warn] Search failed for '${searchTerm}' page ${page}: ${e}`);
+        log.warn(`[warn] Search failed for '${searchTerm}' page ${page}: ${e}`);
         break;
       }
 
@@ -519,7 +520,7 @@ async function fetchTopicPosts(
         const pageData = await forumApiGet(`topic/${tid}`, { page: pageNum });
         allPosts.push(...(pageData.posts ?? []));
       } catch (e) {
-        console.error(`[warn] Failed to fetch page ${pageNum} of topic ${tid}: ${e}`);
+        log.warn(`[warn] Failed to fetch page ${pageNum} of topic ${tid}: ${e}`);
       }
     }
   }

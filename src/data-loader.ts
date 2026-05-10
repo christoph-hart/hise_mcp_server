@@ -20,6 +20,7 @@ import {
   ClassSurveyEntry,
   PreprocessorEntry
 } from './types.js';
+import { log } from './log.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -126,11 +127,11 @@ export class HISEDataLoader {
       // Optimization #1: Try to load from cache first
       const cacheLoaded = await this.loadCache();
       if (cacheLoaded) {
-        console.error('Loaded HISE data from cache');
+        log.info('Loaded HISE data from cache');
         return;
       }
 
-      console.error('Building HISE data indexes...');
+      log.info('Building HISE data indexes...');
       
       // Load UI components (enriched format with llmRef, or legacy format)
       const uiPath = existsSync(join(__dirname, '..', 'data', 'ui_components.json'))
@@ -178,7 +179,7 @@ export class HISEDataLoader {
       
       // Save cache for next startup
       await this.saveCache();
-      console.error('Built and cached HISE data indexes');
+      log.info('Built and cached HISE data indexes');
     } catch (error) {
       throw new Error(`Failed to load HISE data: ${error}`);
     }
@@ -211,7 +212,7 @@ export class HISEDataLoader {
           cache.procMtime !== procMtime ||
           cache.snMtime !== snMtime ||
           cache.ppMtime !== ppMtime) {
-        console.error('Cache invalidated due to data file changes');
+        log.info('Cache invalidated due to data file changes');
         return false;
       }
 
@@ -227,7 +228,7 @@ export class HISEDataLoader {
 
       return true;
     } catch (error) {
-      console.error('Failed to load cache:', error);
+      log.error('Failed to load cache:', error);
       return false;
     }
   }
@@ -255,7 +256,7 @@ export class HISEDataLoader {
 
       writeFileSync(cachePath, JSON.stringify(cache));
     } catch (error) {
-      console.error('Failed to save cache:', error);
+      log.error('Failed to save cache:', error);
     }
   }
 
@@ -298,9 +299,9 @@ export class HISEDataLoader {
       }
 
       this.snippetsLoaded = true;
-      console.error('Lazy-loaded snippets');
+      log.info('Lazy-loaded snippets');
     } catch (error) {
-      console.error('Failed to load snippets:', error);
+      log.error('Failed to load snippets:', error);
     }
   }
 
@@ -553,7 +554,7 @@ export class HISEDataLoader {
       // Build cross-domain explore index
       this.buildExploreEnrichmentIndex();
     } catch (error) {
-      console.error('Failed to reload enriched data:', error);
+      log.error('Failed to reload enriched data:', error);
     }
   }
 
@@ -670,7 +671,7 @@ export class HISEDataLoader {
       });
     }
 
-    console.error(`Built explore enrichment index (${this.exploreEnrichmentIndex.size} items)`);
+    log.info(`Built explore enrichment index (${this.exploreEnrichmentIndex.size} items)`);
   }
 
   private transformSnippets(data: any[]): CodeSnippet[] {
@@ -740,7 +741,7 @@ export class HISEDataLoader {
         }
       }
     } catch (error) {
-      console.error('Failed to rebuild classMetadata in buildIndexes:', error);
+      log.error('Failed to rebuild classMetadata in buildIndexes:', error);
     }
 
     // Index UI properties
@@ -1639,9 +1640,9 @@ export class HISEDataLoader {
       
       this.buildLAFIndexes();
       this.lafLoaded = true;
-      console.error('Loaded LAF style guide data');
+      log.info('Loaded LAF style guide data');
     } catch (error) {
-      console.error('Failed to load LAF data:', error);
+      log.error('Failed to load LAF data:', error);
       throw new Error(`Failed to load LAF data: ${error}`);
     }
   }
@@ -1709,7 +1710,7 @@ export class HISEDataLoader {
       }
     }
 
-    console.error(`Indexed ${this.lafComponentIndex.size} LAF components, ${this.lafFunctionIndex.size} LAF functions`);
+    log.info(`Indexed ${this.lafComponentIndex.size} LAF components, ${this.lafFunctionIndex.size} LAF functions`);
   }
 
   /**
@@ -1781,9 +1782,9 @@ export class HISEDataLoader {
 
       this.buildSurveyIndexes();
       this.surveyLoaded = true;
-      console.error(`Loaded class survey data (${this.surveyIndex.size} classes)`);
+      log.info(`Loaded class survey data (${this.surveyIndex.size} classes)`);
     } catch (error) {
-      console.error('Failed to load survey data:', error);
+      log.error('Failed to load survey data:', error);
       throw new Error(`Failed to load class survey data: ${error}`);
     }
   }

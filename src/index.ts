@@ -22,12 +22,21 @@ import { WORKFLOWS, formatWorkflowAsMarkdown } from './workflows.js';
 import { STYLE_GUIDES, formatStyleGuideAsMarkdown } from './style-guides.js';
 import { CONTRIBUTION_GUIDES, formatContributionGuideAsMarkdown } from './contribution-guides.js';
 import { PROMPTS, generateContributePrompt } from './prompts.js';
-import { authMiddleware, isAuthConfigured, isOAuthConfigured, getTokenCache } from './auth/index.js';
 import { searchForum, fetchForumTopics, ForumTopicDetail } from './forum-search.js';
 import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSemanticSearchAvailable, searchExamples, getExampleById, listAllExamples, isExamplesAvailable, searchTutorials, getTutorialById, isTutorialsAvailable, warmupSearch, isEmbeddingsReady } from './semantic-search.js';
-import { oauthRouter } from './routes/oauth.js';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
+import { log } from './log.js';
+
+// Process-level safety nets — log and (for unknown state) exit.
+// Installed as early as possible so handler bugs at startup are visible.
+process.on('unhandledRejection', (reason) => {
+  log.error('Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  log.error('Uncaught exception:', err);
+  process.exit(1);
+});
 
 // Read package.json for version info
 const __filename = fileURLToPath(import.meta.url);
@@ -1419,8 +1428,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal error';
+    log.error('Tool handler error:', error);
     return {
-      content: [{ type: 'text', text: `Error: ${error}` }],
+      content: [{ type: 'text', text: `Error: ${message}` }],
       isError: true,
     };
   }
@@ -1431,11 +1442,18 @@ async function main() {
   await dataLoader.loadData();
 
   const port = parseInt(process.env.PORT || '3000', 10);
+  const host = process.env.HOST || '0.0.0.0';
 
-  console.error('HISE MCP server starting (documentation only)...');
-  {
-    const app = express();
-    app.use(express.json());
+  log.info('HISE MCP server starting (documentation only)...');
+  const app = express();
+
+  // Behind a reverse proxy (Caddy/nginx) - trust X-Forwarded-* so req.ip
+  // resolves to the real client, which the rate limiter relies on.
+  app.set('trust proxy', 1);
+
+    // MCP requests are tiny JSON-RPC envelopes; cap the body size so a
+    // malicious client can't OOM the process.
+    app.use(express.json({ limit: '256kb' }));
 
     interface TransportEntry {
       transport: StreamableHTTPServerTransport;
@@ -1451,11 +1469,11 @@ async function main() {
         const entry = transports[sid];
         if (!entry) continue;
         if (now - entry.lastActivity > SESSION_IDLE_MS) {
-          console.error(`Sweeping idle session ${sid} (idle ${Math.round((now - entry.lastActivity) / 1000)}s)`);
+          log.info(`Sweeping idle session ${sid} (idle ${Math.round((now - entry.lastActivity) / 1000)}s)`);
           try {
             entry.transport.close();
           } catch (err) {
-            console.error(`Error closing idle transport ${sid}:`, err);
+            log.error(`Error closing idle transport ${sid}:`, err);
           }
           delete transports[sid];
         }
@@ -1464,19 +1482,82 @@ async function main() {
     // Don't keep the event loop alive just for the sweeper.
     if (typeof sweepInterval.unref === 'function') sweepInterval.unref();
 
+    // Simple sliding-window rate limiter for /api/* (per-IP, in-memory).
+    // 60 req/min/IP is generous for a docs search frontend; tighten via env
+    // if abuse appears. The bucket map is cleaned opportunistically.
+    const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
+    const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '60', 10);
+    const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+    const rateCleanup = setInterval(() => {
+      const now = Date.now();
+      for (const [ip, b] of rateBuckets) {
+        if (b.resetAt <= now) rateBuckets.delete(ip);
+      }
+    }, RATE_LIMIT_WINDOW_MS);
+    if (typeof rateCleanup.unref === 'function') rateCleanup.unref();
+
+    function rateLimit(req: Request, res: Response, next: NextFunction): void {
+      const ip = (req.ip || req.socket.remoteAddress || 'unknown').toString();
+      const now = Date.now();
+      let bucket = rateBuckets.get(ip);
+      if (!bucket || bucket.resetAt <= now) {
+        bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+        rateBuckets.set(ip, bucket);
+      }
+      bucket.count++;
+      if (bucket.count > RATE_LIMIT_MAX) {
+        res.set('Retry-After', Math.ceil((bucket.resetAt - now) / 1000).toString());
+        res.status(429).json({ error: 'Too many requests' });
+        return;
+      }
+      next();
+    }
+
+    // Host-header allowlist for /mcp — defends against DNS rebinding attacks
+    // where an attacker tricks a browser into POSTing to 127.0.0.1 via a
+    // rebound hostname. /mcp is open and unauthenticated, so this matters.
+    // Default list covers prod + local dev; extend via ALLOWED_MCP_HOSTS
+    // (comma-separated) if you front the server with multiple hostnames.
+    const allowedMcpHosts = new Set([
+      'mcp.hise.dev',
+      `localhost:${port}`,
+      `127.0.0.1:${port}`,
+      ...(process.env.ALLOWED_MCP_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean),
+    ]);
+    app.use('/mcp', (req: Request, res: Response, next: NextFunction) => {
+      const host = req.headers.host;
+      if (!host || !allowedMcpHosts.has(host)) {
+        log.warn(`Rejected /mcp request with host header: ${host}`);
+        res.status(403).json({ error: 'Forbidden host' });
+        return;
+      }
+      next();
+    });
+
+    // CORS for the public REST API (success + error responses).
+    // Per-handler `res.set('Access-Control-Allow-Origin', '*')` only fired on
+    // 200, so 4xx/5xx hit the browser without the header and looked like CORS
+    // failures instead of the actual error. /mcp is server-to-server and
+    // intentionally has no CORS headers.
+    app.use('/api', (_req: Request, res: Response, next) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('Referrer-Policy', 'no-referrer');
+      next();
+    });
+    app.use('/api', rateLimit);
+
+    // /health: process is up. /ready: warmup complete and able to serve search.
+    // Reverse proxies / orchestrators should route on /ready.
     app.get('/health', (_req: Request, res: Response) => {
       res.json({ status: 'ok', server: 'hise-mcp-server' });
     });
-
-    // Auth status endpoint (for debugging)
-    app.get('/auth/status', (_req: Request, res: Response) => {
-      const authConfigured = isAuthConfigured();
-      const oauthConfigured = isOAuthConfigured();
-      res.json({
-        authEnabled: authConfigured,
-        oauthEnabled: oauthConfigured,
-        cacheStats: authConfigured ? getTokenCache().stats() : null,
-      });
+    app.get('/ready', (_req: Request, res: Response) => {
+      if (isEmbeddingsReady()) {
+        res.json({ status: 'ready' });
+      } else {
+        res.status(503).json({ status: 'initializing' });
+      }
     });
 
     // REST API endpoints for website search (reuses semantic-search.ts)
@@ -1508,7 +1589,6 @@ async function main() {
         const filtered = domain
           ? results.filter((r: any) => r.metadata.domain === domain).slice(0, limit)
           : results.slice(0, limit);
-        res.set('Access-Control-Allow-Origin', '*');
         res.json(filtered.map(r => ({
           id: r.id,
           score: r.score,
@@ -1516,13 +1596,12 @@ async function main() {
           metadata: r.metadata
         })));
       } catch (err) {
-        console.error('Search error:', err);
+        log.error('Search error:', err);
         res.status(500).json({ error: 'Search failed' });
       }
     });
 
     app.get('/api/search/domains', (_req: Request, res: Response) => {
-      res.set('Access-Control-Allow-Origin', '*');
       res.json([
         { id: 'all', label: 'All' },
         { id: 'audio', label: 'Audio' },
@@ -1547,7 +1626,6 @@ async function main() {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      res.set('Access-Control-Allow-Origin', '*');
       res.json(result);
     });
 
@@ -1584,7 +1662,6 @@ async function main() {
           results = results.filter(r => r.metadata.featured);
         }
         results = results.slice(0, limit);
-        res.set('Access-Control-Allow-Origin', '*');
         res.json(results.map(r => ({
           id: r.id,
           score: r.score,
@@ -1592,7 +1669,7 @@ async function main() {
           metadata: r.metadata
         })));
       } catch (err) {
-        console.error('Example search error:', err);
+        log.error('Example search error:', err);
         res.status(500).json({ error: 'Search failed' });
       }
     });
@@ -1608,23 +1685,14 @@ async function main() {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      res.set('Access-Control-Allow-Origin', '*');
       res.json(result);
     });
-
-    // OAuth routes (Phase 3: Claude Desktop support)
-    // Mount at root for /.well-known/oauth-authorization-server
-    // and /oauth/* endpoints
-    app.use(oauthRouter);
-
-    // Apply auth middleware to all /mcp routes
-    app.use('/mcp', authMiddleware);
 
     app.post('/mcp', async (req: Request, res: Response) => {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
       if (sessionId) {
-        console.error(`Received MCP request for session: ${sessionId}`);
+        log.debug(`Received MCP request for session: ${sessionId}`);
       }
 
       // Tracks a transport we created inside this handler so we can tear it
@@ -1642,7 +1710,7 @@ async function main() {
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (sid) => {
-              console.error(`Session initialized with ID: ${sid}`);
+              log.info(`Session initialized with ID: ${sid}`);
               transports[sid] = { transport, lastActivity: Date.now() };
             },
           });
@@ -1651,7 +1719,7 @@ async function main() {
           transport.onclose = () => {
             const sid = transport.sessionId;
             if (sid && transports[sid]) {
-              console.error(`Transport closed for session ${sid}`);
+              log.info(`Transport closed for session ${sid}`);
               delete transports[sid];
             }
           };
@@ -1670,7 +1738,7 @@ async function main() {
 
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error('Error handling MCP request:', error);
+        log.error('Error handling MCP request:', error);
         // If we created a transport in this handler, make sure it doesn't
         // leak — either because initialize failed before onsessioninitialized
         // fired, or because a later step threw.
@@ -1682,7 +1750,7 @@ async function main() {
           try {
             await createdTransport.close();
           } catch (closeErr) {
-            console.error('Error closing failed transport:', closeErr);
+            log.error('Error closing failed transport:', closeErr);
           }
         }
         if (!res.headersSent) {
@@ -1705,9 +1773,9 @@ async function main() {
 
       const lastEventId = req.headers['last-event-id'];
       if (lastEventId) {
-        console.error(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+        log.debug(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
       } else {
-        console.error(`Establishing SSE stream for session ${sessionId}`);
+        log.debug(`Establishing SSE stream for session ${sessionId}`);
       }
 
       const entry = transports[sessionId];
@@ -1723,14 +1791,14 @@ async function main() {
         return;
       }
 
-      console.error(`Session termination request for session ${sessionId}`);
+      log.info(`Session termination request for session ${sessionId}`);
 
       try {
         const entry = transports[sessionId];
         entry.lastActivity = Date.now();
         await entry.transport.handleRequest(req, res);
       } catch (error) {
-        console.error('Error handling session termination:', error);
+        log.error('Error handling session termination:', error);
         if (!res.headersSent) {
           res.status(500).send('Error processing session termination');
         }
@@ -1744,59 +1812,72 @@ async function main() {
     const warmupStart = Date.now();
     try {
       await warmupSearch();
-      console.error(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
+      log.info(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
     } catch (err) {
-      console.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
+      log.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
     }
 
-    app.listen(port, () => {
-      console.error(`HISE MCP server running on port ${port}`);
-      console.error(`MCP endpoint: http://localhost:${port}/mcp`);
-      
-      // Auth status
-      if (isAuthConfigured()) {
-        console.error(`Auth enabled: validating tokens against ${process.env.MCP_VALIDATE_TOKEN_URL}`);
-      } else {
-        console.error(`WARNING: Auth not configured - MCP endpoints are publicly accessible!`);
-        console.error(`Set MCP_VALIDATE_TOKEN_URL and MCP_SHARED_SECRET to enable auth.`);
-      }
-      
-      // OAuth status
-      if (isOAuthConfigured()) {
-        console.error(`OAuth enabled: Claude Desktop can authenticate via ${process.env.OAUTH_AUTHORIZE_URL}`);
-        console.error(`OAuth metadata: http://localhost:${port}/.well-known/oauth-authorization-server`);
-      } else {
-        console.error(`OAuth not configured - Claude Desktop OAuth flow unavailable.`);
-        console.error(`Set OAUTH_ISSUER, OAUTH_AUTHORIZE_URL, OAUTH_TOKEN_URL, MCP_CLIENT_ID, MCP_CLIENT_SECRET, MCP_SERVER_URL to enable.`);
-      }
+    const httpServer = app.listen(port, host, () => {
+      log.info(`HISE MCP server running in production mode on ${host}:${port}`);
+      log.info(`MCP endpoint: /mcp (open, no auth)`);
     });
 
-    process.on('SIGINT', async () => {
-      console.error('Shutting down server...');
-      
-      // Cleanup token cache
-      if (isAuthConfigured()) {
-        console.error('Cleaning up token cache...');
-        getTokenCache().destroy();
-      }
-      
+    // Slowloris / idle-socket protections.
+    httpServer.requestTimeout = 30_000;     // total time to receive a request
+    httpServer.headersTimeout = 35_000;     // must exceed requestTimeout
+    httpServer.keepAliveTimeout = 65_000;   // a touch above common LB timeouts
+
+    let isShuttingDown = false;
+    const shutdown = async (signal: string) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      log.info(`Received ${signal}, shutting down...`);
+
       clearInterval(sweepInterval);
-      for (const sessionId in transports) {
+      clearInterval(rateCleanup);
+
+      // Stop accepting new connections; existing ones drain naturally.
+      httpServer.close((err) => {
+        if (err) log.error('Error closing HTTP server:', err);
+      });
+
+      // Snapshot session IDs first — closing a transport mutates `transports`
+      // via its onclose hook.
+      const sids = Object.keys(transports);
+      for (const sid of sids) {
+        const entry = transports[sid];
+        if (!entry) continue;
         try {
-          console.error(`Closing transport for session ${sessionId}`);
-          await transports[sessionId].transport.close();
-          delete transports[sessionId];
+          log.info(`Closing transport for session ${sid}`);
+          await entry.transport.close();
         } catch (error) {
-          console.error(`Error closing transport for session ${sessionId}:`, error);
+          log.error(`Error closing transport for session ${sid}:`, error);
         }
+        delete transports[sid];
       }
-      console.error('Server shutdown complete');
+
+      log.info('Server shutdown complete');
       process.exit(0);
-    });
-  }
+    };
+
+    process.on('SIGINT', () => { void shutdown('SIGINT'); });
+    process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+
+    // Hard timeout — if shutdown hangs for 15s, force exit so the orchestrator
+    // doesn't have to SIGKILL us.
+    const installForceExit = (signal: string) => {
+      process.once(signal as NodeJS.Signals, () => {
+        setTimeout(() => {
+          log.error(`Shutdown timed out after ${signal}, forcing exit`);
+          process.exit(1);
+        }, 15_000).unref();
+      });
+    };
+    installForceExit('SIGINT');
+    installForceExit('SIGTERM');
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  log.error('Fatal error:', error);
   process.exit(1);
 });
