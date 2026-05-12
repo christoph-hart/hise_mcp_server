@@ -1451,10 +1451,6 @@ async function main() {
   // resolves to the real client, which the rate limiter relies on.
   app.set('trust proxy', 1);
 
-    // MCP requests are tiny JSON-RPC envelopes; cap the body size so a
-    // malicious client can't OOM the process.
-    app.use(express.json({ limit: '256kb' }));
-
     interface TransportEntry {
       transport: StreamableHTTPServerTransport;
       lastActivity: number;
@@ -1462,6 +1458,9 @@ async function main() {
     const transports: { [sessionId: string]: TransportEntry } = {};
     const SESSION_IDLE_MS = 60 * 60 * 1000; // 1 hour
     const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+    // /mcp is open and unauthenticated, so cap concurrent sessions — a flood
+    // of `initialize` requests would otherwise grow `transports` without bound.
+    const MAX_SESSIONS = parseInt(process.env.MAX_MCP_SESSIONS || '500', 10);
 
     const sweepInterval = setInterval(() => {
       const now = Date.now();
@@ -1482,36 +1481,61 @@ async function main() {
     // Don't keep the event loop alive just for the sweeper.
     if (typeof sweepInterval.unref === 'function') sweepInterval.unref();
 
-    // Simple sliding-window rate limiter for /api/* (per-IP, in-memory).
-    // 60 req/min/IP is generous for a docs search frontend; tighten via env
-    // if abuse appears. The bucket map is cleaned opportunistically.
-    const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
-    const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '60', 10);
-    const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-    const rateCleanup = setInterval(() => {
-      const now = Date.now();
-      for (const [ip, b] of rateBuckets) {
-        if (b.resetAt <= now) rateBuckets.delete(ip);
-      }
-    }, RATE_LIMIT_WINDOW_MS);
-    if (typeof rateCleanup.unref === 'function') rateCleanup.unref();
+    // Fixed-window per-IP rate limiter, dependency-free. One bucket map per
+    // limiter; entries are swept on the window interval. `req.ip` honors the
+    // trust-proxy setting above. Single-process only — if this ever runs
+    // multi-instance, move the buckets to a shared store. Sets standard
+    // RateLimit-* headers; on /mcp the 429 body is JSON-RPC shaped so MCP
+    // clients parse it cleanly.
+    function createRateLimiter(opts: { name: string; windowMs: number; max: number }) {
+      const buckets = new Map<string, { count: number; resetAt: number }>();
+      const cleanup = setInterval(() => {
+        const now = Date.now();
+        for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
+      }, opts.windowMs);
+      if (typeof cleanup.unref === 'function') cleanup.unref();
 
-    function rateLimit(req: Request, res: Response, next: NextFunction): void {
-      const ip = (req.ip || req.socket.remoteAddress || 'unknown').toString();
-      const now = Date.now();
-      let bucket = rateBuckets.get(ip);
-      if (!bucket || bucket.resetAt <= now) {
-        bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
-        rateBuckets.set(ip, bucket);
-      }
-      bucket.count++;
-      if (bucket.count > RATE_LIMIT_MAX) {
-        res.set('Retry-After', Math.ceil((bucket.resetAt - now) / 1000).toString());
-        res.status(429).json({ error: 'Too many requests' });
-        return;
-      }
-      next();
+      return function rateLimit(req: Request, res: Response, next: NextFunction): void {
+        const key = (req.ip || req.socket.remoteAddress || 'unknown').toString();
+        const now = Date.now();
+        let bucket = buckets.get(key);
+        if (!bucket || bucket.resetAt <= now) {
+          bucket = { count: 0, resetAt: now + opts.windowMs };
+          buckets.set(key, bucket);
+        }
+        bucket.count++;
+        const resetSecs = Math.ceil((bucket.resetAt - now) / 1000);
+        res.set('RateLimit-Limit', String(opts.max));
+        res.set('RateLimit-Remaining', String(Math.max(0, opts.max - bucket.count)));
+        res.set('RateLimit-Reset', String(resetSecs));
+        if (bucket.count > opts.max) {
+          res.set('Retry-After', String(resetSecs));
+          log.warn(`[ratelimit:${opts.name}] ${key} exceeded ${opts.max} req / ${Math.round(opts.windowMs / 1000)}s`);
+          if (req.path === '/mcp' || req.baseUrl === '/mcp') {
+            res.status(429).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Too many requests' }, id: null });
+          } else {
+            res.status(429).json({ error: 'Too many requests' });
+          }
+          return;
+        }
+        next();
+      };
     }
+
+    // /api/* — a docs-search frontend; 60 req/min/IP is generous.
+    const apiRateLimit = createRateLimiter({
+      name: 'api',
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
+      max: parseInt(process.env.RATE_LIMIT_MAX || '60', 10),
+    });
+    // /mcp — an active agent session is bursty (many tool calls), so the
+    // ceiling is higher. Still bounds a flood from any single IP, complementing
+    // the concurrent-session cap.
+    const mcpRateLimit = createRateLimiter({
+      name: 'mcp',
+      windowMs: parseInt(process.env.MCP_RATE_LIMIT_WINDOW_MS || '60000', 10),
+      max: parseInt(process.env.MCP_RATE_LIMIT_MAX || '300', 10),
+    });
 
     // Host-header allowlist for /mcp — defends against DNS rebinding attacks
     // where an attacker tricks a browser into POSTing to 127.0.0.1 via a
@@ -1533,6 +1557,7 @@ async function main() {
       }
       next();
     });
+    app.use('/mcp', mcpRateLimit);
 
     // CORS for the public REST API (success + error responses).
     // Per-handler `res.set('Access-Control-Allow-Origin', '*')` only fired on
@@ -1545,7 +1570,13 @@ async function main() {
       res.set('Referrer-Policy', 'no-referrer');
       next();
     });
-    app.use('/api', rateLimit);
+    app.use('/api', apiRateLimit);
+
+    // Body parsing comes after the cheap guards (host allowlist, rate limits)
+    // so a flood is rejected before we spend CPU parsing JSON. MCP requests are
+    // tiny JSON-RPC envelopes; cap the body size so a malicious client can't
+    // OOM the process. /health and /ready take no body — harmless to include.
+    app.use(express.json({ limit: '256kb' }));
 
     // /health: process is up. /ready: warmup complete and able to serve search.
     // Reverse proxies / orchestrators should route on /ready.
@@ -1556,6 +1587,10 @@ async function main() {
       if (isEmbeddingsReady()) {
         res.json({ status: 'ready' });
       } else {
+        // Kick (or re-kick) warmup so a failed startup attempt self-heals
+        // instead of leaving the server stuck at 503. warmupSearch() is
+        // memoized, so concurrent probes share one attempt.
+        warmupSearch().catch(() => {});
         res.status(503).json({ status: 'initializing' });
       }
     });
@@ -1563,6 +1598,7 @@ async function main() {
     // REST API endpoints for website search (reuses semantic-search.ts)
     app.get('/api/search', async (req: Request, res: Response) => {
       if (!isEmbeddingsReady()) {
+        warmupSearch().catch(() => {});
         res.status(503).json({ error: 'Still indexing, try again in a moment' });
         return;
       }
@@ -1632,6 +1668,7 @@ async function main() {
     // REST API endpoints for code example search
     app.get('/api/search/examples', async (req: Request, res: Response) => {
       if (!isEmbeddingsReady()) {
+        warmupSearch().catch(() => {});
         res.status(503).json({ error: 'Still indexing, try again in a moment' });
         return;
       }
@@ -1707,6 +1744,15 @@ async function main() {
           entry.lastActivity = Date.now();
           transport = entry.transport;
         } else if (!sessionId && isInitializeRequest(req.body)) {
+          if (Object.keys(transports).length >= MAX_SESSIONS) {
+            log.warn(`Refusing new MCP session: at capacity (${MAX_SESSIONS})`);
+            res.status(503).json({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Server at session capacity, retry later' },
+              id: null,
+            });
+            return;
+          }
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (sid) => {
@@ -1805,10 +1851,26 @@ async function main() {
       }
     });
 
+    // Final error net. Mostly catches malformed-JSON / oversized-body errors
+    // from express.json so clients get a clean 400 instead of an HTML stack
+    // page, and an unexpected throw in a handler returns JSON, not HTML.
+    app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+      const status = typeof err?.status === 'number' ? err.status : 500;
+      if (status >= 500) log.error('Unhandled request error:', err);
+      if (res.headersSent) return;
+      const onMcp = req.path === '/mcp';
+      res.status(status).json(
+        onMcp
+          ? { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }
+          : { error: status === 400 ? 'Bad request' : 'Internal server error' }
+      );
+    });
+
     // Warm up embeddings model + indices before accepting traffic so the
-    // first search request doesn't block for ~seconds. On failure we log
-    // and fall back to lazy-load; endpoints that require embeddings return
-    // 503 until `isEmbeddingsReady()` flips.
+    // first search request doesn't block for ~seconds. On failure we log and
+    // continue: search endpoints return 503 until `isEmbeddingsReady()` flips,
+    // and they (plus /ready and any MCP search tool) re-kick warmupSearch() on
+    // demand, so a transient failure self-heals without a restart.
     const warmupStart = Date.now();
     try {
       await warmupSearch();
@@ -1834,7 +1896,7 @@ async function main() {
       log.info(`Received ${signal}, shutting down...`);
 
       clearInterval(sweepInterval);
-      clearInterval(rateCleanup);
+      // Rate-limiter cleanup intervals are .unref()'d, so they don't block exit.
 
       // Stop accepting new connections; existing ones drain naturally.
       httpServer.close((err) => {

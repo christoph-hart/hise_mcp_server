@@ -56,15 +56,26 @@ export interface SemanticSearchResult {
 // Shared embedding model (singleton)
 // ============================================================================
 
+const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2';
+
+// Where the model weights live. transformers v4 hard-codes its cache to a dir
+// inside node_modules, which is root-owned (and effectively read-only) in the
+// production image — writing there throws EACCES, warmup dies, and every search
+// 503s forever. Pin it to a writable, image-baked path instead. The Dockerfile
+// prefetches the model into this same path at build time (see scripts/prefetch-model.mjs).
+const MODEL_CACHE_DIR = process.env.HISE_MODEL_CACHE_DIR || join(__dirname, '..', '.model-cache');
+
 let embedder: any = null;
 let embeddingsReady = false;
+let warmupPromise: Promise<void> | null = null;
 
 async function ensureEmbedderLoaded(): Promise<void> {
   if (embedder) return;
 
-  log.info('[semantic-search] Loading embedding model (first time may download ~80MB)...');
-  const { pipeline } = await import('@huggingface/transformers');
-  embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  log.info(`[semantic-search] Loading embedding model from ${MODEL_CACHE_DIR} (downloads ~80MB if not cached)...`);
+  const { pipeline, env } = await import('@huggingface/transformers');
+  env.cacheDir = MODEL_CACHE_DIR;
+  embedder = await pipeline('feature-extraction', MODEL_NAME);
   log.info('[semantic-search] Embedding model ready');
 }
 
@@ -73,16 +84,29 @@ export function isEmbeddingsReady(): boolean {
 }
 
 /**
- * Warm up the embedding model + load all index files.
- * Safe to call multiple times; only loads once.
- * Any failure is surfaced to the caller — decide to crash or fall back.
+ * Load the embedding model + all available index files.
+ *
+ * Idempotent and concurrency-safe: parallel callers share one in-flight
+ * promise. `embeddingsReady` flips only on full success, so /ready and the
+ * REST search endpoints can gate on it. On failure the cached promise is
+ * cleared so a later call (startup retry, on-demand request, MCP tool) can
+ * try again — a single failed warmup no longer wedges the server at 503.
  */
-export async function warmupSearch(): Promise<void> {
-  await ensureEmbedderLoaded();
-  if (docIndex.isAvailable()) docIndex.ensureLoaded();
-  if (exampleIndex.isAvailable()) exampleIndex.ensureLoaded();
-  if (videoIndex.isAvailable()) videoIndex.ensureLoaded();
-  embeddingsReady = true;
+export function warmupSearch(): Promise<void> {
+  if (embeddingsReady) return Promise.resolve();
+  if (warmupPromise) return warmupPromise;
+
+  warmupPromise = (async () => {
+    await ensureEmbedderLoaded();
+    if (docIndex.isAvailable()) docIndex.ensureLoaded();
+    if (exampleIndex.isAvailable()) exampleIndex.ensureLoaded();
+    if (videoIndex.isAvailable()) videoIndex.ensureLoaded();
+    embeddingsReady = true;
+  })();
+  // Allow retry after a failed warmup without unhandled-rejection noise here;
+  // the original promise still rejects for whoever awaited it.
+  warmupPromise.catch(() => { warmupPromise = null; });
+  return warmupPromise;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -234,8 +258,11 @@ class SearchIndex {
     query: string,
     options?: { topK?: number; maxResults?: number }
   ): Promise<SemanticSearchResult[]> {
+    // Route through warmupSearch so any successful search — including ones
+    // triggered by MCP tools — flips `embeddingsReady`, recovering the REST
+    // endpoints if the startup warmup had failed.
+    await warmupSearch();
     this.ensureLoaded();
-    await ensureEmbedderLoaded();
 
     const topK = options?.topK ?? 15;
     const maxResults = options?.maxResults ?? 30;
