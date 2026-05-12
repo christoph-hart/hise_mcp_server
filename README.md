@@ -1,6 +1,6 @@
 # HISE MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/christoph-hart/hise_mcp_server)
+[![Version](https://img.shields.io/badge/version-1.8.1-blue.svg)](https://github.com/christoph-hart/hise_mcp_server)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io/)
@@ -81,8 +81,9 @@ Use `--scope project` to store the config in `.mcp.json` (shared via version con
 | `search_hise` | Search across all documentation |
 | `explore_hise` | Walk Scripting API class relationships |
 | `query_scripting_api` | Look up API methods |
-| `query_ui_property` | Look up UI component properties |
-| `query_module_parameter` | Look up module parameters |
+| `query_ui` | Look up UI components or filter to one property |
+| `query_module` | Look up modules or filter to one parameter |
+| `list_scriptnode_nodes` / `query_scriptnode` | Browse and query Scriptnode DSP nodes or parameters |
 | `search_examples` / `get_example` | Browse code examples |
 | `get_tutorial` | Fetch a video tutorial section with deep links |
 | `list_ui_components` | List UI component types |

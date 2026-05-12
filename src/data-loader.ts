@@ -34,6 +34,14 @@ export interface SnippetSummary {
   difficulty: "beginner" | "intermediate" | "advanced";
 }
 
+type ScriptnodeNodeReference = { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any };
+
+type ScriptnodeReferenceResult =
+  | { kind: 'node'; node: ScriptnodeNodeReference }
+  | { kind: 'parameter'; node: ScriptnodeNodeReference; parameterName: string; parameter: any }
+  | { kind: 'missingParameter'; node: ScriptnodeNodeReference; parameterName: string; availableParameters: string[] }
+  | { kind: 'factory'; factory: string };
+
 export class HISEDataLoader {
   private data: HISEData | null = null;
   private propertyIndex: Map<string, UIComponentProperty> = new Map();
@@ -82,7 +90,7 @@ export class HISEDataLoader {
   private moduleEnriched: Map<string, { llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; cpuProfile?: any; customEquivalent?: any; tags?: string[] }> = new Map();
 
   // Scriptnode node data (from scriptnode.json)
-  private scriptnodeIndex: Map<string, { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any }> = new Map();
+  private scriptnodeIndex: Map<string, ScriptnodeNodeReference> = new Map();
 
   // Preprocessor flag data (from preprocessor.json). Keyed by lowercase name.
   private preprocessorIndex: Map<string, PreprocessorEntry> = new Map();
@@ -1341,6 +1349,80 @@ export class HISEDataLoader {
   }
 
   /**
+   * Query a scriptnode reference. Supports exact nodes (filters.svf), node
+   * parameters via longest-prefix matching (filters.svf.Frequency), and
+   * factory detection for helpful list_scriptnode_nodes guidance.
+   */
+  queryScriptnodeReference(query: string): ScriptnodeReferenceResult | null {
+    const normalized = query.toLowerCase().trim();
+    const exactNode = this.scriptnodeIndex.get(normalized);
+    if (exactNode) {
+      return { kind: 'node', node: exactNode };
+    }
+
+    const parts = query.split('.');
+    for (let i = parts.length - 1; i >= 2; i--) {
+      const nodeKey = parts.slice(0, i).join('.').toLowerCase();
+      const node = this.scriptnodeIndex.get(nodeKey);
+      if (!node) continue;
+
+      const parameterName = parts.slice(i).join('.');
+      const parameters = node.parameters || {};
+      const matchedParameterName = Object.keys(parameters).find(key => key.toLowerCase() === parameterName.toLowerCase());
+      if (!matchedParameterName) {
+        return {
+          kind: 'missingParameter',
+          node,
+          parameterName,
+          availableParameters: Object.keys(parameters).sort(),
+        };
+      }
+
+      return {
+        kind: 'parameter',
+        node,
+        parameterName: matchedParameterName,
+        parameter: parameters[matchedParameterName],
+      };
+    }
+
+    const factories = this.getScriptnodeStats().factories.map(factory => factory.toLowerCase());
+    if (factories.includes(normalized)) {
+      return { kind: 'factory', factory: normalized };
+    }
+
+    return null;
+  }
+
+  /**
+   * List scriptnode nodes, optionally filtered by factory (eg. "analyse").
+   */
+  listScriptnodeNodes(factory?: string): { count: number; factories: Record<string, Array<{ factoryPath: string; title: string; description: string; tags?: string[]; polyphonic?: boolean }>> } {
+    const factoryFilter = factory?.toLowerCase();
+    const factories: Record<string, Array<{ factoryPath: string; title: string; description: string; tags?: string[]; polyphonic?: boolean }>> = {};
+    let count = 0;
+
+    const nodes = [...this.scriptnodeIndex.values()]
+      .filter(node => !factoryFilter || node.factory.toLowerCase() === factoryFilter)
+      .sort((a, b) => a.factoryPath.localeCompare(b.factoryPath));
+
+    for (const node of nodes) {
+      const group = node.factory || 'unknown';
+      if (!factories[group]) factories[group] = [];
+      factories[group].push({
+        factoryPath: node.factoryPath,
+        title: node.title,
+        description: node.description,
+        tags: node.tags,
+        polyphonic: node.polyphonic,
+      });
+      count++;
+    }
+
+    return { count, factories };
+  }
+
+  /**
    * Get scriptnode statistics for server status
    */
   getScriptnodeStats(): { nodeCount: number; factories: string[] } {
@@ -2103,8 +2185,9 @@ export class HISEDataLoader {
         lines.push(`Tags: ${enriched.tags.join(', ')}`);
       }
 
-      const queryTool = enriched.category === 'module' ? 'query_module_parameter'
-        : enriched.category === 'ui' ? 'query_ui_property'
+      const queryTool = enriched.category === 'module' ? 'query_module'
+        : enriched.category === 'ui' ? 'query_ui'
+        : enriched.category === 'scriptnode' ? 'query_scriptnode'
         : 'search_hise';
       lines.push(`\nUse ${queryTool}("${enriched.name}") for full reference.`);
 
