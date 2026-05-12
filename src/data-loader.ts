@@ -206,7 +206,7 @@ export class HISEDataLoader {
       const snMtime = this.getFileMtime(join(dataDir, 'scriptnode.json'));
       const ppMtime = this.getFileMtime(join(dataDir, 'preprocessor.json'));
 
-      if (cache.version !== '1.7' ||
+      if (cache.version !== '1.8' ||
           cache.uiMtime !== uiMtime ||
           cache.apiMtime !== apiMtime ||
           cache.procMtime !== procMtime ||
@@ -243,7 +243,7 @@ export class HISEDataLoader {
       const uiFile = existsSync(join(dataDir, 'ui_components.json'))
         ? 'ui_components.json' : 'ui_component_properties.json';
       const cache = {
-        version: '1.7',
+        version: '1.8',
         cachedAt,
         uiMtime: this.getFileMtime(join(dataDir, uiFile)),
         apiMtime: this.getFileMtime(join(dataDir, 'scripting_api.json')),
