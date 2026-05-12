@@ -80,7 +80,7 @@ node scripts/build-embeddings.mjs --input doc_chunks.json --output embeddings.js
 node dist/index.js --production
 ```
 
-Starts an HTTP server on port 3000 (configurable via `PORT` env var). MCP endpoint at `http://localhost:3000/mcp`. Documentation and search tools only — no HISE runtime tools.
+Starts an HTTP server on port 3000 (configurable via `PORT` env var). MCP endpoint at `http://localhost:3000/mcp`; stateless REST endpoints live under `http://localhost:3000/api`, with the OpenAPI spec at `http://localhost:3000/api/openapi.yaml`. Documentation and search tools only - no HISE runtime tools.
 
 ## Run in local/dev mode
 

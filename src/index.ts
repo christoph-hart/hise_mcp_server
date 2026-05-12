@@ -615,9 +615,13 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
 // MCP Tool Handlers
 // ============================================================================
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+interface ToolCallResult {
+  [key: string]: unknown;
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}
 
+async function handleToolCall(name: string, args: unknown): Promise<ToolCallResult> {
   try {
     switch (name) {
       // PRIMARY SEARCH TOOL
@@ -1435,7 +1439,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
+}
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+  return handleToolCall(name, args);
 });
+
+const DOC_TOOL_NAMES = new Set(DOC_TOOLS.map(tool => tool.name));
+
+function getMissingRequiredArgs(tool: Tool, args: unknown): string[] {
+  const schema = tool.inputSchema as { required?: string[] } | undefined;
+  const required = schema?.required || [];
+  if (required.length === 0) return [];
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return required;
+
+  const argRecord = args as Record<string, unknown>;
+  return required.filter(key => argRecord[key] === undefined || argRecord[key] === null);
+}
+
+function getRestStatusForToolResult(result: ToolCallResult): number {
+  if (!result.isError) return 200;
+
+  const text = result.content.map(item => item.text).join('\n');
+  if (/unknown tool/i.test(text)) return 404;
+  if (/not available|still indexing|ensure .* in the data\/ directory|run .* pipeline/i.test(text)) return 503;
+  if (/not found|no .* found|resource not found/i.test(text)) return 404;
+  if (/required|provide|missing|invalid/i.test(text)) return 400;
+
+  return 500;
+}
+
+function sendRestToolResult(res: Response, toolName: string, result: ToolCallResult): void {
+  const status = getRestStatusForToolResult(result);
+  res.status(status).json({
+    tool: toolName,
+    ok: status >= 200 && status < 300 && !result.isError,
+    isError: result.isError || false,
+    content: result.content,
+  });
+}
 
 async function main() {
   dataLoader = new HISEDataLoader();
@@ -1577,6 +1620,66 @@ async function main() {
     // tiny JSON-RPC envelopes; cap the body size so a malicious client can't
     // OOM the process. /health and /ready take no body — harmless to include.
     app.use(express.json({ limit: '256kb' }));
+
+    app.get('/api/openapi.yaml', (_req: Request, res: Response) => {
+      try {
+        const spec = readFileSync(join(__dirname, '..', 'openapi.yaml'), 'utf8');
+        res.type('application/yaml').send(spec);
+      } catch (error) {
+        log.error('Failed to read OpenAPI spec:', error);
+        res.status(500).json({ error: 'OpenAPI spec not available' });
+      }
+    });
+
+    app.get('/api/tools', (_req: Request, res: Response) => {
+      res.json({
+        count: DOC_TOOLS.length,
+        tools: DOC_TOOLS.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
+      });
+    });
+
+    app.post('/api/tools/:name', async (req: Request, res: Response) => {
+      const toolName = req.params.name;
+      if (!DOC_TOOL_NAMES.has(toolName)) {
+        res.status(404).json({
+          tool: toolName,
+          ok: false,
+          isError: true,
+          content: [{ type: 'text', text: `Unknown tool: ${toolName}` }],
+        });
+        return;
+      }
+
+      const args = req.body === undefined ? {} : req.body;
+      if (!args || typeof args !== 'object' || Array.isArray(args)) {
+        res.status(400).json({
+          tool: toolName,
+          ok: false,
+          isError: true,
+          content: [{ type: 'text', text: 'Tool arguments must be a JSON object.' }],
+        });
+        return;
+      }
+
+      const tool = DOC_TOOLS.find(item => item.name === toolName)!;
+      const missingArgs = getMissingRequiredArgs(tool, args);
+      if (missingArgs.length > 0) {
+        res.status(400).json({
+          tool: toolName,
+          ok: false,
+          isError: true,
+          content: [{ type: 'text', text: `Missing required argument${missingArgs.length === 1 ? '' : 's'}: ${missingArgs.join(', ')}` }],
+        });
+        return;
+      }
+
+      const result = await handleToolCall(toolName, args);
+      sendRestToolResult(res, toolName, result);
+    });
 
     // /health: process is up. /ready: warmup complete and able to serve search.
     // Reverse proxies / orchestrators should route on /ready.

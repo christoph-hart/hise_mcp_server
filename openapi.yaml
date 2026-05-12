@@ -1,0 +1,430 @@
+openapi: 3.1.0
+info:
+  title: HISE MCP Server REST API
+  version: 1.7.0
+  description: Stateless REST endpoints for HISE documentation search and the read-only MCP tool mirror.
+servers:
+  - url: https://docs.hise.dev
+    description: Hosted server
+  - url: http://localhost:3000
+    description: Local development server
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  server:
+                    type: string
+                    example: hise-mcp-server
+  /ready:
+    get:
+      summary: Readiness check
+      description: Returns ready only after search indexes and embeddings have warmed up.
+      responses:
+        '200':
+          description: Server is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyStatus'
+        '503':
+          description: Server is still initializing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyStatus'
+  /api/openapi.yaml:
+    get:
+      summary: OpenAPI specification
+      responses:
+        '200':
+          description: OpenAPI YAML document.
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/tools:
+    get:
+      summary: List mirrored MCP tools
+      description: Returns the tool metadata and JSON schemas used by the generic tool execution endpoint.
+      responses:
+        '200':
+          description: Tool list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, tools]
+                properties:
+                  count:
+                    type: integer
+                  tools:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ToolDefinition'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/tools/{name}:
+    post:
+      summary: Execute a mirrored MCP tool
+      description: Stateless tool execution. The request body is the JSON object you would normally pass as MCP tool arguments. Use GET /api/tools to discover each tool's exact input schema.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          examples:
+            serverStatus:
+              value: server_status
+            queryScriptingApi:
+              value: query_scripting_api
+            searchHise:
+              value: search_hise
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            examples:
+              empty:
+                summary: Tool with no arguments
+                value: {}
+              queryScriptingApi:
+                summary: Query a Scripting API method
+                value:
+                  apiCall: Synth.addNoteOn
+                  examples: true
+              searchHise:
+                summary: Search HISE documentation
+                value:
+                  query: midi
+                  domain: all
+                  limit: 5
+      responses:
+        '200':
+          description: Tool completed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '400':
+          description: Invalid request body, missing required arguments, or tool-level input error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '404':
+          description: Unknown tool or valid lookup target was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Unexpected tool failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '503':
+          description: Required search index or data source is not available yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+  /api/search:
+    get:
+      summary: Search documentation and tutorials
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: midi
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: domain
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional metadata domain filter.
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [docs, tutorials]
+          description: Restrict results to docs or tutorials.
+      responses:
+        '200':
+          description: Search results.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SearchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/search/domains:
+    get:
+      summary: List search domain filters
+      responses:
+        '200':
+          description: Search domains.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, label]
+                  properties:
+                    id:
+                      type: string
+                    label:
+                      type: string
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/doc:
+    get:
+      summary: Get documentation content
+      parameters:
+        - name: url
+          in: query
+          required: false
+          schema:
+            type: string
+          example: /v2/scripting-api/buffer#create
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: string
+          example: api:Buffer.create
+      responses:
+        '200':
+          description: Documentation content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/search/examples:
+    get:
+      summary: Search code examples
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query. Use * to browse all examples.
+          example: slider callback
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, example, snippet, forum]
+        - name: className
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Array
+        - name: featured
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Example search results.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SearchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/example:
+    get:
+      summary: Get full code example
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: example:Array.clone:clone-template-object
+      responses:
+        '200':
+          description: Example content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  schemas:
+    ReadyStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ready, initializing]
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ToolDefinition:
+      type: object
+      required: [name, description, inputSchema]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inputSchema:
+          type: object
+          additionalProperties: true
+    ToolContent:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+    ToolExecutionResult:
+      type: object
+      required: [tool, ok, isError, content]
+      properties:
+        tool:
+          type: string
+        ok:
+          type: boolean
+        isError:
+          type: boolean
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolContent'
+    SearchResult:
+      type: object
+      required: [id, score, via, metadata]
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+        via:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    ContentDocument:
+      type: object
+      required: [body, metadata]
+      properties:
+        body:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the rate limit resets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unavailable:
+      description: Required index or data source is not available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

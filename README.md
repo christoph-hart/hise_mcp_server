@@ -96,6 +96,26 @@ Use `--scope project` to store the config in `.mcp.json` (shared via version con
 | `hise_verify_parameters` | Verify Scripting API method signatures |
 | `server_status` | Check server status and statistics |
 
+## REST API
+
+The same read-only tools are also exposed as stateless REST endpoints for CLI clients that do not need the MCP session handshake.
+
+- OpenAPI spec: `GET /api/openapi.yaml`
+- Tool discovery: `GET /api/tools`
+- Tool execution: `POST /api/tools/:name`
+
+Example:
+
+```bash
+curl http://localhost:3000/api/tools
+
+curl -X POST http://localhost:3000/api/tools/query_scripting_api \
+  -H 'Content-Type: application/json' \
+  -d '{"apiCall":"Synth.addNoteOn","examples":true}'
+```
+
+The execution endpoint accepts the same JSON arguments as the MCP tool and returns a JSON envelope with `tool`, `ok`, `isError`, and `content`. REST callers receive real HTTP status codes such as `400` for missing arguments, `404` for unknown tools or missing lookup targets, `429` for rate limiting, and `503` while indexes are unavailable.
+
 ## Running Locally (for Development)
 
 The server can also be hosted locally — useful when developing the server itself or running it on your own infrastructure.
@@ -108,7 +128,7 @@ npm run build
 npm start
 ```
 
-Listens on `http://localhost:3000/mcp` by default. Override the port via `PORT=4406 npm start`.
+Listens on `http://localhost:3000/mcp` by default, with REST endpoints under `http://localhost:3000/api`. Override the port via `PORT=4406 npm start`.
 
 ## Troubleshooting
 
