@@ -1,6 +1,6 @@
 # HISE MCP Server
 
-[![Version](https://img.shields.io/badge/version-1.8.1-blue.svg)](https://github.com/christoph-hart/hise_mcp_server)
+[![Version](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/christoph-hart/hise_mcp_server)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io/)
