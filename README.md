@@ -79,12 +79,12 @@ Use `--scope project` to store the config in `.mcp.json` (shared via version con
 | Tool | Description |
 |------|-------------|
 | `search_hise` | Search across all documentation |
-| `explore_hise` | Walk Scripting API class relationships |
+| `explore_hise` | Explore API relationships, documentation, tutorials, and Scriptnode examples |
 | `query_scripting_api` | Look up API methods |
 | `query_ui` | Look up UI components or filter to one property |
 | `query_module` | Look up modules or filter to one parameter |
 | `list_scriptnode_nodes` / `query_scriptnode` | Browse and query Scriptnode DSP nodes or parameters |
-| `search_examples` / `get_example` | Browse code examples |
+| `search_examples` / `get_example` | Browse API, snippet, forum, and validated Scriptnode examples |
 | `get_tutorial` | Fetch a video tutorial section with deep links |
 | `list_ui_components` | List UI component types |
 | `list_scripting_namespaces` | List Scripting API namespaces |

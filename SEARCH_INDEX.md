@@ -12,15 +12,20 @@ hise_mcp_server/
     class_survey_data.json
     snippet_dataset.json
     forum_examples.json       ← validated forum code examples
+    scriptnode_examples.json  ← validated Scriptnode example networks
     doc_chunks.json           ← generated: doc search chunks
     graph.json                ← generated: doc graph edges
     embeddings.json           ← generated: doc embeddings
     example_chunks.json       ← generated: example search chunks
     example_graph.json        ← generated: example graph edges
     example_embeddings.json   ← generated: example embeddings
+    video_chunks.json         ← generated: tutorial chunks
+    video_graph.json          ← generated: tutorial graph edges
+    video_embeddings.json     ← generated: tutorial embeddings
   scripts/
     build-doc-chunks.mjs      ← step 1a: docs → chunks
     build-example-chunks.mjs  ← step 1b: examples → chunks
+    build-video-chunks.mjs    ← step 1c: tutorials → chunks
     build-embeddings.mjs      ← step 2: chunks → embeddings
 ```
 
@@ -38,6 +43,9 @@ Before rebuilding, copy updated source files into the MCP server:
 cp -r ../hise_website_v2/content/v2/* content/
 cp ../hise_website_v2/api_reference.json data/
 
+# Enrichment datasets, including scriptnode_examples.json
+python collect_mcp.py ../hise_mcp_server/data
+
 # Forum examples (after running the validation pipeline)
 cp ../hise_website_v2/hise_project_analysis/HISE/tools/api\ generator/forum-search/output/forum_examples.json data/
 ```
@@ -48,17 +56,19 @@ cp ../hise_website_v2/hise_project_analysis/HISE/tools/api\ generator/forum-sear
 # 1. Build chunks from source data
 node scripts/build-doc-chunks.mjs
 node scripts/build-example-chunks.mjs
+node scripts/build-video-chunks.mjs
 
 # 2. Generate embeddings (takes ~1-2 min per index on CPU)
 node scripts/build-embeddings.mjs --input doc_chunks.json --output embeddings.json
 node scripts/build-embeddings.mjs --input example_chunks.json --output example_embeddings.json
+node scripts/build-embeddings.mjs --input video_chunks.json --output video_embeddings.json
 ```
 
 All output goes to `data/`. The embedding model (`all-MiniLM-L6-v2`, ~80MB) downloads automatically on first run.
 
 ## Rebuild: examples only
 
-When only forum examples or API examples changed (docs unchanged):
+When only forum, API, snippet, or Scriptnode examples changed (docs unchanged):
 
 ```bash
 node scripts/build-example-chunks.mjs

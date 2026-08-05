@@ -3,7 +3,7 @@
     "analyse.fft": {
       "factoryPath": "analyse.fft",
       "factory": "analyse",
-      "title": "FFT",
+      "title": "analyse.fft",
       "description": "A spectrum analyser that displays the frequency content of the audio signal as an FFT graph.",
       "polyphonic": false,
       "tags": [
@@ -53,7 +53,7 @@
     "analyse.goniometer": {
       "factoryPath": "analyse.goniometer",
       "factory": "analyse",
-      "title": "Goniometer",
+      "title": "analyse.goniometer",
       "description": "A stereo correlation display that plots left and right channels as an X-Y Lissajous figure.",
       "polyphonic": false,
       "tags": [
@@ -98,7 +98,7 @@
     "analyse.oscilloscope": {
       "factoryPath": "analyse.oscilloscope",
       "factory": "analyse",
-      "title": "Oscilloscope",
+      "title": "analyse.oscilloscope",
       "description": "A waveform display with optional MIDI note-on synchronisation that locks the view to a single cycle.",
       "polyphonic": false,
       "tags": [
@@ -142,7 +142,7 @@
     "analyse.specs": {
       "factoryPath": "analyse.specs",
       "factory": "analyse",
-      "title": "Specs",
+      "title": "analyse.specs",
       "description": "A debug tool that displays the current processing context: sample rate, block size, channel count, and MIDI/polyphony status.",
       "polyphonic": false,
       "tags": [
@@ -151,7 +151,7 @@
         "debug",
         "utility"
       ],
-      "llmRef": "analyse.specs\n\nDebug utility that displays processing context information: sample rate, block size, channel count, MIDI processing status, and polyphony state. Audio passes through unmodified. No display buffer, no parameters. Removed during C++ export (UncompileableNode).\n\nSignal flow:\n  audio in -> audio out (unchanged)\n  (side effect: UI displays processing specs)\n\nCPU: negligible, monophonic\n\nParameters:\n  None.\n\nWhen to use:\n  Debugging processing context at any point in the signal chain. Place multiple instances at different locations to compare specs before and after containers that modify block size, channel count, or MIDI routing. Not observed in surveyed networks (design-time only).\n\nCommon mistakes:\n  Removed during C++ export -- design-time tool only.\n\nSee also:\n  [companion] analyse.fft - often used alongside to verify signal context",
+      "llmRef": "analyse.specs\n\nDebug utility that displays processing context information: sample rate, block size, channel count, MIDI processing status, and polyphony state. Audio passes through unmodified. No display buffer, no parameters. Removed during C++ export (UncompileableNode).\n\nSignal flow:\n  audio in -> audio out (unchanged)\n  (side effect: UI displays processing specs)\n\nCPU: negligible, monophonic\n\nParameters:\n  None.\n\nWhen to use:\n  Debugging processing context at any point in the signal chain. Place multiple instances at different locations to compare specs before and after containers that modify block size, channel count, or MIDI routing. Not observed in surveyed networks (design-time only).\n\nCommon mistakes:\n  Removed during C++ export -- design-time tool only.\n\nSee also:\n  [companion] analyse.fft - often used alongside to verify signal context\n  [related] DspNetwork.injectAndProbe - script-side helper for injecting a test signal and probing the resulting buffer report",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": false,
@@ -170,20 +170,25 @@
           "id": "analyse.fft",
           "type": "companion",
           "reason": "Often used alongside specs to verify signal context during development"
+        },
+        {
+          "id": "DspNetwork.injectAndProbe",
+          "type": "related",
+          "reason": "Script-side development helper for injecting a test signal and probing the resulting buffer report"
         }
       ]
     },
     "container.branch": {
       "factoryPath": "container.branch",
       "factory": "container",
-      "title": "Branch",
+      "title": "container.branch",
       "description": "A container that processes only the child selected by its Index parameter.",
       "polyphonic": false,
       "tags": [
         "container",
         "conditional"
       ],
-      "llmRef": "container.branch\n\nA conditional container that processes only one child at a time, selected by the Index parameter. Unselected children are hard-bypassed automatically and remain fully prepared.\n\nSignal flow:\n  input -> child[Index].process -> output\n  (all other children: hard-bypassed)\n\nCPU: negligible (single dispatch), monophonic\n\nParameters:\n  Index: 0 - N-1 (integer, default 0)\n    Selects which child processes audio. Float values are rounded.\n\nWhen to use:\n  Algorithm switching, mode selection, or any case where exactly one of several processing paths should be active. For click-free switching, use template.softbypass_switchN instead.\n  Prefer branch over chaining multiple soft_bypass nodes -- chained soft_bypass produces audio bumps.\n\nCommon mistakes:\n  Index switching is immediate with no crossfade. Use template.softbypass_switchN for click-free transitions.\n  Chaining multiple soft_bypass nodes produces audio bumps. Use branch instead.\n\nSee also:\n  [companion] container.soft_bypass -- click-free switching via soft bypass wrappers",
+      "llmRef": "container.branch\n\nA conditional container that processes only one child at a time, selected by the Index parameter. Unselected children are hard-bypassed automatically and remain fully prepared.\n\nSignal flow:\n  input -> child[Index].process -> output\n  (all other children: hard-bypassed)\n\nCPU: negligible (single dispatch), monophonic\n\nParameters:\n  Index: 0 - N-1 (integer, default 0)\n    Selects which child processes audio. Float values are rounded.\n\nWhen to use:\n  Algorithm switching, mode selection, or any case where exactly one of several processing paths should be active. For click-free switching, use template.softbypass_switchN instead.\n  Prefer branch over chaining multiple soft_bypass nodes -- chained soft_bypass produces audio bumps.\n  The editor highlights the wire leading to the active child.\n\nCommon mistakes:\n  Index switching is immediate with no crossfade. Use template.softbypass_switchN for click-free transitions.\n  Chaining multiple soft_bypass nodes produces audio bumps. Use branch instead.\n\nSee also:\n  [companion] container.soft_bypass -- click-free switching via soft bypass wrappers",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": false,
@@ -199,8 +204,8 @@
         {
           "title": "Using chained soft_bypass nodes instead of branch",
           "wrong": "Chaining two or more container.soft_bypass nodes in series to switch between processing paths",
-          "right": "Use container.branch to select between mutually exclusive paths. It is cleaner, avoids audio bumps, and scales to any number of alternatives.",
-          "explanation": "Chaining multiple soft_bypass containers produces audible audio bumps on switch. Branch handles the bypass internally without artefacts."
+          "right": "Use container.branch to select between mutually exclusive paths. It is cleaner and scales to any number of alternatives; use template.softbypass_switchN when switching must be click-free.",
+          "explanation": "Chaining multiple soft_bypass containers can produce audio bumps. Branch avoids that chained topology, but its own Index changes are immediate and do not crossfade."
         }
       ],
       "seeAlso": [
@@ -221,7 +226,7 @@
     "container.chain": {
       "factoryPath": "container.chain",
       "factory": "container",
-      "title": "Chain",
+      "title": "container.chain",
       "description": "A serial container that processes each child node in sequence.",
       "polyphonic": false,
       "tags": [
@@ -263,7 +268,7 @@
     "container.clone": {
       "factoryPath": "container.clone",
       "factory": "container",
-      "title": "Clone",
+      "title": "container.clone",
       "description": "An array of identical child node chains with configurable processing modes.",
       "polyphonic": false,
       "tags": [
@@ -271,7 +276,7 @@
         "parallel",
         "clone"
       ],
-      "llmRef": "container.clone\n\nAn array of identical child node chains processed in one of three modes: Serial, Parallel, or Copy. The number of active clones is controlled at runtime. All clones share the same structure and synchronised parameters.\n\nSignal flow (Copy mode, default):\n  input --copy--> clone[0] --\\\n  input --copy--> clone[1] ---+--> sum --> output\n  input --copy--> clone[N] --/\n\nSignal flow (Serial mode):\n  input -> clone[0] -> clone[1] -> ... -> clone[N] -> output\n\nSignal flow (Parallel mode):\n  input --passthrough--> output\n  silence -> clone[0] --add--> output\n  silence -> clone[1] --add--> output\n\nCPU: low + linear per active clone, monophonic\n\nParameters:\n  NumClones: 1 - N (integer, default 1)\n    Number of active clones. Inactive clones are bypassed.\n  SplitSignal: Serial / Parallel / Copy (default Copy)\n    Selects the processing mode.\n\nWhen to use:\n  Additive synthesis, unison voices, cascading filters, feedback delay networks, multistage effects (phasers). Any application requiring duplicated processing paths with per-clone parameter control.\n\nKey details:\n  NumClones is a compile-time max. The parameter only caps the active count at runtime.\n  For complex payloads, build the DSP chain as a separate compiled network first.\n  NumClones must be the first macro control with matching ranges on all connected nodes.\n  clone_forward connects to the first node only; one clone_forward per target container.\n\nCommon mistakes:\n  Clone parameters are synced. Use control.clone_cable or control.clone_pack for per-clone values.\n  Clone does not support frame-based processing. Keep it outside frame containers.\n  NumClones not set as first macro control causes silent failures or compile errors.\n\nSee also:\n  [alternative] container.split -- parallel processing with different children",
+      "llmRef": "container.clone\n\nAn array of identical child node chains processed in one of three modes: Serial, Parallel, or Copy. The number of active clones is controlled at runtime. All clones share the same structure and synchronised parameters.\n\nSignal flow (Copy mode, default):\n  input --copy--> clone[0] --\\\n  input --copy--> clone[1] ---+--> sum --> output\n  input --copy--> clone[N] --/\n\nSignal flow (Serial mode):\n  input -> clone[0] -> clone[1] -> ... -> clone[N] -> output\n\nSignal flow (Parallel mode):\n  input --passthrough--> output\n  silence -> clone[0] --add--> output\n  silence -> clone[1] --add--> output\n\nCPU: low + linear per active clone, monophonic\n\nParameters:\n  NumClones: 1 - N (integer, default 1)\n    Number of active clones. Inactive clones are bypassed.\n  SplitSignal: Serial / Parallel / Copy (default Copy)\n    Selects the processing mode.\n\nWhen to use:\n  Additive synthesis, unison voices, cascading filters, feedback delay networks, multistage effects (phasers). Any application requiring duplicated processing paths with per-clone parameter control.\n\nKey details:\n  A clone container can contain up to 128 clones. NumClones only selects how many configured clones are active at runtime.\n  Parameters and complex data are synchronised between clone siblings.\n  Compiled networks forward external data assignments to every clone.\n  The toolbar can show or hide clones, delete every clone except the first, or rebuild up to 128 clones by duplicating the first.\n  For complex payloads, build the DSP chain as a separate compiled network first.\n  NumClones must be the first macro control with matching ranges on all connected nodes.\n  clone_forward connects to the first node only; one clone_forward per target container.\n\nCommon mistakes:\n  Clone parameters are synced. Use control.clone_cable or control.clone_pack for per-clone values.\n  Clone does not support frame-based processing. Keep it outside frame containers.\n  NumClones not set as first macro control causes silent failures or compile errors.\n\nSee also:\n  [alternative] container.split -- parallel processing with different children",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": false,
@@ -331,7 +336,7 @@
     "container.dynamic_blocksize": {
       "factoryPath": "container.dynamic_blocksize",
       "factory": "container",
-      "title": "dynamic_blocksize",
+      "title": "container.dynamic_blocksize",
       "description": "Processes children with a parameter-controlled block size, allowing runtime quality settings down to per-sample frame processing.",
       "polyphonic": false,
       "tags": [
@@ -383,7 +388,7 @@
     "container.fix128_block": {
       "factoryPath": "container.fix128_block",
       "factory": "container",
-      "title": "fix128_block",
+      "title": "container.fix128_block",
       "description": "Splits the audio buffer into chunks of 128 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -413,7 +418,7 @@
     "container.fix16_block": {
       "factoryPath": "container.fix16_block",
       "factory": "container",
-      "title": "fix16_block",
+      "title": "container.fix16_block",
       "description": "Splits the audio buffer into chunks of 16 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -443,7 +448,7 @@
     "container.fix256_block": {
       "factoryPath": "container.fix256_block",
       "factory": "container",
-      "title": "fix256_block",
+      "title": "container.fix256_block",
       "description": "Splits the audio buffer into chunks of 256 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -473,7 +478,7 @@
     "container.fix32_block": {
       "factoryPath": "container.fix32_block",
       "factory": "container",
-      "title": "fix32_block",
+      "title": "container.fix32_block",
       "description": "Splits the audio buffer into chunks of 32 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -503,7 +508,7 @@
     "container.fix64_block": {
       "factoryPath": "container.fix64_block",
       "factory": "container",
-      "title": "fix64_block",
+      "title": "container.fix64_block",
       "description": "Splits the audio buffer into chunks of 64 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -533,7 +538,7 @@
     "container.fix8_block": {
       "factoryPath": "container.fix8_block",
       "factory": "container",
-      "title": "fix8_block",
+      "title": "container.fix8_block",
       "description": "Splits the audio buffer into chunks of 8 samples for higher modulation update rates.",
       "polyphonic": false,
       "tags": [
@@ -571,7 +576,7 @@
     "container.fix_blockx": {
       "factoryPath": "container.fix_blockx",
       "factory": "container",
-      "title": "fix_blockx",
+      "title": "container.fix_blockx",
       "description": "Splits the audio buffer into chunks with a property-selectable block size for evaluating different tradeoffs during development.",
       "polyphonic": false,
       "tags": [
@@ -610,7 +615,7 @@
     "container.frame1_block": {
       "factoryPath": "container.frame1_block",
       "factory": "container",
-      "title": "frame1_block",
+      "title": "container.frame1_block",
       "description": "Enables per-sample processing for child nodes on a single mono channel.",
       "polyphonic": false,
       "tags": [
@@ -654,7 +659,7 @@
     "container.frame2_block": {
       "factoryPath": "container.frame2_block",
       "factory": "container",
-      "title": "frame2_block",
+      "title": "container.frame2_block",
       "description": "Enables per-sample processing for child nodes on two stereo channels.",
       "polyphonic": false,
       "tags": [
@@ -690,7 +695,7 @@
     "container.framex_block": {
       "factoryPath": "container.framex_block",
       "factory": "container",
-      "title": "framex_block",
+      "title": "container.framex_block",
       "description": "Enables per-sample processing for child nodes with a dynamic channel count that adapts to the network context.",
       "polyphonic": false,
       "tags": [
@@ -721,7 +726,7 @@
     "container.midichain": {
       "factoryPath": "container.midichain",
       "factory": "container",
-      "title": "MIDI Chain",
+      "title": "container.midichain",
       "description": "A serial container that enables sample-accurate MIDI event processing for its children.",
       "polyphonic": false,
       "tags": [
@@ -757,7 +762,7 @@
     "container.modchain": {
       "factoryPath": "container.modchain",
       "factory": "container",
-      "title": "Modulation Chain",
+      "title": "container.modchain",
       "description": "A serial container that processes children at control rate without affecting the parent audio signal.",
       "polyphonic": false,
       "tags": [
@@ -809,7 +814,7 @@
     "container.multi": {
       "factoryPath": "container.multi",
       "factory": "container",
-      "title": "Multi",
+      "title": "container.multi",
       "description": "A parallel container that assigns each child a different slice of the audio channels.",
       "polyphonic": false,
       "tags": [
@@ -847,7 +852,7 @@
     "container.no_midi": {
       "factoryPath": "container.no_midi",
       "factory": "container",
-      "title": "No MIDI",
+      "title": "container.no_midi",
       "description": "A serial container that blocks all MIDI events from reaching its children.",
       "polyphonic": false,
       "tags": [
@@ -872,7 +877,7 @@
     "container.offline": {
       "factoryPath": "container.offline",
       "factory": "container",
-      "title": "Offline",
+      "title": "container.offline",
       "description": "A container for offline processing that skips the realtime audio callback.",
       "polyphonic": false,
       "tags": [
@@ -890,7 +895,7 @@
     "container.oversample": {
       "factoryPath": "container.oversample",
       "factory": "container",
-      "title": "Oversample",
+      "title": "container.oversample",
       "description": "Upsamples the audio signal by a selectable factor, processes child nodes at the higher rate, then downsamples back.",
       "polyphonic": false,
       "tags": [
@@ -978,7 +983,7 @@
     "container.oversample16x": {
       "factoryPath": "container.oversample16x",
       "factory": "container",
-      "title": "Oversample 16x",
+      "title": "container.oversample16x",
       "description": "Upsamples the audio signal by the maximum fixed factor of 16, processes child nodes at the higher rate, then downsamples back.",
       "polyphonic": false,
       "tags": [
@@ -1051,7 +1056,7 @@
     "container.oversample2x": {
       "factoryPath": "container.oversample2x",
       "factory": "container",
-      "title": "Oversample 2x",
+      "title": "container.oversample2x",
       "description": "Upsamples the audio signal by a fixed factor of 2, processes child nodes at the higher rate, then downsamples back.",
       "polyphonic": false,
       "tags": [
@@ -1113,7 +1118,7 @@
     "container.oversample4x": {
       "factoryPath": "container.oversample4x",
       "factory": "container",
-      "title": "Oversample 4x",
+      "title": "container.oversample4x",
       "description": "Upsamples the audio signal by a fixed factor of 4, processes child nodes at the higher rate, then downsamples back.",
       "polyphonic": false,
       "tags": [
@@ -1180,7 +1185,7 @@
     "container.oversample8x": {
       "factoryPath": "container.oversample8x",
       "factory": "container",
-      "title": "Oversample 8x",
+      "title": "container.oversample8x",
       "description": "Upsamples the audio signal by a fixed factor of 8, processes child nodes at the higher rate, then downsamples back.",
       "polyphonic": false,
       "tags": [
@@ -1247,7 +1252,7 @@
     "container.repitch": {
       "factoryPath": "container.repitch",
       "factory": "container",
-      "title": "Repitch",
+      "title": "container.repitch",
       "description": "A serial container that resamples audio before and after child processing to change the effective pitch.",
       "polyphonic": false,
       "tags": [
@@ -1291,7 +1296,7 @@
     "container.sidechain": {
       "factoryPath": "container.sidechain",
       "factory": "container",
-      "title": "Sidechain",
+      "title": "container.sidechain",
       "description": "A serial container that doubles the channel count by adding empty sidechain channels.",
       "polyphonic": false,
       "tags": [
@@ -1331,7 +1336,7 @@
     "container.soft_bypass": {
       "factoryPath": "container.soft_bypass",
       "factory": "container",
-      "title": "Soft Bypass",
+      "title": "container.soft_bypass",
       "description": "A serial container with smoothed bypass crossfading to prevent clicks.",
       "polyphonic": false,
       "tags": [
@@ -1375,7 +1380,7 @@
     "container.split": {
       "factoryPath": "container.split",
       "factory": "container",
-      "title": "Split",
+      "title": "container.split",
       "description": "A parallel container that copies the input to each child and sums their outputs.",
       "polyphonic": false,
       "tags": [
@@ -1423,7 +1428,7 @@
     "control.bang": {
       "factoryPath": "control.bang",
       "factory": "control",
-      "title": "Bang",
+      "title": "control.bang",
       "description": "Sends a stored value to the modulation output when triggered by a rising edge on the Bang parameter.",
       "polyphonic": true,
       "tags": [
@@ -1473,7 +1478,7 @@
     "control.bipolar": {
       "factoryPath": "control.bipolar",
       "factory": "control",
-      "title": "Bipolar",
+      "title": "control.bipolar",
       "description": "Creates a bipolar modulation signal centred around the midpoint from a normalised 0-1 input.",
       "polyphonic": true,
       "tags": [
@@ -1536,7 +1541,7 @@
     "control.blend": {
       "factoryPath": "control.blend",
       "factory": "control",
-      "title": "Blend",
+      "title": "control.blend",
       "description": "Linearly interpolates between two input values based on the Alpha parameter.",
       "polyphonic": true,
       "tags": [
@@ -1583,7 +1588,7 @@
     "control.branch_cable": {
       "factoryPath": "control.branch_cable",
       "factory": "control",
-      "title": "Branch Cable",
+      "title": "control.branch_cable",
       "description": "Routes a single input value to one of multiple output slots selected by an index parameter.",
       "polyphonic": true,
       "tags": [
@@ -1633,7 +1638,7 @@
     "control.cable_expr": {
       "factoryPath": "control.cable_expr",
       "factory": "control",
-      "title": "Cable Expression",
+      "title": "control.cable_expr",
       "description": "Transforms a control value using a custom SNEX expression before forwarding it to the modulation output.",
       "polyphonic": false,
       "tags": [
@@ -1642,7 +1647,7 @@
         "snex",
         "transform"
       ],
-      "llmRef": "control.cable_expr\n\nTransforms a control value using a custom SNEX expression. The expression receives the input as the `input` variable and can use Math.* functions. Output is unnormalised.\n\nSignal flow:\n  Control node -- no audio processing\n  Value param -> SNEX expression evaluation -> modulation output\n\nCPU: negligible, monophonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 0.0). Input passed as `input` to the expression. Unnormalised input.\n\nProperties:\n  Code: SNEX expression string (default \"input\" -- passthrough).\n  Debug: Boolean. Enables debug output.\n\nWhen to use:\n  Custom mathematical transformations of control signals. 57 instances across surveyed projects (rank 5). The most frequently used cable transform node. Use for scaling, clamping, or any formula that cannot be expressed with built-in nodes.\n\nCommon mistakes:\n  Requires C++ compilation for exported plugins -- the JIT engine is not available at runtime.\n\nSee also:\n  [alternative] control.cable_table -- visual lookup table, no compilation needed\n  [disambiguation] control.pma -- fixed multiply-add transform",
+      "llmRef": "control.cable_expr\n\nTransforms a control value using a custom SNEX expression. The expression receives the input as the `input` variable and can use Math.* functions. Output is unnormalised.\n\nSignal flow:\n  Control node -- no audio processing\n  Value param -> SNEX expression evaluation -> modulation output\n\nCPU: negligible, monophonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 0.0). Input passed as `input` to the expression. Unnormalised input.\n\nProperties:\n  Code: SNEX expression string (default \"input\" -- passthrough).\n  Debug: Boolean. Enables debug output.\n\nWhen to use:\n  Custom mathematical transformations of control signals. 57 instances across surveyed projects (rank 5). The most frequently used cable transform node. Use for scaling, clamping, or any formula that cannot be expressed with built-in nodes.\n\nCommon mistakes:\n  Requires C++ compilation for exported plugins -- the JIT engine is not available at runtime.\n  Requires a compile-enabled network. In CLI workflows, run `hise-cli dsp status --module <ModuleId> --autofix --agent` if status reports the expression-node compilation flag error, then verify with plain `dsp status` before tracing.\n\nSee also:\n  [alternative] control.cable_table -- visual lookup table, no compilation needed\n  [disambiguation] control.pma -- fixed multiply-add transform",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": false,
@@ -1679,7 +1684,7 @@
     "control.cable_pack": {
       "factoryPath": "control.cable_pack",
       "factory": "control",
-      "title": "Cable Pack",
+      "title": "control.cable_pack",
       "description": "Reshapes a control signal using a slider pack lookup with discrete steps.",
       "polyphonic": false,
       "tags": [
@@ -1725,7 +1730,7 @@
     "control.cable_table": {
       "factoryPath": "control.cable_table",
       "factory": "control",
-      "title": "Cable Table",
+      "title": "control.cable_table",
       "description": "Reshapes a control signal using a visual lookup table with linear interpolation.",
       "polyphonic": false,
       "tags": [
@@ -1763,7 +1768,7 @@
     "control.change": {
       "factoryPath": "control.change",
       "factory": "control",
-      "title": "Change",
+      "title": "control.change",
       "description": "Filters out repeated values, only forwarding the signal when it actually changes.",
       "polyphonic": true,
       "tags": [
@@ -1805,7 +1810,7 @@
     "control.clone_cable": {
       "factoryPath": "control.clone_cable",
       "factory": "control",
-      "title": "Clone Cable",
+      "title": "control.clone_cable",
       "description": "Distributes different values to each clone using a selectable distribution algorithm.",
       "polyphonic": false,
       "tags": [
@@ -1876,7 +1881,7 @@
     "control.clone_forward": {
       "factoryPath": "control.clone_forward",
       "factory": "control",
-      "title": "Clone Forward",
+      "title": "control.clone_forward",
       "description": "Forwards the same unscaled value to all clones in a clone container.",
       "polyphonic": false,
       "tags": [
@@ -1936,7 +1941,7 @@
     "control.clone_pack": {
       "factoryPath": "control.clone_pack",
       "factory": "control",
-      "title": "Clone Pack",
+      "title": "control.clone_pack",
       "description": "Sends per-clone values from a slider pack, scaled by a global multiplier.",
       "polyphonic": false,
       "tags": [
@@ -2002,7 +2007,7 @@
     "control.compare": {
       "factoryPath": "control.compare",
       "factory": "control",
-      "title": "Compare",
+      "title": "control.compare",
       "description": "Compares two input signals using a selectable comparator and outputs either a binary 1/0 result or the min/max of the two values.",
       "polyphonic": true,
       "tags": [
@@ -2055,7 +2060,7 @@
     "control.converter": {
       "factoryPath": "control.converter",
       "factory": "control",
-      "title": "Converter",
+      "title": "control.converter",
       "description": "Converts a control value between unit domains using one of 14 predefined conversion formulas.",
       "polyphonic": false,
       "tags": [
@@ -2096,7 +2101,7 @@
     "control.delay_cable": {
       "factoryPath": "control.delay_cable",
       "factory": "control",
-      "title": "Delay Cable",
+      "title": "control.delay_cable",
       "description": "Delays a control signal by a configurable number of samples before forwarding it to the modulation output.",
       "polyphonic": true,
       "tags": [
@@ -2147,7 +2152,7 @@
     "control.file_analyser": {
       "factoryPath": "control.file_analyser",
       "factory": "control",
-      "title": "File Analyser",
+      "title": "control.file_analyser",
       "description": "Extracts pitch, duration, or peak level from an audio file and sends the result as a modulation signal when the file is loaded.",
       "polyphonic": false,
       "tags": [
@@ -2173,7 +2178,7 @@
     "control.input_toggle": {
       "factoryPath": "control.input_toggle",
       "factory": "control",
-      "title": "Input Toggle",
+      "title": "control.input_toggle",
       "description": "Switches between two input values and forwards the selected one to the modulation output.",
       "polyphonic": true,
       "tags": [
@@ -2228,7 +2233,7 @@
     "control.intensity": {
       "factoryPath": "control.intensity",
       "factory": "control",
-      "title": "Intensity",
+      "title": "control.intensity",
       "description": "Applies the HISE gain modulation intensity formula to scale how much a modulation signal affects the output.",
       "polyphonic": true,
       "tags": [
@@ -2280,7 +2285,7 @@
     "control.locked_mod": {
       "factoryPath": "control.locked_mod",
       "factory": "control",
-      "title": "Locked Mod",
+      "title": "control.locked_mod",
       "description": "Adds a normalised modulation output to the parent container when it is locked, exposing internal modulation as a draggable source.",
       "polyphonic": false,
       "tags": [
@@ -2320,7 +2325,7 @@
     "control.locked_mod_unscaled": {
       "factoryPath": "control.locked_mod_unscaled",
       "factory": "control",
-      "title": "Locked Mod Unscaled",
+      "title": "control.locked_mod_unscaled",
       "description": "Adds an unnormalised modulation output to the parent container when it is locked, forwarding raw values without range conversion.",
       "polyphonic": false,
       "tags": [
@@ -2361,7 +2366,7 @@
     "control.logic_op": {
       "factoryPath": "control.logic_op",
       "factory": "control",
-      "title": "Logic Op",
+      "title": "control.logic_op",
       "description": "Combines two binary input signals using a selectable logic operator (AND, OR, XOR) and outputs 1.0 or 0.0.",
       "polyphonic": true,
       "tags": [
@@ -2415,7 +2420,7 @@
     "control.midi": {
       "factoryPath": "control.midi",
       "factory": "control",
-      "title": "MIDI",
+      "title": "control.midi",
       "description": "Converts incoming MIDI events into a normalised modulation signal based on a selectable mode (gate, velocity, note number, frequency, or random).",
       "polyphonic": false,
       "tags": [
@@ -2448,7 +2453,7 @@
     "control.midi_cc": {
       "factoryPath": "control.midi_cc",
       "factory": "control",
-      "title": "MIDI CC",
+      "title": "control.midi_cc",
       "description": "Sends a normalised modulation signal in response to a specific MIDI CC message, pitch bend, aftertouch, or note event.",
       "polyphonic": false,
       "tags": [
@@ -2494,7 +2499,7 @@
     "control.minmax": {
       "factoryPath": "control.minmax",
       "factory": "control",
-      "title": "MinMax",
+      "title": "control.minmax",
       "description": "Maps a normalised 0-1 input to a custom output range with configurable skew, step quantisation, and polarity inversion.",
       "polyphonic": true,
       "tags": [
@@ -2562,7 +2567,7 @@
     "control.normaliser": {
       "factoryPath": "control.normaliser",
       "factory": "control",
-      "title": "Normaliser",
+      "title": "control.normaliser",
       "description": "Passes an unscaled input value through as a normalised modulation signal, allowing the connection system to apply the target's range.",
       "polyphonic": false,
       "tags": [
@@ -2609,7 +2614,7 @@
     "control.pack2_writer": {
       "factoryPath": "control.pack2_writer",
       "factory": "control",
-      "title": "Pack2 Writer",
+      "title": "control.pack2_writer",
       "description": "Writes two parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2658,7 +2663,7 @@
     "control.pack3_writer": {
       "factoryPath": "control.pack3_writer",
       "factory": "control",
-      "title": "Pack3 Writer",
+      "title": "control.pack3_writer",
       "description": "Writes three parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2709,7 +2714,7 @@
     "control.pack4_writer": {
       "factoryPath": "control.pack4_writer",
       "factory": "control",
-      "title": "Pack4 Writer",
+      "title": "control.pack4_writer",
       "description": "Writes four parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2765,7 +2770,7 @@
     "control.pack5_writer": {
       "factoryPath": "control.pack5_writer",
       "factory": "control",
-      "title": "Pack5 Writer",
+      "title": "control.pack5_writer",
       "description": "Writes five parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2826,7 +2831,7 @@
     "control.pack6_writer": {
       "factoryPath": "control.pack6_writer",
       "factory": "control",
-      "title": "Pack6 Writer",
+      "title": "control.pack6_writer",
       "description": "Writes six parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2892,7 +2897,7 @@
     "control.pack7_writer": {
       "factoryPath": "control.pack7_writer",
       "factory": "control",
-      "title": "Pack7 Writer",
+      "title": "control.pack7_writer",
       "description": "Writes seven parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -2963,7 +2968,7 @@
     "control.pack8_writer": {
       "factoryPath": "control.pack8_writer",
       "factory": "control",
-      "title": "Pack8 Writer",
+      "title": "control.pack8_writer",
       "description": "Writes eight parameter values into a slider pack.",
       "polyphonic": false,
       "tags": [
@@ -3039,7 +3044,7 @@
     "control.pack_resizer": {
       "factoryPath": "control.pack_resizer",
       "factory": "control",
-      "title": "Pack Resizer",
+      "title": "control.pack_resizer",
       "description": "Dynamically resizes a connected slider pack at runtime.",
       "polyphonic": false,
       "tags": [
@@ -3083,7 +3088,7 @@
     "control.pma": {
       "factoryPath": "control.pma",
       "factory": "control",
-      "title": "PMA",
+      "title": "control.pma",
       "description": "Scales and offsets a normalised modulation signal using a multiply-add formula with clamped output.",
       "polyphonic": true,
       "tags": [
@@ -3146,7 +3151,7 @@
     "control.pma_unscaled": {
       "factoryPath": "control.pma_unscaled",
       "factory": "control",
-      "title": "PMA Unscaled",
+      "title": "control.pma_unscaled",
       "description": "Scales and offsets a raw modulation signal without clamping or range conversion.",
       "polyphonic": true,
       "tags": [
@@ -3204,7 +3209,7 @@
     "control.ppq": {
       "factoryPath": "control.ppq",
       "factory": "control",
-      "title": "PPQ",
+      "title": "control.ppq",
       "description": "Sends a normalised modulation signal representing the host playback position within a musical time window when transport starts or the position jumps.",
       "polyphonic": true,
       "tags": [
@@ -3255,7 +3260,7 @@
     "control.random": {
       "factoryPath": "control.random",
       "factory": "control",
-      "title": "Random",
+      "title": "control.random",
       "description": "Generates a random value between 0.0 and 1.0 each time the Value parameter changes.",
       "polyphonic": false,
       "tags": [
@@ -3295,7 +3300,7 @@
     "control.resetter": {
       "factoryPath": "control.resetter",
       "factory": "control",
-      "title": "Resetter",
+      "title": "control.resetter",
       "description": "Sends a 0-then-1 impulse pair to the modulation output on any input change, used to re-trigger gate-like parameters.",
       "polyphonic": false,
       "tags": [
@@ -3336,7 +3341,7 @@
     "control.sliderbank": {
       "factoryPath": "control.sliderbank",
       "factory": "control",
-      "title": "Slider Bank",
+      "title": "control.sliderbank",
       "description": "Scales an input value by a slider pack and distributes the results to multiple output targets.",
       "polyphonic": false,
       "tags": [
@@ -3381,7 +3386,7 @@
     "control.smoothed_parameter": {
       "factoryPath": "control.smoothed_parameter",
       "factory": "control",
-      "title": "Smoothed Parameter",
+      "title": "control.smoothed_parameter",
       "description": "Smoothes an incoming parameter value to prevent abrupt changes, with selectable smoothing modes.",
       "polyphonic": true,
       "tags": [
@@ -3442,7 +3447,7 @@
     "control.smoothed_parameter_unscaled": {
       "factoryPath": "control.smoothed_parameter_unscaled",
       "factory": "control",
-      "title": "Smoothed Parameter (Unscaled)",
+      "title": "control.smoothed_parameter_unscaled",
       "description": "Smoothes an incoming parameter value with unnormalised output, sending the raw value to targets.",
       "polyphonic": true,
       "tags": [
@@ -3498,7 +3503,7 @@
     "control.tempo_sync": {
       "factoryPath": "control.tempo_sync",
       "factory": "control",
-      "title": "Tempo Sync",
+      "title": "control.tempo_sync",
       "description": "Converts a musical tempo value to a duration in milliseconds and sends it as a modulation signal.",
       "polyphonic": true,
       "tags": [
@@ -3570,7 +3575,7 @@
     "control.timer": {
       "factoryPath": "control.timer",
       "factory": "control",
-      "title": "Timer",
+      "title": "control.timer",
       "description": "Generates a periodic modulation signal at a configurable interval, with selectable output modes.",
       "polyphonic": true,
       "tags": [
@@ -3627,7 +3632,7 @@
     "control.transport": {
       "factoryPath": "control.transport",
       "factory": "control",
-      "title": "Transport",
+      "title": "control.transport",
       "description": "Sends a modulation signal when the DAW transport state changes between playing and stopped.",
       "polyphonic": true,
       "tags": [
@@ -3663,7 +3668,7 @@
     "control.unscaler": {
       "factoryPath": "control.unscaler",
       "factory": "control",
-      "title": "Unscaler",
+      "title": "control.unscaler",
       "description": "Forwards a parameter value as an unnormalised modulation signal, bypassing the target's range conversion.",
       "polyphonic": false,
       "tags": [
@@ -3700,7 +3705,7 @@
     "control.voice_bang": {
       "factoryPath": "control.voice_bang",
       "factory": "control",
-      "title": "Voice Bang",
+      "title": "control.voice_bang",
       "description": "Sends the current parameter value as a modulation signal whenever a note-on message is received.",
       "polyphonic": false,
       "tags": [
@@ -3741,7 +3746,7 @@
     "control.xfader": {
       "factoryPath": "control.xfader",
       "factory": "control",
-      "title": "Crossfader",
+      "title": "control.xfader",
       "description": "Distributes fade coefficients across multiple outputs based on a single crossfade position and a selectable fade curve.",
       "polyphonic": false,
       "tags": [
@@ -3787,7 +3792,7 @@
     "control.xy": {
       "factoryPath": "control.xy",
       "factory": "control",
-      "title": "XY Controller",
+      "title": "control.xy",
       "description": "A two-axis controller that routes X and Y values to separate output targets.",
       "polyphonic": false,
       "tags": [
@@ -3825,7 +3830,7 @@
     "core.clock_ramp": {
       "factoryPath": "core.clock_ramp",
       "factory": "core",
-      "title": "Clock Ramp",
+      "title": "core.clock_ramp",
       "description": "A tempo-synced ramp generator that locks to the HISE/DAW clock and outputs a modulation signal.",
       "polyphonic": true,
       "tags": [
@@ -3887,7 +3892,7 @@
     "core.extra_mod": {
       "factoryPath": "core.extra_mod",
       "factory": "core",
-      "title": "Extra Mod",
+      "title": "core.extra_mod",
       "description": "Picks up a modulation signal from an extra modulation chain of the parent module.",
       "polyphonic": true,
       "tags": [
@@ -3948,7 +3953,7 @@
     "core.faust": {
       "factoryPath": "core.faust",
       "factory": "core",
-      "title": "Faust",
+      "title": "core.faust",
       "description": "A node that compiles and runs Faust DSP code with automatic parameter and modulation output mapping.",
       "polyphonic": true,
       "tags": [
@@ -3999,7 +4004,7 @@
     "core.file_player": {
       "factoryPath": "core.file_player",
       "factory": "core",
-      "title": "File Player",
+      "title": "core.file_player",
       "description": "A polyphonic file player with three playback modes: static, signal-driven, and MIDI pitch-tracked.",
       "polyphonic": true,
       "tags": [
@@ -4089,7 +4094,7 @@
     "core.fix_delay": {
       "factoryPath": "core.fix_delay",
       "factory": "core",
-      "title": "Fix Delay",
+      "title": "core.fix_delay",
       "description": "A non-interpolating delay line with crossfade smoothing for delay time changes.",
       "polyphonic": false,
       "tags": [
@@ -4146,7 +4151,7 @@
     "core.fm": {
       "factoryPath": "core.fm",
       "factory": "core",
-      "title": "FM",
+      "title": "core.fm",
       "description": "An FM operator that reads the input signal as a modulator and outputs a sine carrier.",
       "polyphonic": true,
       "tags": [
@@ -4219,7 +4224,7 @@
     "core.gain": {
       "factoryPath": "core.gain",
       "factory": "core",
-      "title": "Gain",
+      "title": "core.gain",
       "description": "A gain module with decibel range and smoothed parameter changes.",
       "polyphonic": true,
       "tags": [
@@ -4287,7 +4292,7 @@
     "core.global_mod": {
       "factoryPath": "core.global_mod",
       "factory": "core",
-      "title": "Global Mod",
+      "title": "core.global_mod",
       "description": "Receives a modulation signal from the GlobalModulatorContainer and exposes it inside scriptnode.",
       "polyphonic": true,
       "tags": [
@@ -4358,7 +4363,7 @@
     "core.granulator": {
       "factoryPath": "core.granulator",
       "factory": "core",
-      "title": "Granulator",
+      "title": "core.granulator",
       "description": "A granular synthesiser that generates overlapping grains from an audio file with controls for position, pitch, density, spread, and detune.",
       "polyphonic": false,
       "tags": [
@@ -4458,7 +4463,7 @@
     "core.matrix_mod": {
       "factoryPath": "core.matrix_mod",
       "factory": "core",
-      "title": "Matrix Mod",
+      "title": "core.matrix_mod",
       "description": "A dual-source modulation bridge with modulation matrix features for combining two global modulators.",
       "polyphonic": true,
       "tags": [
@@ -4541,7 +4546,7 @@
     "core.mono2stereo": {
       "factoryPath": "core.mono2stereo",
       "factory": "core",
-      "title": "Mono2Stereo",
+      "title": "core.mono2stereo",
       "description": "Copies the left channel to the right channel to create a dual-mono stereo signal.",
       "polyphonic": false,
       "tags": [
@@ -4569,7 +4574,7 @@
     "core.oscillator": {
       "factoryPath": "core.oscillator",
       "factory": "core",
-      "title": "Oscillator",
+      "title": "core.oscillator",
       "description": "A polyphonic tone generator with five waveform modes that adds its output to the existing signal.",
       "polyphonic": true,
       "tags": [
@@ -4578,7 +4583,7 @@
         "synthesis",
         "waveform"
       ],
-      "llmRef": "core.oscillator\n\nPolyphonic tone generator with five waveform modes (Sine, Saw, Triangle, Square, Noise). Adds its output to the existing audio signal. Responds to MIDI note-on for pitch tracking.\n\nSignal flow:\n  [parameters] -> waveform generator -> output += waveform * Gain\n\nCPU: low, polyphonic\n\nParameters:\n  Mode (0-4, default 0/Sine): Selects waveform - Sine, Saw, Triangle, Square, Noise\n  Frequency (20-20000 Hz, default 220): Base frequency, overridden by MIDI note-on\n  Freq Ratio (1-16, default 1): Integer pitch multiplier applied to Frequency\n  Gate (Off/On, default On): Enables output; rising edge resets phase\n  Phase (0-100%, default 0%): Waveform phase offset\n  Gain (0.0-1.0, default 1.0): Output amplitude\n\nWhen to use:\n  - Primary tone generator for synthesiser patches\n  - Stacking multiple oscillators for layered sounds\n  - Use core.phasor instead when you need a raw ramp for waveshaping\n\nCommon mistakes:\n  - Output is additive, not replacing - use math.clear before if needed\n  - MIDI controls pitch only, not Gate\n  - MIDI retunes even when used as a fixed source -- wrap in container.no_midi\n  - Mono output -- use container.multi for stereo\n  - Audio-rate modulation needs a frame-processing context for sample accuracy\n\nForum references: tid:13426 (MIDI retune gotcha), tid:11455 (audio-rate AM frame context)\n\nSee also:\n  alternative core.phasor -- naive ramp for waveshaping\n  companion core.fm -- FM operator using signal input as modulator\n  [module] SineSynth -- module-tree sine oscillator with saturation waveshaping",
+      "llmRef": "core.oscillator\n\nPolyphonic tone generator with five waveform modes (Sine, Saw, Triangle, Square, Noise). Adds its output to the existing audio signal. Responds to MIDI note-on for pitch tracking.\n\nSignal flow:\n  [parameters] -> waveform generator -> output += waveform * Gain\n\nCPU: low, polyphonic\n\nParameters:\n  Mode (0-4, default 0/Sine): Selects waveform - Sine, Saw, Triangle, Square, Noise\n  Frequency (20-20000 Hz, default 220): Base frequency, overridden by MIDI note-on\n  Freq Ratio (1-16, default 1): Integer pitch multiplier applied to Frequency\n  Gate (Off/On, default On): Enables output; rising edge resets phase\n  Phase (0-100%, default 0%): Waveform phase offset\n  Gain (0.0-1.0, default 1.0): Output amplitude\n\nWhen to use:\n  - Primary tone generator for synthesiser patches\n  - Stacking multiple oscillators for layered sounds\n  - Use core.phasor instead when you need a raw ramp for waveshaping\n\nCommon mistakes:\n  - Output is additive, not replacing - use math.clear before if needed\n  - MIDI controls pitch only, not Gate\n  - MIDI retunes even when used as a fixed source -- wrap in container.no_midi\n  - One oscillator produces duplicated stereo, not independent left/right content -- use container.multi for separate per-channel oscillators\n  - Audio-rate modulation needs a frame-processing context for sample accuracy\n\nForum references: tid:13426 (MIDI retune gotcha), tid:11455 (audio-rate AM frame context)\n\nSee also:\n  alternative core.phasor -- naive ramp for waveshaping\n  companion core.fm -- FM operator using signal input as modulator\n  [module] SineSynth -- module-tree sine oscillator with saturation waveshaping",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": true,
@@ -4610,10 +4615,10 @@
           "explanation": "The oscillator always responds to MIDI note-on for pitch. If you need a fixed frequency (e.g. as an LFO or modulation source), isolate it from the MIDI stream."
         },
         {
-          "title": "Output is mono -- stereo requires container.multi",
-          "wrong": "Expecting stereo output from a single core.oscillator in a stereo network",
-          "right": "Place two oscillator instances inside a container.multi to produce independent left and right channels.",
-          "explanation": "The oscillator processes a single channel. In a stereo network it only writes to channel 0. Use container.multi to split processing per channel."
+          "title": "One oscillator does not create independent stereo",
+          "wrong": "Using a single core.oscillator in a stereo network and expecting different left and right channel content",
+          "right": "Use one oscillator for duplicated stereo output, or place two oscillators inside a container.multi when you need independent left and right channels.",
+          "explanation": "In a stereo context, the oscillator adds the same generated sample to both channels. Use container.multi only when each channel needs its own oscillator instance."
         },
         {
           "title": "Audio-rate modulation updates only once per buffer",
@@ -4675,7 +4680,7 @@
     "core.peak": {
       "factoryPath": "core.peak",
       "factory": "core",
-      "title": "Peak",
+      "title": "core.peak",
       "description": "Measures the peak input magnitude and sends it as a normalised modulation signal.",
       "polyphonic": false,
       "tags": [
@@ -4685,7 +4690,7 @@
         "modulation",
         "envelope-follower"
       ],
-      "llmRef": "core.peak\n\nMeasures the maximum absolute input magnitude across all channels per block and sends it as a normalised (0-1) modulation signal. The audio passes through unmodified.\n\nSignal flow:\n  audio in -> peak detection (abs max across channels) -> modulation out (0..1)\n  audio in -> audio out (passthrough)\n\nCPU: negligible, monophonic\n\nParameters:\n  None\n\nWhen to use:\n  Heavily used (rank 12, 28 instances). Use for envelope followers, level-dependent modulation, VU metering, or any scenario where you need to convert audio level into a control signal. Pair with container.fix8_block for a fixed modulation update rate.\n\nCommon mistakes:\n  Update rate depends on block size -- use a fixed-block container for predictable timing.\n  Peak metering disabled in compiled plugins by default -- add ENABLE_ALL_PEAK_METERS=1.\n\nForum references: tid:8652 (ENABLE_ALL_PEAK_METERS compile definition), tid:7566 (peak as envelope follower)\n\nSee also:\n  [disambiguation] core.peak_unscaled -- raw signed peak without absolute folding\n  [companion] math.sig2mod -- bipolar-to-unipolar signal conversion\n  [api] DisplayBufferSource -- script-side access to peak meter data",
+      "llmRef": "core.peak\n\nMeasures the maximum absolute input magnitude across all channels in the current processing block and sends it as a normalised (0-1) modulation signal. The audio passes through unmodified.\n\nSignal flow:\n  audio in -> peak detection (abs max across channels) -> modulation out (0..1)\n  audio in -> audio out (passthrough)\n\nCPU: negligible, monophonic\n\nParameters:\n  None\n\nWhen to use:\n  Heavily used (rank 12, 28 instances). Use for envelope followers, level-dependent modulation, VU metering, or any scenario where you need to convert audio level into a control signal. Pair with container.fix8_block for a fixed modulation update rate.\n\nCommon mistakes:\n  Exported modulation update rate depends on context -- use a fixed-block or frame container for predictable downstream parameter timing.\n  Peak metering disabled in compiled plugins by default -- add ENABLE_ALL_PEAK_METERS=1.\n\nForum references: tid:8652 (ENABLE_ALL_PEAK_METERS compile definition), tid:7566 (peak as envelope follower)\n\nSee also:\n  [disambiguation] core.peak_unscaled -- raw signed peak without absolute folding\n  [companion] math.sig2mod -- bipolar-to-unipolar signal conversion\n  [api] DisplayBufferSource -- script-side access to peak meter data",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": false,
@@ -4696,7 +4701,7 @@
           "title": "Update rate depends on block size",
           "wrong": "Expecting sample-accurate modulation output from core.peak",
           "right": "Place core.peak inside a container.frame2_block for sample-accurate updates, or container.fix8_block for a fixed update rate.",
-          "explanation": "The node sends one modulation value per audio block. The update rate depends on the surrounding container's block size."
+          "explanation": "The exported modulation-to-parameter connection updates at the surrounding modulation/control rate. The rate depends on the surrounding container context."
         },
         {
           "title": "Peak metering requires a compile definition in exported plugins",
@@ -4726,7 +4731,7 @@
     "core.peak_unscaled": {
       "factoryPath": "core.peak_unscaled",
       "factory": "core",
-      "title": "Peak Unscaled",
+      "title": "core.peak_unscaled",
       "description": "Measures the peak input value preserving sign and sends it as an unnormalised modulation signal.",
       "polyphonic": false,
       "tags": [
@@ -4761,7 +4766,7 @@
     "core.phasor": {
       "factoryPath": "core.phasor",
       "factory": "core",
-      "title": "Phasor",
+      "title": "core.phasor",
       "description": "A polyphonic ramp generator that outputs a naive 0-1 sawtooth on channel 0.",
       "polyphonic": true,
       "tags": [
@@ -4822,7 +4827,7 @@
     "core.phasor_fm": {
       "factoryPath": "core.phasor_fm",
       "factory": "core",
-      "title": "Phasor FM",
+      "title": "core.phasor_fm",
       "description": "A polyphonic ramp generator that uses the input signal as frequency modulation.",
       "polyphonic": true,
       "tags": [
@@ -4884,7 +4889,7 @@
     "core.pitch_mod": {
       "factoryPath": "core.pitch_mod",
       "factory": "core",
-      "title": "Pitch Mod",
+      "title": "core.pitch_mod",
       "description": "Receives the polyphonic pitch modulation signal from the parent sound generator as raw pitch factor values.",
       "polyphonic": true,
       "tags": [
@@ -4930,7 +4935,7 @@
     "core.ramp": {
       "factoryPath": "core.ramp",
       "factory": "core",
-      "title": "Ramp",
+      "title": "core.ramp",
       "description": "A free-running ramp generator that outputs both a modulation signal and an additive audio signal.",
       "polyphonic": true,
       "tags": [
@@ -4981,7 +4986,7 @@
     "core.recorder": {
       "factoryPath": "core.recorder",
       "factory": "core",
-      "title": "Recorder",
+      "title": "core.recorder",
       "description": "Records the input signal into an audio file slot for playback or UI display.",
       "polyphonic": false,
       "tags": [
@@ -5039,7 +5044,7 @@
     "core.smoother": {
       "factoryPath": "core.smoother",
       "factory": "core",
-      "title": "Smoother",
+      "title": "core.smoother",
       "description": "A one-pole lowpass filter that smooths channel 0 of the input signal.",
       "polyphonic": true,
       "tags": [
@@ -5091,26 +5096,26 @@
     "core.snex_node": {
       "factoryPath": "core.snex_node",
       "factory": "core",
-      "title": "SNEX Node",
+      "title": "core.snex_node",
       "description": "A generic SNEX node with the complete callback set for custom audio processing.",
-      "polyphonic": false,
+      "polyphonic": true,
       "tags": [
         "core",
         "snex",
         "custom-dsp"
       ],
-      "llmRef": "core.snex_node\n\nA generic SNEX node that delegates all audio processing to user-written SNEX code compiled at runtime. Supports the full callback set: prepare, reset, process, processFrame, and handleHiseEvent. Parameters and complex data slots are defined dynamically by the SNEX code.\n\nSignal flow:\n  audio in + MIDI in -> SNEX process callbacks -> audio out\n  (optional) -> modulation out (normalised 0-1)\n\nCPU: variable (depends on user SNEX code), monophonic\n\nParameters:\n  All parameters are user-defined in the SNEX code (up to 16).\n\nWhen to use:\n  - Custom audio processing that cannot be built from existing nodes\n  - Prototyping DSP algorithms with JIT compilation\n  - Monophonic effects or utilities requiring MIDI access\n\nCommon mistakes:\n  - Monophonic only -- use core.snex_osc for polyphonic oscillators\n  - SNEX JIT not in exported plugins -- must wrap and compile to C++ DLL first\n\nForum references: tid:4364 (export workflow: wrap, compile, freeze)\n\nSee also:\n  [alternative] core.snex_shaper -- waveshaping-only SNEX interface\n  [alternative] core.snex_osc -- oscillator SNEX interface with frequency tracking\n  [alternative] core.faust -- custom DSP via Faust language",
+      "llmRef": "core.snex_node\n\nA generic SNEX node that delegates all audio processing to user-written SNEX code compiled at runtime. Supports the full callback set: prepare, reset, process, processFrame, and handleHiseEvent. Parameters and complex data slots are defined dynamically by the SNEX code.\n\nSignal flow:\n  audio in + MIDI in -> SNEX process callbacks -> audio out\n  (optional) -> modulation out (normalised 0-1)\n\nCPU: variable (depends on user SNEX code), polyphonic\n\nParameters:\n  All parameters are user-defined in the SNEX code (up to 16).\n\nWhen to use:\n  - Custom audio processing that cannot be built from existing nodes\n  - Prototyping DSP algorithms with JIT compilation\n  - Polyphonic DSP that manages per-voice state with PolyData\n\nCommon mistakes:\n  - Use PolyData for state that must remain independent per voice\n  - SNEX JIT not in exported plugins -- must wrap and compile to C++ DLL first\n\nForum references: tid:4364 (export workflow: wrap, compile, freeze)\n\nSee also:\n  [alternative] core.snex_shaper -- waveshaping-only SNEX interface\n  [alternative] core.snex_osc -- oscillator SNEX interface with frequency tracking\n  [alternative] core.faust -- custom DSP via Faust language",
       "cpuProfile": {
         "baseline": "variable",
-        "polyphonic": false,
+        "polyphonic": true,
         "scalingFactors": []
       },
       "commonMistakes": [
         {
-          "title": "Expecting polyphonic voice support",
-          "wrong": "Using core.snex_node for per-voice synthesis",
-          "right": "Use core.snex_osc for polyphonic oscillators, or compile to a C++ node for full polyphonic support.",
-          "explanation": "core.snex_node is monophonic. It does not support per-voice state. For polyphonic use cases, core.snex_osc provides voice management for oscillators."
+          "title": "Sharing state between voices",
+          "wrong": "Storing voice-specific state in ordinary SNEX member variables inside a polyphonic network",
+          "right": "Store voice-specific state in PolyData so each rendered voice has an independent value.",
+          "explanation": "The SNEX class receives the network voice count. Ordinary members are shared, while PolyData selects the current voice during polyphonic rendering."
         },
         {
           "title": "SNEX JIT compiler is not included in exported plugins",
@@ -5140,7 +5145,7 @@
     "core.snex_osc": {
       "factoryPath": "core.snex_osc",
       "factory": "core",
-      "title": "SNEX Oscillator",
+      "title": "core.snex_osc",
       "description": "A custom oscillator node using SNEX code with built-in frequency tracking and polyphonic voice management.",
       "polyphonic": true,
       "tags": [
@@ -5197,7 +5202,7 @@
     "core.snex_shaper": {
       "factoryPath": "core.snex_shaper",
       "factory": "core",
-      "title": "SNEX Shaper",
+      "title": "core.snex_shaper",
       "description": "A custom waveshaper node using SNEX code to define the transfer function.",
       "polyphonic": false,
       "tags": [
@@ -5236,7 +5241,7 @@
     "core.stretch_player": {
       "factoryPath": "core.stretch_player",
       "factory": "core",
-      "title": "Stretch Player",
+      "title": "core.stretch_player",
       "description": "A stereo file player with independent time stretching and pitch shifting, plus optional DAW tempo sync.",
       "polyphonic": true,
       "tags": [
@@ -5321,7 +5326,7 @@
     "core.table": {
       "factoryPath": "core.table",
       "factory": "core",
-      "title": "Table",
+      "title": "core.table",
       "description": "A symmetrical lookup table that reads the input signal magnitude and displays the result.",
       "polyphonic": false,
       "tags": [
@@ -5355,7 +5360,7 @@
     "dynamics.comp": {
       "factoryPath": "dynamics.comp",
       "factory": "dynamics",
-      "title": "Comp",
+      "title": "dynamics.comp",
       "description": "A downward compressor with peak detection, adjustable threshold, ratio, attack, and release.",
       "polyphonic": false,
       "tags": [
@@ -5363,7 +5368,7 @@
         "compressor",
         "sidechain"
       ],
-      "llmRef": "dynamics.comp\n\nDownward compressor with peak detection. Reduces gain when the input exceeds the threshold, controlled by ratio, attack, and release. Outputs inverse gain reduction as a normalised modulation signal.\n\nSignal flow:\n  audio in -> peak detect -> compress (threshold, ratio, attack, release) -> audio out\n  compress -> modulation out (1.0 - gain reduction)\n\nCPU: low, monophonic\n\nParameters:\n  Dynamics:\n    Threshhold: -100 - 0 dB (default 0). Level above which compression begins.\n    Attack: 0 - 250 ms (default 50). How fast compression engages.\n    Release: 0 - 250 ms (default 50). How fast compression releases.\n    Ratio: 1 - 32 (default 1). Compression ratio (1:1 = no compression, 32:1 = hard limiting).\n  Routing:\n    Sidechain: Disabled / Original / Sidechain (default Disabled). Detection source.\n\nWhen to use:\n  Standard downward compression for dynamic control. Use dynamics.gate for gating below threshold, dynamics.limiter for peak limiting, or dynamics.updown_comp for combined upward/downward compression.\n\nCommon mistakes:\n  Sidechain mode requires double the channel count (4 channels for stereo).\n  Disabled and Original modes are identical.\n  Modulation output must be inverted (swap min/max on the connection) when driving a gain node.\n  Update rate depends on buffer size -- use fix32/fix64 containers for snappier transient response.\n\nDesign notes:\n  Hard-knee design based on chunkware SimpleComp. No soft-knee parameter available.\n  For gain control routing, prefer math.mul over gain node -- the gain node applies dB conversion and smoothing which interfere with the compressor's own envelope.\n\nSee also:\n  [alternative] dynamics.gate - gate for attenuating below threshold\n  [alternative] dynamics.limiter - limiter optimised for peak control\n  [alternative] dynamics.updown_comp - dual-threshold compressor\n  [companion] dynamics.envelope_follower - envelope tracking without gain reduction\n  [alternative] jdsp.jcompressor - alternative compressor node\n  [module] Dynamics - module-tree dynamics processor that combines compressor, gate, and limiter",
+      "llmRef": "dynamics.comp\n\nDownward compressor with peak detection. Reduces gain when the input exceeds the threshold, controlled by ratio, attack, and release. Outputs inverse gain reduction as a normalised modulation signal.\n\nSignal flow:\n  audio in -> peak detect -> compress (threshold, ratio, attack, release) -> audio out\n  compress -> modulation out (1.0 - gain reduction)\n\nCPU: low, monophonic\n\nParameters:\n  Dynamics:\n    Threshhold: -100 - 0 dB (default 0). Level above which compression begins.\n    Attack: 0 - 250 ms (default 50). How fast compression engages.\n    Release: 0 - 250 ms (default 50). How fast compression releases.\n    Ratio: 1 - 32 (default 1). Compression ratio (1:1 = no compression, 32:1 = hard limiting).\n  Routing:\n    Sidechain: Disabled / Original / Sidechain (default Disabled). Detection source.\n\nWhen to use:\n  Standard downward compression for dynamic control. Use dynamics.gate for gating below threshold, dynamics.limiter for peak limiting, or dynamics.updown_comp for combined upward/downward compression.\n\nCommon mistakes:\n  Sidechain mode requires double the channel count (4 channels for stereo).\n  Disabled and Original modes are identical.\n  Modulation output must be inverted (swap min/max on the connection) when driving a gain node.\n  Modulation output connections update at the surrounding modulation/control rate -- use fixed-block or frame containers only when downstream parameter modulation needs tighter timing.\n\nDesign notes:\n  Hard-knee design based on chunkware SimpleComp. No soft-knee parameter available.\n  For gain control routing, prefer math.mul over gain node -- the gain node applies dB conversion and smoothing which interfere with the compressor's own envelope.\n\nSee also:\n  [alternative] dynamics.gate - gate for attenuating below threshold\n  [alternative] dynamics.limiter - limiter optimised for peak control\n  [alternative] dynamics.updown_comp - dual-threshold compressor\n  [companion] dynamics.envelope_follower - envelope tracking without gain reduction\n  [alternative] jdsp.jcompressor - alternative compressor node\n  [module] Dynamics - module-tree dynamics processor that combines compressor, gate, and limiter",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": false,
@@ -5386,13 +5391,13 @@
           "title": "Modulation output must be inverted for gain control",
           "wrong": "Connecting the compressor modulation output directly to a gain node and expecting correct behaviour",
           "right": "Right-click the modulation connection and swap the minimum and maximum values to invert the range.",
-          "explanation": "The modulation output represents gain reduction (higher value = less compression). Connecting it directly to a gain node increases gain when compression increases. Invert the range to produce the correct ducking behaviour."
+          "explanation": "The modulation output is inverse gain reduction (higher value = less compression). Connecting it directly to a gain node increases gain when compression relaxes. Invert the range to produce the correct ducking behaviour."
         },
         {
-          "title": "Update rate is limited by buffer size",
-          "wrong": "Expecting fast transient response from dynamics.comp at the default buffer size",
-          "right": "Wrap the compressor and its split container in a fix32 or fix64 sub-buffer container for snappier response.",
-          "explanation": "The compressor updates its gain factor once per audio buffer (e.g. every 512 samples). At default buffer sizes this can feel sluggish. Using fix32 or fix64 containers forces more frequent updates, significantly improving transient response."
+          "title": "Modulation cable timing is context-based",
+          "wrong": "Adding a fixed-block container because dynamics.comp itself needs one for accurate compression",
+          "right": "Use fixed-block or frame containers only when the compressor modulation output drives another parameter that needs tighter update timing.",
+          "explanation": "The compressor's internal dynamics processing is separate from the exported modulation-to-parameter update rate. Fixed-block containers make modulation cables update more often; they are not required for ordinary sidechain compression."
         }
       ],
       "seeAlso": [
@@ -5458,7 +5463,7 @@
     "dynamics.envelope_follower": {
       "factoryPath": "dynamics.envelope_follower",
       "factory": "dynamics",
-      "title": "Envelope Follower",
+      "title": "dynamics.envelope_follower",
       "description": "A polyphonic envelope follower that tracks input amplitude with configurable attack and release.",
       "polyphonic": true,
       "tags": [
@@ -5468,7 +5473,7 @@
         "analysis",
         "modulation"
       ],
-      "llmRef": "dynamics.envelope_follower\n\nPolyphonic envelope follower that tracks the peak amplitude of the input signal. Each voice maintains its own envelope state. Outputs the tracked envelope as a normalised modulation signal (0..1).\n\nSignal flow:\n  audio in -> peak detect -> attack/release follower -> modulation out (envelope 0..1)\n  if ProcessSignal=On: audio replaced with envelope value\n\nCPU: low, polyphonic (scales linearly with voice count)\n\nParameters:\n  Attack: 0 - 1000 ms (default 20). Envelope attack time.\n  Release: 0 - 1000 ms (default 20). Envelope release time.\n  ProcessSignal: Off / On (default Off). Off = pass audio through; On = replace audio with envelope.\n\nWhen to use:\n  Tracking input amplitude for modulation routing. Commonly paired with math.mul or core.gain for sidechain-style ducking or level-dependent effects. Use dynamics.comp/gate/limiter when gain reduction is needed directly.\n\nCommon mistakes:\n  ProcessSignal On replaces audio with envelope DC signal.\n\nSee also:\n  [companion] dynamics.comp - compressor for dynamics processing\n  [companion] dynamics.gate - gate for dynamics processing",
+      "llmRef": "dynamics.envelope_follower\n\nPolyphonic envelope follower that tracks the peak amplitude of the input signal. Each voice maintains its own envelope state. Outputs the tracked envelope as a normalised modulation signal (0..1).\n\nSignal flow:\n  audio in -> peak detect -> attack/release follower -> modulation out (envelope 0..1)\n  if ProcessSignal=On: audio replaced with envelope value\n\nCPU: low, polyphonic (scales linearly with voice count)\n\nParameters:\n  Attack: 0 - 1000 ms (default 20). Envelope attack time.\n  Release: 0 - 1000 ms (default 20). Envelope release time.\n  ProcessSignal: Off / On (default Off). Off = pass audio through; On = replace audio with envelope.\n\nWhen to use:\n  Tracking input amplitude for modulation routing. For an auto-wah, route the envelope modulation output to a filter's frequency parameter. Commonly paired with math.mul or core.gain for sidechain-style ducking or level-dependent effects. Use dynamics.comp/gate/limiter when gain reduction is needed directly.\n\nCommon mistakes:\n  ProcessSignal On replaces audio with envelope DC signal.\n\nSee also:\n  [companion] dynamics.comp - compressor for dynamics processing\n  [companion] dynamics.gate - gate for dynamics processing",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": true,
@@ -5521,7 +5526,7 @@
     "dynamics.gate": {
       "factoryPath": "dynamics.gate",
       "factory": "dynamics",
-      "title": "Gate",
+      "title": "dynamics.gate",
       "description": "A noise gate that attenuates signals falling below the threshold.",
       "polyphonic": false,
       "tags": [
@@ -5529,7 +5534,7 @@
         "gate",
         "sidechain"
       ],
-      "llmRef": "dynamics.gate\n\nNoise gate with peak detection. Attenuates signals below the threshold based on the ratio. Outputs inverse gain reduction as a normalised modulation signal.\n\nSignal flow:\n  audio in -> peak detect -> gate (threshold, ratio, attack, release) -> audio out\n  gate -> modulation out (1.0 - gain reduction)\n\nCPU: low, monophonic\n\nParameters:\n  Dynamics:\n    Threshhold: -100 - 0 dB (default 0). Level below which gating begins.\n    Attack: 0 - 250 ms (default 50). How fast the gate opens.\n    Release: 0 - 250 ms (default 50). How fast the gate closes.\n    Ratio: 1 - 32 (default 1). Gating depth (1 = no gating, 32 = aggressive).\n  Routing:\n    Sidechain: Disabled / Original / Sidechain (default Disabled). Detection source.\n\nWhen to use:\n  Attenuating noise or bleed below a threshold. Use dynamics.comp for downward compression above threshold, or dynamics.envelope_follower for amplitude tracking without gain changes.\n\nCommon mistakes:\n  Sidechain mode requires double the channel count (4 channels for stereo).\n\nDepth control:\n  Route gate modulation into core.pma and use multiply to scale gate depth (adjustable downward expansion instead of hard gating).\n\nSee also:\n  [alternative] dynamics.comp - compressor for gain reduction above threshold\n  [alternative] dynamics.limiter - limiter for peak control\n  [companion] dynamics.envelope_follower - envelope tracking without gain reduction\n  [module] Dynamics - module-tree dynamics processor that combines compressor, gate, and limiter",
+      "llmRef": "dynamics.gate\n\nNoise gate with peak detection. Attenuates signals below the threshold based on the ratio. Outputs gain reduction amount as a normalised modulation signal.\n\nSignal flow:\n  audio in -> peak detect -> gate (threshold, ratio, attack, release) -> audio out\n  gate -> modulation out (gain reduction amount: 0.0 = open, 1.0 = closed)\n\nCPU: low, monophonic\n\nParameters:\n  Dynamics:\n    Threshhold: -100 - 0 dB (default 0). Level below which gating begins.\n    Attack: 0 - 250 ms (default 50). How fast the gate opens.\n    Release: 0 - 250 ms (default 50). How fast the gate closes.\n    Ratio: 1 - 32 (default 1). Gating depth (1 = no gating, 32 = aggressive).\n  Routing:\n    Sidechain: Disabled / Original / Sidechain (default Disabled). Detection source.\n\nWhen to use:\n  Attenuating noise or bleed below a threshold. Use dynamics.comp for downward compression above threshold, or dynamics.envelope_follower for amplitude tracking without gain changes.\n\nCommon mistakes:\n  Sidechain mode requires double the channel count (4 channels for stereo).\n\nDepth control:\n  Invert the modulation connection range when you need an open-gate control signal (1.0 = open).\n\nSee also:\n  [alternative] dynamics.comp - compressor for gain reduction above threshold\n  [alternative] dynamics.limiter - limiter for peak control\n  [companion] dynamics.envelope_follower - envelope tracking without gain reduction\n  [module] Dynamics - module-tree dynamics processor that combines compressor, gate, and limiter",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": false,
@@ -5596,7 +5601,7 @@
     "dynamics.limiter": {
       "factoryPath": "dynamics.limiter",
       "factory": "dynamics",
-      "title": "Limiter",
+      "title": "dynamics.limiter",
       "description": "A peak limiter with fast envelope detection for transparent peak control.",
       "polyphonic": false,
       "tags": [
@@ -5684,7 +5689,7 @@
     "dynamics.updown_comp": {
       "factoryPath": "dynamics.updown_comp",
       "factory": "dynamics",
-      "title": "Updown Comp",
+      "title": "dynamics.updown_comp",
       "description": "A dual-threshold compressor with upward compression below LowThreshold and downward compression above HighThreshold.",
       "polyphonic": false,
       "tags": [
@@ -5773,7 +5778,7 @@
     "envelope.ahdsr": {
       "factoryPath": "envelope.ahdsr",
       "factory": "envelope",
-      "title": "AHDSR Envelope",
+      "title": "envelope.ahdsr",
       "description": "A full AHDSR envelope with attack curve shaping, manual gate, and retrigger support.",
       "polyphonic": true,
       "tags": [
@@ -5880,7 +5885,7 @@
     "envelope.extra_mod_gate": {
       "factoryPath": "envelope.extra_mod_gate",
       "factory": "envelope",
-      "title": "Extra Mod Gate",
+      "title": "envelope.extra_mod_gate",
       "description": "Outputs a binary gate signal reflecting whether an extra modulation chain's envelope is still active for the current voice.",
       "polyphonic": true,
       "tags": [
@@ -5918,7 +5923,7 @@
     "envelope.flex_ahdsr": {
       "factoryPath": "envelope.flex_ahdsr",
       "factory": "envelope",
-      "title": "Flex AHDSR Envelope",
+      "title": "envelope.flex_ahdsr",
       "description": "An advanced AHDSR envelope with per-segment curve shaping, three playback modes, and a draggable graph UI.",
       "polyphonic": true,
       "tags": [
@@ -6032,7 +6037,7 @@
     "envelope.global_mod_gate": {
       "factoryPath": "envelope.global_mod_gate",
       "factory": "envelope",
-      "title": "Global Mod Gate",
+      "title": "envelope.global_mod_gate",
       "description": "Outputs a binary gate signal reflecting whether a global modulator's envelope is still active for the current voice.",
       "polyphonic": true,
       "tags": [
@@ -6070,7 +6075,7 @@
     "envelope.silent_killer": {
       "factoryPath": "envelope.silent_killer",
       "factory": "envelope",
-      "title": "Silent Killer",
+      "title": "envelope.silent_killer",
       "description": "Sends a voice reset message when silence is detected after note-off, providing automatic voice cleanup.",
       "polyphonic": true,
       "tags": [
@@ -6121,7 +6126,7 @@
     "envelope.simple_ar": {
       "factoryPath": "envelope.simple_ar",
       "factory": "envelope",
-      "title": "Simple AR Envelope",
+      "title": "envelope.simple_ar",
       "description": "A lightweight attack-release envelope with curve shaping and a fixed sustain at full level.",
       "polyphonic": true,
       "tags": [
@@ -6129,7 +6134,7 @@
         "ar",
         "modulation"
       ],
-      "llmRef": "envelope.simple_ar\n\nLightweight attack-release envelope. Ramps to 1.0 on note-on, sustains at full level, ramps to 0.0 on note-off. Multiplies audio by envelope value and sends CV + Gate modulation outputs.\n\nSignal flow:\n  MIDI note-on/off or Gate -> smoother -> envelope value\n  audio in * envelope value -> audio out\n  envelope value -> CV output (0..1)\n  voice active -> Gate output (0 or 1)\n\nCPU: negligible, polyphonic\n\nParameters:\n  Attack (0-1000 ms, default 10), Release (0-1000 ms, default 10)\n  Gate (Off/On, default Off; manual trigger)\n  AttackCurve (0-1, default 0.0; 0=exponential, 0.5=linear, 1=power curve)\n\nWhen to use:\n  Quick fade-in/fade-out for pads, risers, or any voice that needs a simple amplitude shape without configurable sustain. Lowest CPU of the envelope nodes.\n\nCommon mistakes:\n  - No sustain parameter; always sustains at 1.0\n  - Default AttackCurve is 0.0 (exponential), not 0.5 (linear)\n\nSee also:\n  [alternative] envelope.ahdsr -- full AHDSR with configurable sustain\n  [companion] envelope.voice_manager -- voice lifecycle from Gate output\n  [module] SimpleEnvelope -- module-tree equivalent -- two-stage attack/release envelope",
+      "llmRef": "envelope.simple_ar\n\nLightweight attack-release envelope. Ramps to 1.0 on note-on, sustains at full level, ramps to 0.0 on note-off. Multiplies audio by envelope value and sends CV + Gate modulation outputs.\n\nSignal flow:\n  MIDI note-on/off or Gate -> smoother -> envelope value\n  audio in * envelope value -> audio out\n  envelope value -> CV output (0..1)\n  voice active -> Gate output (0 or 1)\n\nCPU: negligible, polyphonic\n\nParameters:\n  Attack (0-1000 ms, default 10), Release (0-1000 ms, default 10)\n  Gate (Off/On, default Off; when modulated, values >0.5 start attack and values <=0.5 start release)\n  AttackCurve (0-1, default 0.0; 0=exponential, 0.5=linear, 1=power curve)\n\nWhen to use:\n  Quick fade-in/fade-out for pads, risers, or any voice that needs a simple amplitude shape without configurable sustain. Lowest CPU of the envelope nodes.\n\nCommon mistakes:\n  - No sustain parameter; always sustains at 1.0\n  - Default AttackCurve is 0.0 (exponential), not 0.5 (linear)\n\nSee also:\n  [alternative] envelope.ahdsr -- full AHDSR with configurable sustain\n  [companion] envelope.voice_manager -- voice lifecycle from Gate output\n  [module] SimpleEnvelope -- module-tree equivalent -- two-stage attack/release envelope",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": true,
@@ -6178,7 +6183,7 @@
           "default": "10.0"
         },
         "Gate": {
-          "description": "Manual gate trigger, independent of MIDI",
+          "description": "Modulated values above 0.5 start attack; values at or below 0.5 start release",
           "range": "Off / On",
           "default": "Off"
         },
@@ -6192,7 +6197,7 @@
     "envelope.voice_manager": {
       "factoryPath": "envelope.voice_manager",
       "factory": "envelope",
-      "title": "Voice Manager",
+      "title": "envelope.voice_manager",
       "description": "Sends a voice reset message when the input value drops below 0.5, providing gate-based voice lifecycle control.",
       "polyphonic": false,
       "tags": [
@@ -6237,7 +6242,7 @@
     "filters.allpass": {
       "factoryPath": "filters.allpass",
       "factory": "filters",
-      "title": "Allpass",
+      "title": "filters.allpass",
       "description": "A six-stage cascaded allpass chain with feedback, producing phaser-style notches when the allpass output is mixed with the dry input.",
       "polyphonic": true,
       "tags": [
@@ -6284,7 +6289,7 @@
     "filters.biquad": {
       "factoryPath": "filters.biquad",
       "factory": "filters",
-      "title": "Biquad",
+      "title": "filters.biquad",
       "description": "A second-order biquad filter with six modes: LowPass, HighPass, LowShelf, HighShelf, Peak, and ResoLow.",
       "polyphonic": true,
       "tags": [
@@ -6361,7 +6366,7 @@
     "filters.convolution": {
       "factoryPath": "filters.convolution",
       "factory": "filters",
-      "title": "Convolution",
+      "title": "filters.convolution",
       "description": "A partitioned FFT convolution reverb that convolves the input signal with an impulse response loaded from an AudioFile slot.",
       "polyphonic": false,
       "tags": [
@@ -6453,7 +6458,7 @@
     "filters.ladder": {
       "factoryPath": "filters.ladder",
       "factory": "filters",
-      "title": "Ladder",
+      "title": "filters.ladder",
       "description": "A simple 4-pole (24 dB/octave) ladder lowpass filter.",
       "polyphonic": true,
       "tags": [
@@ -6509,7 +6514,7 @@
     "filters.linkwitzriley": {
       "factoryPath": "filters.linkwitzriley",
       "factory": "filters",
-      "title": "Linkwitz-Riley",
+      "title": "filters.linkwitzriley",
       "description": "A fourth-order Linkwitz-Riley (LR4) crossover filter with a 24 dB/octave slope.",
       "polyphonic": true,
       "tags": [
@@ -6557,7 +6562,7 @@
     "filters.moog": {
       "factoryPath": "filters.moog",
       "factory": "filters",
-      "title": "Moog",
+      "title": "filters.moog",
       "description": "A Moog-style transistor ladder lowpass filter with a 24 dB/octave slope.",
       "polyphonic": true,
       "tags": [
@@ -6615,7 +6620,7 @@
     "filters.one_pole": {
       "factoryPath": "filters.one_pole",
       "factory": "filters",
-      "title": "One Pole",
+      "title": "filters.one_pole",
       "description": "A first-order filter with lowpass and highpass modes, providing a gentle 6 dB/octave slope.",
       "polyphonic": true,
       "tags": [
@@ -6655,7 +6660,7 @@
     "filters.ring_mod": {
       "factoryPath": "filters.ring_mod",
       "factory": "filters",
-      "title": "Ring Mod",
+      "title": "filters.ring_mod",
       "description": "A ring modulator that multiplies the input signal by an internal sine oscillator.",
       "polyphonic": true,
       "tags": [
@@ -6695,7 +6700,7 @@
     "filters.svf": {
       "factoryPath": "filters.svf",
       "factory": "filters",
-      "title": "SVF",
+      "title": "filters.svf",
       "description": "A state variable filter with five modes: lowpass, highpass, bandpass, notch, and allpass.",
       "polyphonic": true,
       "tags": [
@@ -6771,7 +6776,7 @@
     "filters.svf_eq": {
       "factoryPath": "filters.svf_eq",
       "factory": "filters",
-      "title": "SVF EQ",
+      "title": "filters.svf_eq",
       "description": "An SVF-based parametric EQ with five modes: LowPass, HighPass, LowShelf, HighShelf, and Peak.",
       "polyphonic": true,
       "tags": [
@@ -6840,7 +6845,7 @@
     "fx.bitcrush": {
       "factoryPath": "fx.bitcrush",
       "factory": "fx",
-      "title": "Bitcrush",
+      "title": "fx.bitcrush",
       "description": "Reduces the bit depth of the audio signal, producing quantisation noise and digital distortion.",
       "polyphonic": true,
       "tags": [
@@ -6897,7 +6902,7 @@
     "fx.haas": {
       "factoryPath": "fx.haas",
       "factory": "fx",
-      "title": "Haas",
+      "title": "fx.haas",
       "description": "Stereo positioning effect using inter-channel delay (Haas effect) with up to 20ms offset.",
       "polyphonic": true,
       "tags": [
@@ -6937,7 +6942,7 @@
     "fx.phase_delay": {
       "factoryPath": "fx.phase_delay",
       "factory": "fx",
-      "title": "Phase Delay",
+      "title": "fx.phase_delay",
       "description": "A first-order allpass filter that shifts the phase of the signal without changing its amplitude, intended for building comb filters.",
       "polyphonic": true,
       "tags": [
@@ -6982,7 +6987,7 @@
     "fx.pitch_shift": {
       "factoryPath": "fx.pitch_shift",
       "factory": "fx",
-      "title": "Pitch Shift",
+      "title": "fx.pitch_shift",
       "description": "Real-time pitch shifting using time-stretch-based resampling, with a range of two octaves up or down.",
       "polyphonic": true,
       "tags": [
@@ -7040,7 +7045,7 @@
     "fx.reverb": {
       "factoryPath": "fx.reverb",
       "factory": "fx",
-      "title": "Reverb",
+      "title": "fx.reverb",
       "description": "A Freeverb-style algorithmic reverb with room size, damping, and width controls. Outputs 100% wet signal.",
       "polyphonic": false,
       "tags": [
@@ -7095,7 +7100,7 @@
     "fx.sampleandhold": {
       "factoryPath": "fx.sampleandhold",
       "factory": "fx",
-      "title": "Sample and Hold",
+      "title": "fx.sampleandhold",
       "description": "Reduces the effective sample rate by holding each captured sample for a configurable number of periods.",
       "polyphonic": true,
       "tags": [
@@ -7141,7 +7146,7 @@
     "jdsp.jchorus": {
       "factoryPath": "jdsp.jchorus",
       "factory": "jdsp",
-      "title": "Chorus",
+      "title": "jdsp.jchorus",
       "description": "A chorus effect with LFO-modulated delay, feedback, and wet/dry mixing.",
       "polyphonic": false,
       "tags": [
@@ -7211,7 +7216,7 @@
     "jdsp.jcompressor": {
       "factoryPath": "jdsp.jcompressor",
       "factory": "jdsp",
-      "title": "Compressor",
+      "title": "jdsp.jcompressor",
       "description": "A simple compressor with threshold, ratio, attack, and release controls, plus a gain reduction modulation output.",
       "polyphonic": false,
       "tags": [
@@ -7272,7 +7277,7 @@
     "jdsp.jdelay": {
       "factoryPath": "jdsp.jdelay",
       "factory": "jdsp",
-      "title": "Delay (Linear)",
+      "title": "jdsp.jdelay",
       "description": "A delay line with linear interpolation -- lowest CPU cost but mild high-frequency roll-off at non-integer delay times.",
       "polyphonic": true,
       "tags": [
@@ -7344,7 +7349,7 @@
     "jdsp.jdelay_cubic": {
       "factoryPath": "jdsp.jdelay_cubic",
       "factory": "jdsp",
-      "title": "Delay (Cubic)",
+      "title": "jdsp.jdelay_cubic",
       "description": "A delay line with cubic Lagrange interpolation -- flat frequency response and best modulation behaviour, but highest CPU cost.",
       "polyphonic": true,
       "tags": [
@@ -7352,7 +7357,7 @@
         "delay",
         "time-based"
       ],
-      "llmRef": "jdsp.jdelay_cubic\n\nA delay line using 3rd-order Lagrange (cubic) interpolation. Flat amplitude response across the audio range with no high-frequency colouring. Best suited for modulated delay effects (chorus, flanger) where tonal accuracy matters. Highest CPU cost of the three variants. Polyphonic.\n\nSignal flow:\n  audio in -> per-channel delay with cubic interpolation -> audio out\n\nCPU: medium, polyphonic\n\nParameters:\n  Limit (0 - 1000 ms mono / 0 - 30 ms poly, default max) - maximum delay buffer size\n  DelayTime (0 - 1000 ms mono / 0 - 30 ms poly, default 0) - actual delay time; no smoothing\n\nWhen to use:\n  Modulated delay effects where flat frequency response is important (chorus, flanger, pitch shifting). For fixed delays where modulation quality does not matter, use jdelay (cheaper) or jdelay_thiran (flat + cheaper).\n\nSee also:\n  alternative jdsp.jdelay -- cheaper, mild HF roll-off\n  alternative jdsp.jdelay_thiran -- flat, cheaper, not for modulation\n  alternative core.fix_delay -- delay with built-in smoothing",
+      "llmRef": "jdsp.jdelay_cubic\n\nA delay line using 3rd-order Lagrange (cubic) interpolation. Flat amplitude response across the audio range with no high-frequency colouring. Best suited for modulated delay effects (chorus, flanger) where tonal accuracy matters. Highest CPU cost of the three variants. Polyphonic.\n\nSignal flow:\n  audio in -> per-channel delay with cubic interpolation -> audio out\n\nCPU: medium, polyphonic\n\nParameters:\n  Limit (0 - 1000 ms mono / 0 - 30 ms poly, default max) - maximum delay buffer size\n  DelayTime (0 - 1000 ms mono / 0 - 30 ms poly, default 0) - actual delay time; no smoothing\n\nWhen to use:\n  Modulated delay effects where flat frequency response is important (chorus, flanger, pitch shifting). For fixed delays where modulation quality does not matter, use jdelay (cheaper) or jdelay_thiran (flat + cheaper).\n\nModulation:\n  For sample-accurate delay modulation, put both jdelay_cubic and its modulation source inside container.frame2_block. Otherwise updates depend on the processing block size.\n\nSee also:\n  alternative jdsp.jdelay -- cheaper, mild HF roll-off\n  alternative jdsp.jdelay_thiran -- flat, cheaper, not for modulation\n  alternative core.fix_delay -- delay with built-in smoothing",
       "cpuProfile": {
         "baseline": "medium",
         "polyphonic": true,
@@ -7370,6 +7375,12 @@
           "wrong": "Connecting a knob directly to the DelayTime parameter",
           "right": "Place a smoothed_parameter node between the control source and DelayTime, or use core.fix_delay which has built-in smoothing.",
           "explanation": "The delay time is applied immediately without ramping. Abrupt changes produce audible clicks. External smoothing is required for any continuous delay time control."
+        },
+        {
+          "title": "Block-rate delay modulation",
+          "wrong": "Modulating DelayTime while the delay and modulation source run at the processing block size",
+          "right": "Place both jdelay_cubic and its modulation source inside a container.frame2_block container for sample-accurate updates.",
+          "explanation": "Without frame2_block, DelayTime updates depend on the processing block size rather than occurring for every sample."
         }
       ],
       "seeAlso": [
@@ -7405,7 +7416,7 @@
     "jdsp.jdelay_thiran": {
       "factoryPath": "jdsp.jdelay_thiran",
       "factory": "jdsp",
-      "title": "Delay (Thiran)",
+      "title": "jdsp.jdelay_thiran",
       "description": "A delay line with Thiran allpass interpolation -- flat frequency response and low CPU cost, but not suitable for fast delay time modulation.",
       "polyphonic": true,
       "tags": [
@@ -7413,7 +7424,7 @@
         "delay",
         "time-based"
       ],
-      "llmRef": "jdsp.jdelay_thiran\n\nA delay line using Thiran allpass interpolation. Flat amplitude response with low CPU cost, but NOT suitable for fast delay time modulation -- the allpass filter produces artefacts when its coefficients change rapidly. Polyphonic.\n\nSignal flow:\n  audio in -> per-channel delay with Thiran allpass interpolation -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Limit (0 - 1000 ms mono / 0 - 30 ms poly, default max) - maximum delay buffer size\n  DelayTime (0 - 1000 ms mono / 0 - 30 ms poly, default 0) - actual delay time; no smoothing\n\nWhen to use:\n  Fixed or slowly changing delays where flat frequency response matters but fast modulation is not needed (e.g., comb filters, static delays in reverb networks). For modulated effects, use jdelay_cubic instead.\n\nSee also:\n  alternative jdsp.jdelay -- cheaper, mild HF roll-off, better for modulation\n  alternative jdsp.jdelay_cubic -- best modulation, higher CPU\n  alternative core.fix_delay -- delay with built-in smoothing",
+      "llmRef": "jdsp.jdelay_thiran\n\nA delay line using Thiran allpass interpolation. Flat amplitude response with low CPU cost, but NOT suitable for fast delay time modulation -- the allpass filter produces artefacts when its coefficients change rapidly. Polyphonic.\n\nSignal flow:\n  audio in -> per-channel delay with Thiran allpass interpolation -> audio out\n\nCPU: low, polyphonic\n\nParameters:\n  Limit (0 - 1000 ms mono / 0 - 30 ms poly, default max) - maximum delay buffer size\n  DelayTime (0 - 1000 ms mono / 0 - 30 ms poly, default 0) - actual delay time; no smoothing\n\nWhen to use:\n  Fixed or slowly changing delays where flat frequency response matters but fast modulation is not needed (e.g., comb filters, static delays in reverb networks). For modulated effects, use jdelay_cubic instead.\n\nModulation:\n  For sample-accurate slow delay modulation, put both jdelay_thiran and its modulation source inside container.frame2_block. This does not make Thiran suitable for fast modulation; use jdelay_cubic for chorus, flanger, or other rapid changes.\n\nSee also:\n  alternative jdsp.jdelay -- cheaper, mild HF roll-off, better for modulation\n  alternative jdsp.jdelay_cubic -- best modulation, higher CPU\n  alternative core.fix_delay -- delay with built-in smoothing",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": true,
@@ -7437,6 +7448,12 @@
           "wrong": "Connecting a knob directly to the DelayTime parameter",
           "right": "Place a smoothed_parameter node between the control source and DelayTime, or use core.fix_delay which has built-in smoothing.",
           "explanation": "The delay time is applied immediately without ramping. Abrupt changes produce audible clicks."
+        },
+        {
+          "title": "Block-rate delay modulation",
+          "wrong": "Modulating DelayTime while the delay and modulation source run at the processing block size",
+          "right": "For slow modulation, place both jdelay_thiran and its modulation source inside a container.frame2_block container for sample-accurate updates. Use jdelay_cubic instead for fast modulation.",
+          "explanation": "Without frame2_block, DelayTime updates depend on the processing block size. frame2_block makes updates sample accurate but does not remove Thiran's fast-modulation artefacts."
         }
       ],
       "seeAlso": [
@@ -7472,7 +7489,7 @@
     "jdsp.jlinkwitzriley": {
       "factoryPath": "jdsp.jlinkwitzriley",
       "factory": "jdsp",
-      "title": "Linkwitz-Riley Filter",
+      "title": "jdsp.jlinkwitzriley",
       "description": "A 4th-order (24 dB/octave) Linkwitz-Riley crossover filter with low-pass, high-pass, and allpass modes.",
       "polyphonic": false,
       "tags": [
@@ -7522,7 +7539,7 @@
     "jdsp.jpanner": {
       "factoryPath": "jdsp.jpanner",
       "factory": "jdsp",
-      "title": "Panner",
+      "title": "jdsp.jpanner",
       "description": "A stereo panner with seven selectable panning laws.",
       "polyphonic": true,
       "tags": [
@@ -7559,7 +7576,7 @@
     "math.abs": {
       "factoryPath": "math.abs",
       "factory": "math",
-      "title": "Abs",
+      "title": "math.abs",
       "description": "Folds negative sample values to positive, producing the absolute value of the signal.",
       "polyphonic": true,
       "tags": [
@@ -7616,7 +7633,7 @@
     "math.clear": {
       "factoryPath": "math.clear",
       "factory": "math",
-      "title": "Clear",
+      "title": "math.clear",
       "description": "Sets every sample to zero, silencing the signal.",
       "polyphonic": true,
       "tags": [
@@ -7643,7 +7660,7 @@
         "distortion",
         "clipping"
       ],
-      "llmRef": "math.clip\n\nHard-clips the signal to the symmetric range [-Value, Value]. Samples outside the range are truncated to the boundary.\n\nSignal flow:\n  audio in -> clamp to [-Value, Value] -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Value (0.0 - 1.0, default 1.0): Symmetric clipping threshold. At 1.0, no clipping occurs for signals in the normal [-1, 1] range.\n\nWhen to use:\n  Use for hard clipping and distortion effects. For softer saturation that avoids the harsh harmonics of hard clipping, use math.tanh instead.\n\nSee also:\n  alternative math.tanh -- soft clipping via hyperbolic tangent",
+      "llmRef": "math.clip\n\nIn normal block processing, hard-clips the signal to the symmetric range [-Value, Value]. Samples outside the range are truncated to the boundary.\n\nFrame-container discrepancy:\n  The source's single-sample path computes s * clamp(s, -Value, Value), so frame containers do not produce the same result as normal block processing.\n\nSignal flow:\n  audio in -> clamp to [-Value, Value] -> audio out\n\nCPU: negligible, polyphonic\n\nParameters:\n  Value (0.0 - 1.0, default 1.0): Symmetric clipping threshold. At 1.0, no clipping occurs for signals in the normal [-1, 1] range.\n\nWhen to use:\n  Use for hard clipping and distortion effects. For softer saturation that avoids the harsh harmonics of hard clipping, use math.tanh instead.\n\nSee also:\n  alternative math.tanh -- soft clipping via hyperbolic tangent",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": true,
@@ -7711,7 +7728,7 @@
     "math.expr": {
       "factoryPath": "math.expr",
       "factory": "math",
-      "title": "Expression",
+      "title": "math.expr",
       "description": "A programmable math node that evaluates a user-defined SNEX expression for each audio sample.",
       "polyphonic": true,
       "tags": [
@@ -7722,7 +7739,7 @@
         "waveshaper",
         "formula"
       ],
-      "llmRef": "math.expr\n\nProgrammable per-sample expression node. The user writes a single-line SNEX formula that receives input (audio sample) and value (parameter). JIT-compiled at edit time.\n\nSignal flow:\n  audio in -> SNEX expression(input, value) -> audio out\n\nCPU: low (baseline), variable depending on expression complexity, polyphonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 1.0). Passed as the second argument to the expression.\n\nProperties:\n  Code: The SNEX expression (default \"input\", passthrough).\n  Debug: Toggles debug output for inspecting values or compiler warnings.\n\nWhen to use:\n  Quick custom waveshaping or math operations that are not covered by the built-in math nodes. Prefer built-in nodes when available (they may use vectorised operations). For stateful processing or multi-line code, use dedicated SNEX nodes.\n\nCommon mistakes:\n  Use f suffix for float literals (3.0f not 3.0) to avoid type mismatch errors.\n  Only input and value are available - no variable declarations.\n\nSee also:\n  [alternative] math.table - visual waveshaping curve\n  [companion] control.cable_expr - expression node for control cables\n  [api] Math -- HiseScript Math class with the same mathematical functions",
+      "llmRef": "math.expr\n\nProgrammable per-sample expression node. The user writes a single-line SNEX formula that receives input (audio sample) and value (parameter). JIT-compiled at edit time.\n\nSignal flow:\n  audio in -> SNEX expression(input, value) -> audio out\n\nCPU: low (baseline), variable depending on expression complexity, polyphonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 1.0). Passed as the second argument to the expression.\n\nProperties:\n  Code: The SNEX expression (default \"input\", passthrough).\n  Debug: Toggles debug output for inspecting values or compiler warnings.\n\nWhen to use:\n  Quick custom waveshaping or math operations that are not covered by the built-in math nodes. Prefer built-in nodes when available (they may use vectorised operations). For stateful processing or multi-line code, use dedicated SNEX nodes.\n\nCommon mistakes:\n  Use f suffix for float literals (3.0f not 3.0) to avoid type mismatch errors.\n  Only input and value are available - no variable declarations.\n  Requires a compile-enabled network. In CLI workflows, run `hise-cli dsp status --module <ModuleId> --autofix --agent` if status reports the expression-node compilation flag error, then verify with plain `dsp status` before tracing.\n\nSee also:\n  [alternative] math.table - visual waveshaping curve\n  [companion] control.cable_expr - expression node for control cables\n  [api] Math -- HiseScript Math class with the same mathematical functions",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": true,
@@ -7776,7 +7793,7 @@
     "math.fill1": {
       "factoryPath": "math.fill1",
       "factory": "math",
-      "title": "Fill 1",
+      "title": "math.fill1",
       "description": "Replaces the signal with a constant DC value of 1.0.",
       "polyphonic": true,
       "tags": [
@@ -7852,7 +7869,7 @@
     "math.inv": {
       "factoryPath": "math.inv",
       "factory": "math",
-      "title": "Inv",
+      "title": "math.inv",
       "description": "Inverts the phase of a signal by negating every sample.",
       "polyphonic": true,
       "tags": [
@@ -7878,7 +7895,7 @@
     "math.map": {
       "factoryPath": "math.map",
       "factory": "math",
-      "title": "Map",
+      "title": "math.map",
       "description": "Maps an input signal from one value range to another using linear interpolation with clamping.",
       "polyphonic": false,
       "tags": [
@@ -7946,7 +7963,7 @@
     "math.mod2sig": {
       "factoryPath": "math.mod2sig",
       "factory": "math",
-      "title": "Mod2Sig",
+      "title": "math.mod2sig",
       "description": "Converts a unipolar modulation signal (0-1) to a bipolar audio signal (-1 to 1).",
       "polyphonic": true,
       "tags": [
@@ -7973,7 +7990,7 @@
     "math.mod_inv": {
       "factoryPath": "math.mod_inv",
       "factory": "math",
-      "title": "Mod Inv",
+      "title": "math.mod_inv",
       "description": "Inverts a unipolar modulation signal within the 0-1 range.",
       "polyphonic": true,
       "tags": [
@@ -8036,7 +8053,7 @@
     "math.neural": {
       "factoryPath": "math.neural",
       "factory": "math",
-      "title": "Neural",
+      "title": "math.neural",
       "description": "Runs per-sample neural network inference using an RTNeural model with optional DC-blocking high-pass filter.",
       "polyphonic": true,
       "tags": [
@@ -8083,7 +8100,7 @@
     "math.pack": {
       "factoryPath": "math.pack",
       "factory": "math",
-      "title": "Pack",
+      "title": "math.pack",
       "description": "A lookup table that uses a SliderPack as its data source, with linear interpolation between slider values.",
       "polyphonic": false,
       "tags": [
@@ -8123,7 +8140,7 @@
     "math.pi": {
       "factoryPath": "math.pi",
       "factory": "math",
-      "title": "Pi",
+      "title": "math.pi",
       "description": "Multiplies the signal by PI times the Value parameter.",
       "polyphonic": true,
       "tags": [
@@ -8156,7 +8173,7 @@
     "math.pow": {
       "factoryPath": "math.pow",
       "factory": "math",
-      "title": "Pow",
+      "title": "math.pow",
       "description": "Raises each sample to a fixed power, shaping the signal curve.",
       "polyphonic": true,
       "tags": [
@@ -8190,7 +8207,7 @@
     "math.rect": {
       "factoryPath": "math.rect",
       "factory": "math",
-      "title": "Rect",
+      "title": "math.rect",
       "description": "Converts a normalised signal into a binary gate by thresholding at 0.5.",
       "polyphonic": true,
       "tags": [
@@ -8217,7 +8234,7 @@
     "math.sig2mod": {
       "factoryPath": "math.sig2mod",
       "factory": "math",
-      "title": "Sig2Mod",
+      "title": "math.sig2mod",
       "description": "Converts a bipolar audio signal (-1 to 1) to a unipolar modulation signal (0-1).",
       "polyphonic": true,
       "tags": [
@@ -8244,7 +8261,7 @@
     "math.sin": {
       "factoryPath": "math.sin",
       "factory": "math",
-      "title": "Sin",
+      "title": "math.sin",
       "description": "Applies the sine function to each sample of the signal.",
       "polyphonic": true,
       "tags": [
@@ -8270,7 +8287,7 @@
     "math.sqrt": {
       "factoryPath": "math.sqrt",
       "factory": "math",
-      "title": "Sqrt",
+      "title": "math.sqrt",
       "description": "Applies the square root function to each sample of the signal.",
       "polyphonic": true,
       "tags": [
@@ -8352,7 +8369,7 @@
     "math.table": {
       "factoryPath": "math.table",
       "factory": "math",
-      "title": "Table",
+      "title": "math.table",
       "description": "A lookup table waveshaper that uses a 512-sample editable curve to transform the input signal.",
       "polyphonic": false,
       "tags": [
@@ -8430,7 +8447,7 @@
     "routing.event_data_reader": {
       "factoryPath": "routing.event_data_reader",
       "factory": "routing",
-      "title": "Event Data Reader",
+      "title": "routing.event_data_reader",
       "description": "Reads per-event data from a storage slot and outputs it as a modulation signal.",
       "polyphonic": true,
       "tags": [
@@ -8483,7 +8500,7 @@
     "routing.event_data_writer": {
       "factoryPath": "routing.event_data_writer",
       "factory": "routing",
-      "title": "Event Data Writer",
+      "title": "routing.event_data_writer",
       "description": "Writes a value to per-event data storage for retrieval by event_data_reader nodes.",
       "polyphonic": true,
       "tags": [
@@ -8535,7 +8552,7 @@
     "routing.global_cable": {
       "factoryPath": "routing.global_cable",
       "factory": "routing",
-      "title": "Global Cable",
+      "title": "routing.global_cable",
       "description": "Routes a normalised control value across all DspNetworks via a named cable connection.",
       "polyphonic": false,
       "tags": [
@@ -8544,7 +8561,7 @@
         "global",
         "cable"
       ],
-      "llmRef": "routing.global_cable\n\nRoutes a normalised 0..1 control value across all DspNetworks via a named cable connection. Bidirectional -- any global_cable node on the same Connection ID can send or receive. A recursion guard prevents feedback loops.\n\nSignal flow:\n  Control node -- no audio processing\n  Value param -> broadcast to all peers on same Connection -> modulation output on receivers\n\nCPU: negligible, monophonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 1.0). Control value sent/received through the cable.\n\nWhen to use:\n  Cross-network control value routing. 13 instances across surveyed projects (rank 30). Use for linking parameters between different DspNetworks or for OSC integration (IDs starting with /). Prefer routing.local_cable when connections stay within a single network.\n\nCommon mistakes:\n  Values are always clamped to 0..1 -- use range converters for wider ranges.\n\nSee also:\n  [disambiguation] routing.local_cable -- network-scoped cable for single-network use\n  [api] GlobalCable -- HiseScript API for creating and connecting global cables",
+      "llmRef": "routing.global_cable\n\nRoutes a normalised 0..1 control value across all DspNetworks via a named cable connection. Bidirectional -- any global_cable node on the same Connection ID can send or receive. A recursion guard prevents feedback loops.\n\nSignal flow:\n  Control node -- no audio processing\n  Value param -> broadcast to all peers on same Connection -> modulation output on receivers\n\nCPU: negligible, monophonic\n\nParameters:\n  Value: 0.0 - 1.0 (default 1.0). Control value sent/received through the cable.\n\nWhen to use:\n  Cross-network control value routing. 13 instances across surveyed projects (rank 30). Use for linking parameters between different DspNetworks or for OSC integration (IDs starting with /). Prefer routing.local_cable when connections stay within a single network.\n\nCommon mistakes:\n  Values are always clamped to 0..1 -- use range converters for wider ranges.\n\nExternal C++ integration:\n  Use Tools -> Create C++ code for global cables to generate the GlobalCables enum and routing::global_cable_cpp_manager setup for the current cable IDs. Inherit the generated manager in the external node.\n  setGlobalCableValue<Cable>(value) sends scalar values and is realtime safe. Listener callbacks run synchronously, so avoid redundant calls from the sample loop and prefer sending once per block where possible.\n  sendDataToGlobalCable<Cable>(data) sends cloned juce::var data and is not realtime safe. Use it only for non-realtime data such as analysis buffers or UI payloads.\n  registerDataCallback<Cable>(callback) receives juce::var data sent through GlobalCable.sendData(); register it in the node constructor or prepare callback.\n  For an external C++ node with global cables that is nested in another network which is then compiled, add IsFixRuntimeTarget to that node's node_properties.json entry and declare a second unused template parameter defaulting to runtime_target::indexers::none. This preserves the global-cable connection through the nested compiled network.\n\nSee also:\n  [disambiguation] routing.local_cable -- network-scoped cable for single-network use\n  [api] GlobalCable -- HiseScript API for creating and connecting global cables",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": false,
@@ -8581,7 +8598,7 @@
     "routing.global_receive": {
       "factoryPath": "routing.global_receive",
       "factory": "routing",
-      "title": "Global Receive",
+      "title": "routing.global_receive",
       "description": "Receives audio from a global_send node and mixes it into the local signal chain.",
       "polyphonic": true,
       "tags": [
@@ -8633,7 +8650,7 @@
     "routing.global_send": {
       "factoryPath": "routing.global_send",
       "factory": "routing",
-      "title": "Global Send",
+      "title": "routing.global_send",
       "description": "Copies audio from the local signal chain into a shared buffer for cross-network routing.",
       "polyphonic": false,
       "tags": [
@@ -8685,7 +8702,7 @@
     "routing.local_cable": {
       "factoryPath": "routing.local_cable",
       "factory": "routing",
-      "title": "Local Cable",
+      "title": "routing.local_cable",
       "description": "Routes a normalised control value between nodes sharing the same ID within a single network.",
       "polyphonic": false,
       "tags": [
@@ -8731,7 +8748,7 @@
     "routing.local_cable_unscaled": {
       "factoryPath": "routing.local_cable_unscaled",
       "factory": "routing",
-      "title": "Local Cable Unscaled",
+      "title": "routing.local_cable_unscaled",
       "description": "Routes an unnormalised control value between nodes sharing the same ID within a single network.",
       "polyphonic": false,
       "tags": [
@@ -8773,7 +8790,7 @@
     "routing.matrix": {
       "factoryPath": "routing.matrix",
       "factory": "routing",
-      "title": "Matrix",
+      "title": "routing.matrix",
       "description": "Applies an arbitrary channel routing matrix to the signal, configured through a visual editor.",
       "polyphonic": false,
       "tags": [
@@ -8823,7 +8840,7 @@
     "routing.ms_decode": {
       "factoryPath": "routing.ms_decode",
       "factory": "routing",
-      "title": "MS Decode",
+      "title": "routing.ms_decode",
       "description": "Converts a mid/side signal back to stereo left/right.",
       "polyphonic": false,
       "tags": [
@@ -8849,7 +8866,7 @@
     "routing.ms_encode": {
       "factoryPath": "routing.ms_encode",
       "factory": "routing",
-      "title": "MS Encode",
+      "title": "routing.ms_encode",
       "description": "Converts a stereo left/right signal to mid/side representation.",
       "polyphonic": false,
       "tags": [
@@ -8875,7 +8892,7 @@
     "routing.public_mod": {
       "factoryPath": "routing.public_mod",
       "factory": "routing",
-      "title": "Public Mod",
+      "title": "routing.public_mod",
       "description": "Exposes a value as a modulation output on the parent network, allowing compiled nodes to act as modulation sources.",
       "polyphonic": false,
       "tags": [
@@ -8901,7 +8918,7 @@
     "routing.receive": {
       "factoryPath": "routing.receive",
       "factory": "routing",
-      "title": "Receive",
+      "title": "routing.receive",
       "description": "Receives audio from a connected send node and adds it to the current signal, scaled by the Feedback parameter.",
       "polyphonic": true,
       "tags": [
@@ -8970,7 +8987,7 @@
     "routing.selector": {
       "factoryPath": "routing.selector",
       "factory": "routing",
-      "title": "Selector",
+      "title": "routing.selector",
       "description": "Dynamically routes channels between selected positions and the front of the buffer.",
       "polyphonic": true,
       "tags": [
@@ -9026,7 +9043,7 @@
     "routing.send": {
       "factoryPath": "routing.send",
       "factory": "routing",
-      "title": "Send",
+      "title": "routing.send",
       "description": "Copies the signal to an internal cable buffer for one or more receive nodes without altering the original signal.",
       "polyphonic": true,
       "tags": [
@@ -9088,7 +9105,7 @@
     "template.bipolar_mod": {
       "factoryPath": "template.bipolar_mod",
       "factory": "template",
-      "title": "Bipolar Mod",
+      "title": "template.bipolar_mod",
       "description": "A bipolar modulation source template that converts a signal into a bipolar offset around a base value with adjustable intensity.",
       "polyphonic": false,
       "tags": [
@@ -9144,7 +9161,7 @@
     "template.dry_wet": {
       "factoryPath": "template.dry_wet",
       "factory": "template",
-      "title": "Dry Wet",
+      "title": "template.dry_wet",
       "description": "A dry/wet parallel mixer template with linear crossfade between unprocessed and processed signal paths.",
       "polyphonic": false,
       "tags": [
@@ -9195,7 +9212,7 @@
     "template.feedback_delay": {
       "factoryPath": "template.feedback_delay",
       "factory": "template",
-      "title": "Feedback Delay",
+      "title": "template.feedback_delay",
       "description": "A feedback delay loop template with send/receive routing, a delay line, and feedback gain control within fixed 32-sample blocks.",
       "polyphonic": false,
       "tags": [
@@ -9267,7 +9284,7 @@
     "template.freq_split2": {
       "factoryPath": "template.freq_split2",
       "factory": "template",
-      "title": "Freq Split 2",
+      "title": "template.freq_split2",
       "description": "A 2-band frequency crossover using phase-coherent Linkwitz-Riley filters.",
       "polyphonic": false,
       "tags": [
@@ -9333,7 +9350,7 @@
     "template.freq_split3": {
       "factoryPath": "template.freq_split3",
       "factory": "template",
-      "title": "Freq Split 3",
+      "title": "template.freq_split3",
       "description": "A 3-band frequency crossover using phase-coherent Linkwitz-Riley filters.",
       "polyphonic": false,
       "tags": [
@@ -9404,7 +9421,7 @@
     "template.freq_split4": {
       "factoryPath": "template.freq_split4",
       "factory": "template",
-      "title": "Freq Split 4",
+      "title": "template.freq_split4",
       "description": "A 4-band frequency crossover using phase-coherent Linkwitz-Riley filters.",
       "polyphonic": false,
       "tags": [
@@ -9480,7 +9497,7 @@
     "template.freq_split5": {
       "factoryPath": "template.freq_split5",
       "factory": "template",
-      "title": "Freq Split 5",
+      "title": "template.freq_split5",
       "description": "A 5-band frequency crossover using phase-coherent Linkwitz-Riley filters.",
       "polyphonic": false,
       "tags": [
@@ -9561,7 +9578,7 @@
     "template.mid_side": {
       "factoryPath": "template.mid_side",
       "factory": "template",
-      "title": "Mid Side",
+      "title": "template.mid_side",
       "description": "A mid/side processing template that decodes stereo to M/S, processes mid and side independently, then re-encodes to stereo.",
       "polyphonic": false,
       "tags": [
@@ -9623,7 +9640,7 @@
     "template.softbypass_switch2": {
       "factoryPath": "template.softbypass_switch2",
       "factory": "template",
-      "title": "Soft Bypass Switch 2",
+      "title": "template.softbypass_switch2",
       "description": "A click-free 2-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -9695,7 +9712,7 @@
     "template.softbypass_switch3": {
       "factoryPath": "template.softbypass_switch3",
       "factory": "template",
-      "title": "Soft Bypass Switch 3",
+      "title": "template.softbypass_switch3",
       "description": "A click-free 3-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -9767,7 +9784,7 @@
     "template.softbypass_switch4": {
       "factoryPath": "template.softbypass_switch4",
       "factory": "template",
-      "title": "Soft Bypass Switch 4",
+      "title": "template.softbypass_switch4",
       "description": "A click-free 4-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -9844,7 +9861,7 @@
     "template.softbypass_switch5": {
       "factoryPath": "template.softbypass_switch5",
       "factory": "template",
-      "title": "Soft Bypass Switch 5",
+      "title": "template.softbypass_switch5",
       "description": "A click-free 5-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -9921,7 +9938,7 @@
     "template.softbypass_switch6": {
       "factoryPath": "template.softbypass_switch6",
       "factory": "template",
-      "title": "Soft Bypass Switch 6",
+      "title": "template.softbypass_switch6",
       "description": "A click-free 6-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -9998,7 +10015,7 @@
     "template.softbypass_switch7": {
       "factoryPath": "template.softbypass_switch7",
       "factory": "template",
-      "title": "Soft Bypass Switch 7",
+      "title": "template.softbypass_switch7",
       "description": "A click-free 7-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [
@@ -10070,7 +10087,7 @@
     "template.softbypass_switch8": {
       "factoryPath": "template.softbypass_switch8",
       "factory": "template",
-      "title": "Soft Bypass Switch 8",
+      "title": "template.softbypass_switch8",
       "description": "A click-free 8-way signal path switch using soft-bypassed containers.",
       "polyphonic": false,
       "tags": [

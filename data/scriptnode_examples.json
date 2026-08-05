@@ -1,0 +1,883 @@
+{
+  "schemaVersion": 1,
+  "examples": {
+    "dynamics.comp": {
+      "schemaVersion": 1,
+      "id": "dynamics.comp.sidechain-ducking-compressor",
+      "factory": "dynamics",
+      "node": "dynamics.comp",
+      "slug": "comp",
+      "name": "dynamics.comp",
+      "description": "A downward compressor with peak detection, adjustable threshold, ratio, attack, and release.",
+      "scenario": {
+        "title": "Sidechain ducking compressor",
+        "projectContext": "A stereo synth pad should dip in level from a synthetic detector signal, creating the classic pumping effect used in dance production. The example wraps `dynamics.comp` in `container.sidechain`, replaces the duplicated detector channels with a ramp, and uses external sidechain mode so the compressor responds to that detector rather than the pad itself.",
+        "teachingGoal": "Demonstrate how `dynamics.comp` works with `container.sidechain` to compress one stereo signal from the level of another."
+      },
+      "supportNodes": {
+        "required": [
+          "container.sidechain",
+          "container.multi",
+          "container.chain",
+          "math.clear",
+          "core.ramp"
+        ],
+        "optional": [
+          "container.fix16_block",
+          "math.mul"
+        ],
+        "rationale": "`container.sidechain` doubles the channel count for program and detector pairs. `container.multi` exposes those pairs, while `math.clear` and `core.ramp` replace the duplicated detector audio with a deterministic synthetic key. `container.fix16_block` is only useful if the compressor's modulation output also drives another parameter that needs deterministic sub-block updates, and `math.mul` is optional for shaping that secondary modulation target."
+      },
+      "assumptions": {
+        "Channels": "multichannel required",
+        "Public control needed": "yes",
+        "Raw node values acceptable": "yes"
+      },
+      "builderSetup": {
+        "moduleId": "SidechainDucker",
+        "networkId": "sidechain_ducker",
+        "details": {
+          "Host context": "Script FX",
+          "Additional builder steps applied": [],
+          "Channel/routing setup verified": "",
+          "Required channels": "default stereo externally; four internal channels inside SidechainHost",
+          "Module routing": "default stereo",
+          "Master routing": "default stereo"
+        }
+      },
+      "graphPlan": "sidechain_ducker\n  SidechainHost         container.sidechain\n    PairView            container.multi\n      ProgramPair       container.chain\n      SidechainPair     container.chain\n        DetectorClear   math.clear\n        PumpRamp        core.ramp\n    DuckComp            dynamics.comp",
+      "publicParameters": [
+        "DuckThreshold -> `DuckComp.Threshhold` matched",
+        "Target range before connection: `[-36, -12]`",
+        "Macro range: `[-36, -12]`",
+        "Default: `-24`",
+        "DuckRelease -> `DuckComp.Release` matched",
+        "Target range before connection: `[40, 220]`",
+        "Macro range: `[40, 220]`",
+        "Default: `140`",
+        "DuckRatio -> `DuckComp.Ratio` matched",
+        "Target range before connection: `[2, 12]`",
+        "Macro range: `[2, 12]`",
+        "Default: `6`",
+        "PumpTime -> `PumpRamp.PeriodTime` matched",
+        "Target range before connection: `[250, 4000]`",
+        "Macro range: `[250, 4000]`",
+        "Default: `1000`"
+      ],
+      "gotchas": [
+        {
+          "title": "Sidechain mode needs extra channels",
+          "wrong": "Enabling Sidechain mode on a stereo signal and expecting it to use an external key signal",
+          "right": "Route four channels into the node: channels 1-2 for audio, channels 3-4 for the sidechain key signal.",
+          "explanation": "Sidechain mode splits the incoming channels in half. For stereo processing with an external key signal, the container must provide four channels."
+        },
+        {
+          "title": "Disabled and Original are identical",
+          "wrong": "Switching between Disabled and Original expecting different behaviour",
+          "right": "Use Disabled for self-keyed compression. Use Sidechain for external keying.",
+          "explanation": "The Disabled and Original sidechain modes both use the input signal as the detection source. Only the Sidechain mode enables external keying."
+        },
+        {
+          "title": "Modulation output must be inverted for gain control",
+          "wrong": "Connecting the compressor modulation output directly to a gain node and expecting correct behaviour",
+          "right": "Right-click the modulation connection and swap the minimum and maximum values to invert the range.",
+          "explanation": "The modulation output is inverse gain reduction (higher value = less compression). Connecting it directly to a gain node increases gain when compression relaxes. Invert the range to produce the correct ducking behaviour."
+        },
+        {
+          "title": "Modulation cable timing is context-based",
+          "wrong": "Adding a fixed-block container because dynamics.comp itself needs one for accurate compression",
+          "right": "Use fixed-block or frame containers only when the compressor modulation output drives another parameter that needs tighter update timing.",
+          "explanation": "The compressor's internal dynamics processing is separate from the exported modulation-to-parameter update rate. Fixed-block containers make modulation cables update more often; they are not required for ordinary sidechain compression."
+        }
+      ],
+      "lockedBuildValues": [
+        "None from Phase 2."
+      ],
+      "verifiedParameters": [
+        "`DuckComp.Threshhold` = `-24` range `-36..-12` stepSize `0.1`",
+        "`DuckComp.Release` = `140` range `40..220` stepSize `0.1`",
+        "`DuckComp.Ratio` = `6` range `2..12` stepSize `0.1`",
+        "`DuckComp.Sidechain` = `2` range `0..2` stepSize `1`",
+        "`PumpRamp.PeriodTime` = `1000` range `250..4000` stepSize `1`",
+        "`sidechain_ducker.DuckThreshold` = `-24` range `-36..-12` stepSize `0.1`",
+        "`sidechain_ducker.DuckRelease` = `140` range `40..220` stepSize `0.1`",
+        "`sidechain_ducker.DuckRatio` = `6` range `2..12` stepSize `0.1`",
+        "`sidechain_ducker.PumpTime` = `1000` range `250..4000` stepSize `1`"
+      ],
+      "verifiedConnections": [
+        "`sidechain_ducker.DuckThreshold` -> `DuckComp.Threshhold` matched: true",
+        "`sidechain_ducker.DuckRelease` -> `DuckComp.Release` matched: true",
+        "`sidechain_ducker.DuckRatio` -> `DuckComp.Ratio` matched: true",
+        "`sidechain_ducker.PumpTime` -> `PumpRamp.PeriodTime` matched: true"
+      ],
+      "traceValidation": {
+        "commands": [
+          "`hise-cli dsp trace --module SidechainDucker --container sidechain_ducker --inject-param sidechain_ducker.DuckThreshold=-18 --inject-param sidechain_ducker.DuckRelease=200 --inject-param sidechain_ducker.DuckRatio=10 --inject-param sidechain_ducker.PumpTime=500 --probe-param DuckComp.Threshhold --probe-param DuckComp.Release --probe-param DuckComp.Ratio --probe-param PumpRamp.PeriodTime --trace-compact --agent`",
+          "`hise-cli dsp trace --module SidechainDucker --container sidechain_ducker --inject noise --gain 0.5 --seed 1234 --probe-recursive --probe-param DuckComp.Sidechain --trace-compact --agent`"
+        ],
+        "evidence": [
+          "`DuckComp.Threshhold` probed as `-18`, `DuckComp.Release` as `200`, `DuckComp.Ratio` as `10`, and `PumpRamp.PeriodTime` as `500`; all matched injected root control values.",
+          "`SidechainHost` changed the internal context to `numChannels=4` while root input/output remained stereo.",
+          "`PairView` exposed program channels 0-1 at about `-0.4995..0.4995` and detector channels 2-3 at about `0.5467` after `PumpRamp`.",
+          "`DetectorClear` silenced the duplicated detector pair before `PumpRamp` replaced it.",
+          "`DuckComp.Sidechain` probed as `2`; `DuckComp` processed the four-channel stream and attenuated the program pair to about `-0.0923..-0.0927` in the traced block."
+        ],
+        "caveats": [
+          "The compressor's internal sidechain compression is not the same as exported modulation-to-parameter timing. No fixed-block container is needed because this example does not route `DuckComp` modulation output to another target.",
+          "`container.sidechain` returns only the original external channel count after its children process the four-channel internal layout.",
+          "`core.ramp` adds its ramp value to the detector audio channels, so `DetectorClear` must run before it to prevent source audio from leaking into the sidechain key."
+        ]
+      },
+      "commentsToPreserve": [
+        "Before `SidechainHost`: `container.sidechain` expands stereo into an internal four-channel layout so `DuckComp` can use channels 2-3 as its detector pair.",
+        "Before `PairView`: `container.multi` exposes the program and detector stereo pairs visually; it is not a dry/wet split.",
+        "Before `DetectorClear`: clear the duplicated detector pair first so the detector no longer follows the source audio.",
+        "Before `PumpRamp`: replace the detector pair with an artificial ramp; `PumpTime` controls the ramp period directly.",
+        "Before `DuckComp.Sidechain`: set sidechain mode to `Sidechain`; `Disabled` and `Original` collapse the example into ordinary self-keyed compression.",
+        "Before cosmetics: do not fold `SidechainPair`, because folding it would hide the visible `PumpRamp` detector source."
+      ],
+      "defaultsOmitted": [
+        "`DuckComp.Attack` default `50`",
+        "`DetectorClear.Value` default `0.0`",
+        "`PumpRamp.LoopStart` default `0`",
+        "`PumpRamp.Gate` default `On`"
+      ],
+      "openIssues": [
+        "None"
+      ],
+      "commandList": "hise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SidechainDucker --agent\nhise-cli builder set --module SidechainDucker --network sidechain_ducker --agent\n\nhise-cli dsp add --module SidechainDucker --type container.sidechain --id SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.multi --id PairView --parent SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id ProgramPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id SidechainPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type math.clear --id DetectorClear --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type core.ramp --id PumpRamp --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type dynamics.comp --id DuckComp --parent SidechainHost --agent\n\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --range \"250,4000\" --stepSize 1 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --value 1000 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Sidechain --value 2 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --range \"-36,-12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --value -24 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --range \"40,220\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --value 140 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --range \"2,12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --value 6 --agent\n\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckThreshold --range \"-36,-12\" --default -24 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRelease --range \"40,220\" --default 140 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRatio --range \"2,12\" --default 6 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id PumpTime --range \"250,4000\" --default 1000 --stepSize 1 --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckThreshold --target DuckComp --param Threshhold --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRelease --target DuckComp --param Release --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRatio --target DuckComp --param Ratio --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param PumpTime --target PumpRamp --param PeriodTime --matched --agent\n\nhise-cli dsp set --module SidechainDucker --node DuckComp --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Comment --value '\"**Sidechain compressor** - DuckComp listens to the synthetic detector pair while compressing the program pair.\"' --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param Comment --value '\"SidechainHost expands stereo into four internal channels: program 0-1 and detector 2-3.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param Comment --value '\"PairView exposes the two stereo pairs before DuckComp processes the full four-channel stream.\"' --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Comment --value '\"Clear the duplicated detector pair before replacing it with the synthetic pump ramp.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param Comment --value '\"Pump time controls the ramp period for wider ducking cycles.\"' --agent\nhise-cli dsp set --module SidechainDucker --node ProgramPair --param Folded --value true --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Folded --value true --agent",
+      "hscScript": "#!/usr/bin/env hise-cli run\n# dynamics.comp: duck a stereo program signal from a synthetic sidechain detector pair.\n#\n# Notes for this example:\n# - container.sidechain expands stereo into four internal channels: program 0-1 and detector 2-3.\n# - container.multi exposes those stereo pairs visually; it is not a dry/wet split.\n# - The detector pair is cleared before the synthetic ramp replaces it.\n# - DuckComp.Sidechain must be set to Sidechain, otherwise the compressor becomes ordinary self-keyed compression.\n\n/hise playground open\n/builder\nreset\n\nadd ScriptFX as \"SidechainDucker\"\nset SidechainDucker.network \"sidechain_ducker\"\n/exit\n\n/dsp\ncd SidechainDucker\n\n# SidechainHost expands stereo into an internal four-channel layout for DuckComp.\nadd container.sidechain as \"SidechainHost\"\n\n# PairView exposes the program and detector stereo pairs; it is not a dry/wet split.\nadd container.multi as \"PairView\" to SidechainHost\nadd container.chain as \"ProgramPair\" to PairView\nadd container.chain as \"SidechainPair\" to PairView\n\n# Clear the duplicated detector pair before replacing it with the synthetic pump ramp.\nadd math.clear as \"DetectorClear\" to SidechainPair\n\n# PumpTime controls the ramp period directly.\nadd core.ramp as \"PumpRamp\" to SidechainPair\nadd dynamics.comp as \"DuckComp\" to SidechainHost\n\nset PumpRamp.PeriodTime.range [250, 4000], PumpRamp.PeriodTime.stepSize 1\nset PumpRamp.PeriodTime 1000\n\n# Sidechain mode is required; Disabled and Original collapse this into self-keyed compression.\nset DuckComp.Sidechain 2\nset DuckComp.Threshhold.range [-36, -12], DuckComp.Threshhold.stepSize 0.1\nset DuckComp.Threshhold -24\nset DuckComp.Release.range [40, 220], DuckComp.Release.stepSize 0.1\nset DuckComp.Release 140\nset DuckComp.Ratio.range [2, 12], DuckComp.Ratio.stepSize 0.1\nset DuckComp.Ratio 6\n\ncreate_parameter sidechain_ducker.DuckThreshold [-36, -12] default -24 stepSize 0.1\ncreate_parameter sidechain_ducker.DuckRelease [40, 220] default 140 stepSize 0.1\ncreate_parameter sidechain_ducker.DuckRatio [2, 12] default 6 stepSize 0.1\ncreate_parameter sidechain_ducker.PumpTime [250, 4000] default 1000 stepSize 1\nconnect sidechain_ducker.DuckThreshold to DuckComp.Threshhold matched\nconnect sidechain_ducker.DuckRelease to DuckComp.Release matched\nconnect sidechain_ducker.DuckRatio to DuckComp.Ratio matched\nconnect sidechain_ducker.PumpTime to PumpRamp.PeriodTime matched\n\n# Screenshot-oriented annotations and layout. Do not fold SidechainPair because it would hide PumpRamp.\nset DuckComp.NodeColour 0xFFE67E22\nset DuckComp.Comment \"**Sidechain compressor** - DuckComp listens to the synthetic detector pair while compressing the program pair.\"\n\nset SidechainHost.NodeColour 0xFF8F7766\nset SidechainHost.Comment \"SidechainHost expands stereo into four internal channels: program 0-1 and detector 2-3.\"\n\nset PairView.NodeColour 0xFF8F7766\nset PairView.Comment \"PairView exposes the two stereo pairs before DuckComp processes the full four-channel stream.\"\n\nset DetectorClear.NodeColour 0xFF8F7766\nset DetectorClear.Comment \"Clear the duplicated detector pair before replacing it with the synthetic pump ramp.\"\n\nset PumpRamp.NodeColour 0xFF8F7766\nset PumpRamp.Comment \"Pump time controls the ramp period for wider ducking cycles.\"\n\nset ProgramPair.Folded true\nset DetectorClear.Folded true\n/exit\n",
+      "screenshot": "comp.png",
+      "screenshotUrl": "/data/v2/scriptnode-examples/dynamics/comp.png",
+      "domain": "scriptnode",
+      "category": "dsp-network",
+      "title": "Sidechain ducking compressor",
+      "summary": "Uses dynamics.comp inside container.sidechain to duck a stereo program signal from a separate detector pair.",
+      "useCase": "Use this when you need external sidechain compression, pumping, or ducking where one signal controls gain reduction on another.",
+      "difficulty": "intermediate",
+      "networkName": "sidechain_ducker",
+      "moduleType": "ScriptFX",
+      "moduleId": "SidechainDucker",
+      "tags": [
+        "compressor",
+        "sidechain",
+        "ducking",
+        "pump",
+        "multichannel-routing",
+        "detector-signal"
+      ],
+      "aliases": [
+        "sidechain compressor",
+        "ducking compressor",
+        "pump effect",
+        "external key compression",
+        "sidechain detector pair"
+      ],
+      "relatedNodes": [
+        "dynamics.comp",
+        "container.sidechain",
+        "container.multi",
+        "container.chain",
+        "math.clear",
+        "core.ramp",
+        "math.mul"
+      ],
+      "parameters": {
+        "DuckThreshold": "Controls the compressor threshold on DuckComp.Threshhold.",
+        "DuckRelease": "Controls how quickly DuckComp recovers after gain reduction.",
+        "DuckRatio": "Controls the compression depth/ratio on DuckComp.Ratio.",
+        "PumpTime": "Controls PumpRamp.PeriodTime for the synthetic detector ramp.",
+        "DuckComp.Sidechain": "Must be set to Sidechain so DuckComp reads detector channels instead of self-keying."
+      },
+      "body": "scriptnode example: dynamics.comp\n\nSidechain ducking compressor.\nUse this to build external sidechain ducking with `dynamics.comp` inside `container.sidechain`, replacing the detector pair with a synthetic ramp that makes the pumping behavior obvious.\n\nGraph:\n```text\nsidechain_ducker\n  SidechainHost         container.sidechain\n    PairView            container.multi\n      ProgramPair       container.chain\n      SidechainPair     container.chain\n        DetectorClear   math.clear\n        PumpRamp        core.ramp\n    DuckComp            dynamics.comp\n```\n\nHost:\n  Module: `SidechainDucker`\n  Type: `ScriptFX`\n  Network: `sidechain_ducker`\n  Routing: default stereo externally; four internal channels inside `SidechainHost`\n  Builder setup:\n    - `add ScriptFX as \"SidechainDucker\"`\n    - `set SidechainDucker.network \"sidechain_ducker\"`\n\nSupport nodes:\n  Required: `container.sidechain`, `container.multi`, `container.chain`, `math.clear`, `core.ramp`\n  Optional: `container.fix16_block`, `math.mul`\n\nKey rules:\n  - Use `container.sidechain` to expand stereo into program channels 0-1 and detector channels 2-3.\n  - Set `DuckComp.Sidechain` to `Sidechain`; `Disabled` and `Original` self-key from the program signal.\n  - Use `container.multi` only to expose the two stereo pairs visually; it is not a dry/wet split.\n  - Clear the duplicated detector channels before `PumpRamp`, otherwise source audio leaks into the sidechain key.\n  - `PumpRamp` replaces the detector pair with a synthetic ramp; `PumpTime` controls the ramp period.\n  - Do not add fixed-block processing for ordinary sidechain compression unless the exported compressor modulation drives another parameter.\n  - Invert the compressor modulation output if routing it to gain, because it represents inverse gain reduction.\n\nPublic controls:\n  - `DuckThreshold` -> `DuckComp.Threshhold`, matched, `-36..-12`, default `-24`\n  - `DuckRelease` -> `DuckComp.Release`, matched, `40..220`, default `140`\n  - `DuckRatio` -> `DuckComp.Ratio`, matched, `2..12`, default `6`\n  - `PumpTime` -> `PumpRamp.PeriodTime`, matched, `250..4000`, default `1000`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SidechainDucker --agent\nhise-cli builder set --module SidechainDucker --network sidechain_ducker --agent\n\nhise-cli dsp add --module SidechainDucker --type container.sidechain --id SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.multi --id PairView --parent SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id ProgramPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id SidechainPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type math.clear --id DetectorClear --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type core.ramp --id PumpRamp --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type dynamics.comp --id DuckComp --parent SidechainHost --agent\n\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --range \"250,4000\" --stepSize 1 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --value 1000 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Sidechain --value 2 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --range \"-36,-12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --value -24 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --range \"40,220\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --value 140 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --range \"2,12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --value 6 --agent\n\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckThreshold --range \"-36,-12\" --default -24 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRelease --range \"40,220\" --default 140 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRatio --range \"2,12\" --default 6 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id PumpTime --range \"250,4000\" --default 1000 --stepSize 1 --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckThreshold --target DuckComp --param Threshhold --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRelease --target DuckComp --param Release --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRatio --target DuckComp --param Ratio --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param PumpTime --target PumpRamp --param PeriodTime --matched --agent\n\nhise-cli dsp set --module SidechainDucker --node DuckComp --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Comment --value '\"**Sidechain compressor** - DuckComp listens to the synthetic detector pair while compressing the program pair.\"' --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param Comment --value '\"SidechainHost expands stereo into four internal channels: program 0-1 and detector 2-3.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param Comment --value '\"PairView exposes the two stereo pairs before DuckComp processes the full four-channel stream.\"' --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Comment --value '\"Clear the duplicated detector pair before replacing it with the synthetic pump ramp.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param Comment --value '\"Pump time controls the ramp period for wider ducking cycles.\"' --agent\nhise-cli dsp set --module SidechainDucker --node ProgramPair --param Folded --value true --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Folded --value true --agent\n```",
+      "llmRef": "scriptnode example: dynamics.comp\n\nSidechain ducking compressor.\nUse this to build external sidechain ducking with `dynamics.comp` inside `container.sidechain`, replacing the detector pair with a synthetic ramp that makes the pumping behavior obvious.\n\nGraph:\n```text\nsidechain_ducker\n  SidechainHost         container.sidechain\n    PairView            container.multi\n      ProgramPair       container.chain\n      SidechainPair     container.chain\n        DetectorClear   math.clear\n        PumpRamp        core.ramp\n    DuckComp            dynamics.comp\n```\n\nHost:\n  Module: `SidechainDucker`\n  Type: `ScriptFX`\n  Network: `sidechain_ducker`\n  Routing: default stereo externally; four internal channels inside `SidechainHost`\n  Builder setup:\n    - `add ScriptFX as \"SidechainDucker\"`\n    - `set SidechainDucker.network \"sidechain_ducker\"`\n\nSupport nodes:\n  Required: `container.sidechain`, `container.multi`, `container.chain`, `math.clear`, `core.ramp`\n  Optional: `container.fix16_block`, `math.mul`\n\nKey rules:\n  - Use `container.sidechain` to expand stereo into program channels 0-1 and detector channels 2-3.\n  - Set `DuckComp.Sidechain` to `Sidechain`; `Disabled` and `Original` self-key from the program signal.\n  - Use `container.multi` only to expose the two stereo pairs visually; it is not a dry/wet split.\n  - Clear the duplicated detector channels before `PumpRamp`, otherwise source audio leaks into the sidechain key.\n  - `PumpRamp` replaces the detector pair with a synthetic ramp; `PumpTime` controls the ramp period.\n  - Do not add fixed-block processing for ordinary sidechain compression unless the exported compressor modulation drives another parameter.\n  - Invert the compressor modulation output if routing it to gain, because it represents inverse gain reduction.\n\nPublic controls:\n  - `DuckThreshold` -> `DuckComp.Threshhold`, matched, `-36..-12`, default `-24`\n  - `DuckRelease` -> `DuckComp.Release`, matched, `40..220`, default `140`\n  - `DuckRatio` -> `DuckComp.Ratio`, matched, `2..12`, default `6`\n  - `PumpTime` -> `PumpRamp.PeriodTime`, matched, `250..4000`, default `1000`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SidechainDucker --agent\nhise-cli builder set --module SidechainDucker --network sidechain_ducker --agent\n\nhise-cli dsp add --module SidechainDucker --type container.sidechain --id SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.multi --id PairView --parent SidechainHost --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id ProgramPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type container.chain --id SidechainPair --parent PairView --agent\nhise-cli dsp add --module SidechainDucker --type math.clear --id DetectorClear --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type core.ramp --id PumpRamp --parent SidechainPair --agent\nhise-cli dsp add --module SidechainDucker --type dynamics.comp --id DuckComp --parent SidechainHost --agent\n\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --range \"250,4000\" --stepSize 1 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param PeriodTime --value 1000 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Sidechain --value 2 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --range \"-36,-12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Threshhold --value -24 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --range \"40,220\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Release --value 140 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --range \"2,12\" --stepSize 0.1 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Ratio --value 6 --agent\n\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckThreshold --range \"-36,-12\" --default -24 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRelease --range \"40,220\" --default 140 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id DuckRatio --range \"2,12\" --default 6 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SidechainDucker --container sidechain_ducker --id PumpTime --range \"250,4000\" --default 1000 --stepSize 1 --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckThreshold --target DuckComp --param Threshhold --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRelease --target DuckComp --param Release --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param DuckRatio --target DuckComp --param Ratio --matched --agent\nhise-cli dsp connect --module SidechainDucker --source sidechain_ducker --source-param PumpTime --target PumpRamp --param PeriodTime --matched --agent\n\nhise-cli dsp set --module SidechainDucker --node DuckComp --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SidechainDucker --node DuckComp --param Comment --value '\"**Sidechain compressor** - DuckComp listens to the synthetic detector pair while compressing the program pair.\"' --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node SidechainHost --param Comment --value '\"SidechainHost expands stereo into four internal channels: program 0-1 and detector 2-3.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PairView --param Comment --value '\"PairView exposes the two stereo pairs before DuckComp processes the full four-channel stream.\"' --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Comment --value '\"Clear the duplicated detector pair before replacing it with the synthetic pump ramp.\"' --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SidechainDucker --node PumpRamp --param Comment --value '\"Pump time controls the ramp period for wider ducking cycles.\"' --agent\nhise-cli dsp set --module SidechainDucker --node ProgramPair --param Folded --value true --agent\nhise-cli dsp set --module SidechainDucker --node DetectorClear --param Folded --value true --agent\n```",
+      "text": "Sidechain ducking compressor\nPrimary node: dynamics.comp.\nUses dynamics.comp inside container.sidechain to duck a stereo program signal from a separate detector pair.\nUse this when you need external sidechain compression, pumping, or ducking where one signal controls gain reduction on another.\nRelated nodes: dynamics.comp, container.sidechain, container.multi, container.chain, math.clear, core.ramp, math.mul.\nTags: compressor, sidechain, ducking, pump, multichannel-routing, detector-signal.\nAliases: sidechain compressor, ducking compressor, pump effect, external key compression, sidechain detector pair.\nKey parameters: DuckThreshold, DuckRelease, DuckRatio, PumpTime, DuckComp.Sidechain."
+    },
+    "dynamics.envelope_follower": {
+      "schemaVersion": 1,
+      "id": "dynamics.envelope_follower.dynamic-mid-cut-eq",
+      "factory": "dynamics",
+      "node": "dynamics.envelope_follower",
+      "slug": "envelope_follower",
+      "name": "dynamics.envelope_follower",
+      "description": "A polyphonic envelope follower that tracks input amplitude with configurable attack and release.",
+      "scenario": {
+        "title": "Dynamic mid-cut EQ",
+        "projectContext": "A bright lead or vocal-like synth should become less harsh when played harder, without using a full compressor on the whole signal. `dynamics.envelope_follower` tracks the source amplitude and drives a mid-focused peak band so louder passages automatically apply more attenuation in the harsh frequency range.",
+        "teachingGoal": "Demonstrate how `dynamics.envelope_follower` can act as the control source for a dynamic EQ style setup where amplitude modulates a filter band's gain."
+      },
+      "supportNodes": {
+        "required": [
+          "container.fix16_block",
+          "filters.svf_eq"
+        ],
+        "optional": [
+          "container.fix8_block",
+          "math.mul",
+          "math.add"
+        ],
+        "rationale": "`filters.svf_eq` provides the actual EQ band being modulated. A fixed-block container is important here because the follower's exported modulation output drives another parameter, and `container.fix16_block` or `container.fix8_block` makes that modulation-to-parameter update timing deterministic. Simple math nodes are optional if Phase 2 needs to invert or narrow the envelope follower's 0..1 output into a musically useful attenuation range."
+      },
+      "assumptions": {
+        "Channels": "default stereo",
+        "Public control needed": "yes",
+        "Raw node values acceptable": "no"
+      },
+      "builderSetup": {
+        "moduleId": "DynamicMidCut",
+        "networkId": "dynamic_mid_cut",
+        "details": {
+          "Host context": "Script FX",
+          "Additional builder steps applied": [],
+          "Channel/routing setup verified": "",
+          "Required channels": "default stereo",
+          "Module routing": "default stereo",
+          "Master routing": "default stereo"
+        }
+      },
+      "graphPlan": "dynamic_mid_cut\n  TimingBlock           container.fix16_block\n    InputFollower       dynamics.envelope_follower\n    CutDepthPMA         control.pma_unscaled\n    HarshBandEQ         filters.svf_eq",
+      "publicParameters": [
+        "FollowerAttack -> `InputFollower.Attack` matched",
+        "Target range before connection: `[5, 80]`",
+        "Macro range: `[5, 80]`",
+        "Default: `20`",
+        "FollowerRelease -> `InputFollower.Release` matched",
+        "Target range before connection: `[40, 300]`",
+        "Macro range: `[40, 300]`",
+        "Default: `120`",
+        "MidCutDepth -> `CutDepthPMA.Value` unscaled",
+        "Target range before connection: `unscaled raw dB`",
+        "Macro range: `[-18, -3]`",
+        "Default: `-9`"
+      ],
+      "gotchas": [
+        {
+          "title": "ProcessSignal On replaces audio output",
+          "wrong": "Enabling ProcessSignal and expecting audio to pass through unchanged",
+          "right": "Leave ProcessSignal Off for analysis-only mode. Enable it only when the envelope signal itself is the desired output.",
+          "explanation": "When ProcessSignal is On, all audio channels are replaced with the envelope value. This produces a DC-like signal following the input amplitude, not usable as audio output."
+        }
+      ],
+      "lockedBuildValues": [
+        "None from Phase 2."
+      ],
+      "verifiedParameters": [
+        "`InputFollower.Attack` = `20` range `5..80` stepSize `0.1`",
+        "`InputFollower.Release` = `120` range `40..300` stepSize `0.1`",
+        "`InputFollower.ProcessSignal` = `0` range `0..1` stepSize `1`",
+        "`CutDepthPMA.Value` = `0` unscaled input",
+        "`CutDepthPMA.Multiply` = `1` range `0..1` stepSize `0.0001`",
+        "`CutDepthPMA.Add` = `0`",
+        "`HarshBandEQ.Mode` = `4` range `0..4` stepSize `1`",
+        "`HarshBandEQ.Frequency` = `2500` range `20..20000`",
+        "`HarshBandEQ.Q` = `2.5` range `0.3..9.9`",
+        "`HarshBandEQ.Gain` = `0` range `0..-18` stepSize `0.1`",
+        "`HarshBandEQ.Smoothing` = `0` range `0..1`",
+        "`dynamic_mid_cut.FollowerAttack` = `20` range `5..80` stepSize `0.1`",
+        "`dynamic_mid_cut.FollowerRelease` = `120` range `40..300` stepSize `0.1`",
+        "`dynamic_mid_cut.MidCutDepth` = `-9` range `-18..-3` stepSize `0.1`"
+      ],
+      "verifiedConnections": [
+        "`dynamic_mid_cut.FollowerAttack` -> `InputFollower.Attack` matched: true",
+        "`dynamic_mid_cut.FollowerRelease` -> `InputFollower.Release` matched: true",
+        "`dynamic_mid_cut.MidCutDepth` -> `CutDepthPMA.Value` matched: false, raw unscaled dB passthrough",
+        "`InputFollower` -> `CutDepthPMA.Multiply` matched: false, follower `0..1` controls how much depth is applied",
+        "`CutDepthPMA` -> `HarshBandEQ.Gain` matched: false, unscaled PMA output drives dB gain directly"
+      ],
+      "traceValidation": {
+        "commands": [
+          "`hise-cli dsp trace --module DynamicMidCut --container dynamic_mid_cut --inject-param dynamic_mid_cut.FollowerAttack=40 --inject-param dynamic_mid_cut.FollowerRelease=240 --inject-param dynamic_mid_cut.MidCutDepth=-15 --probe-param InputFollower.Attack --probe-param InputFollower.Release --probe-param CutDepthPMA.Value --trace-compact --agent`",
+          "`hise-cli dsp trace --module DynamicMidCut --container dynamic_mid_cut --inject silence --delay-ms 250 --probe-param CutDepthPMA.Value --probe-param CutDepthPMA.Multiply --probe-param HarshBandEQ.Gain --trace-compact --agent`",
+          "`hise-cli dsp trace --module DynamicMidCut --container dynamic_mid_cut --inject noise --gain 0.05 --seed 1234 --probe-param CutDepthPMA.Value --probe-param CutDepthPMA.Multiply --probe-param HarshBandEQ.Gain --trace-compact --agent`",
+          "`hise-cli dsp trace --module DynamicMidCut --container dynamic_mid_cut --inject noise --gain 1 --seed 1234 --probe-param CutDepthPMA.Value --probe-param CutDepthPMA.Multiply --probe-param HarshBandEQ.Gain --trace-compact --agent`",
+          "`hise-cli dsp trace --module DynamicMidCut --container dynamic_mid_cut --inject noise --gain 1 --seed 1234 --inject-param dynamic_mid_cut.MidCutDepth=-18 --probe-param CutDepthPMA.Value --probe-param CutDepthPMA.Multiply --probe-param HarshBandEQ.Gain --trace-compact --agent`"
+        ],
+        "evidence": [
+          "`InputFollower.Attack` probed as `40`, `InputFollower.Release` as `240`, and `CutDepthPMA.Value` as `-15`; `MidCutDepth` is passed as raw dB into the unscaled PMA value input.",
+          "Silence trace with `MidCutDepth=-9`: `CutDepthPMA.Value=-9`, `CutDepthPMA.Multiply=0`, `HarshBandEQ.Gain=0`, so no EQ cut is applied when the follower is silent.",
+          "Low input trace with `MidCutDepth=-9`: `CutDepthPMA.Multiply=0.0339`, `HarshBandEQ.Gain=-0.3054`, producing a shallow cut.",
+          "Loud input trace with `MidCutDepth=-9`: `CutDepthPMA.Multiply=0.6787`, `HarshBandEQ.Gain=-6.1086`, matching `-9 * 0.6787`.",
+          "Loud input trace with `MidCutDepth=-18`: `CutDepthPMA.Multiply=0.6787`, `HarshBandEQ.Gain=-12.2173`, matching `-18 * 0.6787`."
+        ],
+        "caveats": [
+          "`CutDepthPMA.Value` and `CutDepthPMA.Add` are raw/unscaled inputs, but `CutDepthPMA.Multiply` is range-scaled. Its range is set to `0..1` before connecting `InputFollower`.",
+          "`HarshBandEQ.Smoothing` is locked to `0` so EQ smoothing does not add another envelope on top of `InputFollower.Attack` and `InputFollower.Release`.",
+          "`TimingBlock` is intentional because this graph exports follower modulation into an EQ parameter; fixed 16-sample blocks make that modulation-to-parameter update interval deterministic."
+        ]
+      },
+      "commentsToPreserve": [
+        "Before `TimingBlock`: fixed 16-sample blocks make the exported follower-to-EQ parameter modulation interval deterministic.",
+        "Before `CutDepthPMA`: use `control.pma_unscaled` so `MidCutDepth` is a raw dB max-cut value and the follower output simply scales how much of that cut is applied.",
+        "Before `CutDepthPMA.Multiply`: set the multiply range to `0..1`; unlike `Value` and `Add`, `Multiply` is range-scaled.",
+        "Before `HarshBandEQ.Gain`: the PMA output is already in dB, so connect it directly to the EQ gain target after setting the target range to `0..-18`.",
+        "Before `HarshBandEQ.Smoothing`: disable EQ smoothing so the envelope timing comes from `InputFollower`, not a second smoothing stage.",
+        "Before `InputFollower.ProcessSignal`: leave it at `Off` so the node analyses the source while passing audio through unchanged."
+      ],
+      "defaultsOmitted": [
+        "`InputFollower.ProcessSignal` default `Off`",
+        "`CutDepthPMA.Value` default `0`",
+        "`CutDepthPMA.Add` default `0`",
+        "`HarshBandEQ.Enabled` default `On`"
+      ],
+      "openIssues": [
+        "None"
+      ],
+      "commandList": "hise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id DynamicMidCut --agent\nhise-cli builder set --module DynamicMidCut --network dynamic_mid_cut --agent\n\nhise-cli dsp add --module DynamicMidCut --type container.fix16_block --id TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type dynamics.envelope_follower --id InputFollower --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type control.pma_unscaled --id CutDepthPMA --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type filters.svf_eq --id HarshBandEQ --parent TimingBlock --agent\n\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Mode --value 4 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Frequency --value 2500 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Q --value 2.5 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Smoothing --value 0 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Gain --range \"0,-18\" --stepSize 0.1 --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --range \"5,80\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --value 20 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --range \"40,300\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --value 120 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Multiply --range \"0,1\" --stepSize 0.0001 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Add --value 0 --agent\n\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerAttack --range \"5,80\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerRelease --range \"40,300\" --default 120 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id MidCutDepth --range \"-18,-3\" --default -9 --stepSize 0.1 --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerAttack --target InputFollower --param Attack --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerRelease --target InputFollower --param Release --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param MidCutDepth --target CutDepthPMA --param Value --agent\nhise-cli dsp connect --module DynamicMidCut --source InputFollower --target CutDepthPMA --param Multiply --agent\nhise-cli dsp connect --module DynamicMidCut --source CutDepthPMA --target HarshBandEQ --param Gain --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Comment --value '\"**Envelope follower** - Tracks input level while leaving the audio path unchanged.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param Comment --value '\"Fixed 16-sample blocks make the follower-to-EQ modulation update interval deterministic.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Comment --value '\"PMA unscaled multiplies raw depth dB by the follower amount.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Comment --value '\"Peak EQ cuts more as the follower output rises.\"' --agent",
+      "hscScript": "#!/usr/bin/env hise-cli run\n# dynamics.envelope_follower: drive a dynamic midrange EQ cut from the incoming signal level.\n#\n# Notes for this example:\n# - The follower analyses the input while leaving audio unchanged.\n# - A fixed 16-sample block makes the follower-to-EQ parameter update interval deterministic.\n# - control.pma_unscaled keeps MidCutDepth in raw dB and multiplies it by the follower amount.\n# - EQ smoothing is disabled so the visible envelope timing comes from the envelope follower.\n\n/hise playground open\n/builder\nreset\n\nadd ScriptFX as \"DynamicMidCut\"\nset DynamicMidCut.network \"dynamic_mid_cut\"\n/exit\n\n/dsp\ncd DynamicMidCut\n\n# Fixed 16-sample blocks make the exported follower-to-EQ parameter modulation interval deterministic.\nadd container.fix16_block as \"TimingBlock\"\nadd dynamics.envelope_follower as \"InputFollower\" to TimingBlock\n\n# PMA unscaled multiplies raw depth dB by the follower amount.\nadd control.pma_unscaled as \"CutDepthPMA\" to TimingBlock\nadd filters.svf_eq as \"HarshBandEQ\" to TimingBlock\n\nset HarshBandEQ.Mode 4\nset HarshBandEQ.Frequency 2500\nset HarshBandEQ.Q 2.5\n\n# Disable EQ smoothing so InputFollower controls the envelope timing.\nset HarshBandEQ.Smoothing 0\n\n# The PMA output is already in dB, so connect it directly after setting the target range.\nset HarshBandEQ.Gain.range [0, -18], HarshBandEQ.Gain.stepSize 0.1\n\nset InputFollower.Attack.range [5, 80], InputFollower.Attack.stepSize 0.1\nset InputFollower.Attack 20\nset InputFollower.Release.range [40, 300], InputFollower.Release.stepSize 0.1\nset InputFollower.Release 120\n\n# Multiply is range-scaled; Value and Add are raw/unscaled inputs.\nset CutDepthPMA.Multiply.range [0, 1], CutDepthPMA.Multiply.stepSize 0.0001\nset CutDepthPMA.Add 0\n\ncreate_parameter dynamic_mid_cut.FollowerAttack [5, 80] default 20 stepSize 0.1\ncreate_parameter dynamic_mid_cut.FollowerRelease [40, 300] default 120 stepSize 0.1\ncreate_parameter dynamic_mid_cut.MidCutDepth [-18, -3] default -9 stepSize 0.1\nconnect dynamic_mid_cut.FollowerAttack to InputFollower.Attack matched\nconnect dynamic_mid_cut.FollowerRelease to InputFollower.Release matched\nconnect dynamic_mid_cut.MidCutDepth to CutDepthPMA.Value\nconnect InputFollower to CutDepthPMA.Multiply\nconnect CutDepthPMA to HarshBandEQ.Gain\n\n# Screenshot-oriented annotations and layout.\nset InputFollower.NodeColour 0xFFE67E22\nset InputFollower.Comment \"**Envelope follower** - Tracks input level while leaving the audio path unchanged.\"\n\nset TimingBlock.NodeColour 0xFF8F7766\nset TimingBlock.Comment \"Fixed 16-sample blocks make the follower-to-EQ modulation update interval deterministic.\"\n\nset CutDepthPMA.NodeColour 0xFF8F7766\nset CutDepthPMA.Comment \"PMA unscaled multiplies raw depth dB by the follower amount.\"\n\nset HarshBandEQ.NodeColour 0xFF8F7766\nset HarshBandEQ.Comment \"Peak EQ cuts more as the follower output rises.\"\n/exit\n",
+      "screenshot": "envelope_follower.png",
+      "screenshotUrl": "/data/v2/scriptnode-examples/dynamics/envelope_follower.png",
+      "domain": "scriptnode",
+      "category": "dsp-network",
+      "title": "Dynamic mid-cut EQ",
+      "summary": "Tracks input amplitude with dynamics.envelope_follower and uses it to drive a level-dependent EQ cut.",
+      "useCase": "Use this when you need an envelope follower to modulate another parameter, such as a dynamic EQ band, without replacing the audio signal.",
+      "difficulty": "intermediate",
+      "networkName": "dynamic_mid_cut",
+      "moduleType": "ScriptFX",
+      "moduleId": "DynamicMidCut",
+      "tags": [
+        "envelope-follower",
+        "dynamic-eq",
+        "amplitude-tracking",
+        "parameter-modulation",
+        "fixed-block",
+        "raw-db-control"
+      ],
+      "aliases": [
+        "dynamic EQ",
+        "envelope controlled EQ",
+        "level dependent EQ",
+        "duck harsh frequencies",
+        "amplitude follower modulation"
+      ],
+      "relatedNodes": [
+        "dynamics.envelope_follower",
+        "container.fix16_block",
+        "control.pma_unscaled",
+        "filters.svf_eq"
+      ],
+      "parameters": {
+        "FollowerAttack": "Controls how quickly InputFollower responds to rising input amplitude.",
+        "FollowerRelease": "Controls how quickly InputFollower falls after the source gets quieter.",
+        "MidCutDepth": "Raw dB depth passed into CutDepthPMA.Value and scaled by the follower output.",
+        "HarshBandEQ.Gain": "Receives the unscaled PMA output as the final dynamic EQ cut amount."
+      },
+      "body": "scriptnode example: dynamics.envelope_follower\n\nDynamic mid-cut EQ.\nUse this to track input amplitude with `dynamics.envelope_follower` and apply a level-dependent EQ cut without compressing the full signal.\n\nGraph:\n```text\ndynamic_mid_cut\n  TimingBlock           container.fix16_block\n    InputFollower       dynamics.envelope_follower\n    CutDepthPMA         control.pma_unscaled\n    HarshBandEQ         filters.svf_eq\n```\n\nHost:\n  Module: `DynamicMidCut`\n  Type: `ScriptFX`\n  Network: `dynamic_mid_cut`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"DynamicMidCut\"`\n    - `set DynamicMidCut.network \"dynamic_mid_cut\"`\n\nSupport nodes:\n  Required: `container.fix16_block`, `filters.svf_eq`\n  Optional: `container.fix8_block`, `math.mul`, `math.add`\n\nKey rules:\n  - Use a fixed-block container because the follower output drives another parameter; `container.fix16_block` makes follower-to-EQ modulation timing deterministic.\n  - Leave `InputFollower.ProcessSignal` off so the node analyses input amplitude while passing audio through unchanged.\n  - Use `control.pma_unscaled` so `MidCutDepth` stays a raw dB value and the follower output scales how much cut is applied.\n  - Set `CutDepthPMA.Multiply` range to `0..1` before connecting `InputFollower`; `Multiply` is range-scaled, while `Value` and `Add` are raw/unscaled.\n  - Set `HarshBandEQ.Gain` range to `0..-18` before connecting `CutDepthPMA`, because the PMA output already produces the dB gain value.\n  - Set `HarshBandEQ.Smoothing` to `0` so envelope timing comes from `InputFollower.Attack` and `InputFollower.Release`, not an added EQ smoothing stage.\n\nPublic controls:\n  - `FollowerAttack` -> `InputFollower.Attack`, matched, `5..80`, default `20`\n  - `FollowerRelease` -> `InputFollower.Release`, matched, `40..300`, default `120`\n  - `MidCutDepth` -> `CutDepthPMA.Value`, unscaled raw dB, `-18..-3`, default `-9`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id DynamicMidCut --agent\nhise-cli builder set --module DynamicMidCut --network dynamic_mid_cut --agent\n\nhise-cli dsp add --module DynamicMidCut --type container.fix16_block --id TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type dynamics.envelope_follower --id InputFollower --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type control.pma_unscaled --id CutDepthPMA --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type filters.svf_eq --id HarshBandEQ --parent TimingBlock --agent\n\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Mode --value 4 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Frequency --value 2500 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Q --value 2.5 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Smoothing --value 0 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Gain --range \"0,-18\" --stepSize 0.1 --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --range \"5,80\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --value 20 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --range \"40,300\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --value 120 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Multiply --range \"0,1\" --stepSize 0.0001 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Add --value 0 --agent\n\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerAttack --range \"5,80\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerRelease --range \"40,300\" --default 120 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id MidCutDepth --range \"-18,-3\" --default -9 --stepSize 0.1 --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerAttack --target InputFollower --param Attack --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerRelease --target InputFollower --param Release --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param MidCutDepth --target CutDepthPMA --param Value --agent\nhise-cli dsp connect --module DynamicMidCut --source InputFollower --target CutDepthPMA --param Multiply --agent\nhise-cli dsp connect --module DynamicMidCut --source CutDepthPMA --target HarshBandEQ --param Gain --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Comment --value '\"**Envelope follower** - Tracks input level while leaving the audio path unchanged.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param Comment --value '\"Fixed 16-sample blocks make the follower-to-EQ modulation update interval deterministic.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Comment --value '\"PMA unscaled multiplies raw depth dB by the follower amount.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Comment --value '\"Peak EQ cuts more as the follower output rises.\"' --agent\n```",
+      "llmRef": "scriptnode example: dynamics.envelope_follower\n\nDynamic mid-cut EQ.\nUse this to track input amplitude with `dynamics.envelope_follower` and apply a level-dependent EQ cut without compressing the full signal.\n\nGraph:\n```text\ndynamic_mid_cut\n  TimingBlock           container.fix16_block\n    InputFollower       dynamics.envelope_follower\n    CutDepthPMA         control.pma_unscaled\n    HarshBandEQ         filters.svf_eq\n```\n\nHost:\n  Module: `DynamicMidCut`\n  Type: `ScriptFX`\n  Network: `dynamic_mid_cut`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"DynamicMidCut\"`\n    - `set DynamicMidCut.network \"dynamic_mid_cut\"`\n\nSupport nodes:\n  Required: `container.fix16_block`, `filters.svf_eq`\n  Optional: `container.fix8_block`, `math.mul`, `math.add`\n\nKey rules:\n  - Use a fixed-block container because the follower output drives another parameter; `container.fix16_block` makes follower-to-EQ modulation timing deterministic.\n  - Leave `InputFollower.ProcessSignal` off so the node analyses input amplitude while passing audio through unchanged.\n  - Use `control.pma_unscaled` so `MidCutDepth` stays a raw dB value and the follower output scales how much cut is applied.\n  - Set `CutDepthPMA.Multiply` range to `0..1` before connecting `InputFollower`; `Multiply` is range-scaled, while `Value` and `Add` are raw/unscaled.\n  - Set `HarshBandEQ.Gain` range to `0..-18` before connecting `CutDepthPMA`, because the PMA output already produces the dB gain value.\n  - Set `HarshBandEQ.Smoothing` to `0` so envelope timing comes from `InputFollower.Attack` and `InputFollower.Release`, not an added EQ smoothing stage.\n\nPublic controls:\n  - `FollowerAttack` -> `InputFollower.Attack`, matched, `5..80`, default `20`\n  - `FollowerRelease` -> `InputFollower.Release`, matched, `40..300`, default `120`\n  - `MidCutDepth` -> `CutDepthPMA.Value`, unscaled raw dB, `-18..-3`, default `-9`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id DynamicMidCut --agent\nhise-cli builder set --module DynamicMidCut --network dynamic_mid_cut --agent\n\nhise-cli dsp add --module DynamicMidCut --type container.fix16_block --id TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type dynamics.envelope_follower --id InputFollower --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type control.pma_unscaled --id CutDepthPMA --parent TimingBlock --agent\nhise-cli dsp add --module DynamicMidCut --type filters.svf_eq --id HarshBandEQ --parent TimingBlock --agent\n\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Mode --value 4 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Frequency --value 2500 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Q --value 2.5 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Smoothing --value 0 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Gain --range \"0,-18\" --stepSize 0.1 --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --range \"5,80\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Attack --value 20 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --range \"40,300\" --stepSize 0.1 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Release --value 120 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Multiply --range \"0,1\" --stepSize 0.0001 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Add --value 0 --agent\n\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerAttack --range \"5,80\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id FollowerRelease --range \"40,300\" --default 120 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module DynamicMidCut --container dynamic_mid_cut --id MidCutDepth --range \"-18,-3\" --default -9 --stepSize 0.1 --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerAttack --target InputFollower --param Attack --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param FollowerRelease --target InputFollower --param Release --matched --agent\nhise-cli dsp connect --module DynamicMidCut --source dynamic_mid_cut --source-param MidCutDepth --target CutDepthPMA --param Value --agent\nhise-cli dsp connect --module DynamicMidCut --source InputFollower --target CutDepthPMA --param Multiply --agent\nhise-cli dsp connect --module DynamicMidCut --source CutDepthPMA --target HarshBandEQ --param Gain --agent\n\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module DynamicMidCut --node InputFollower --param Comment --value '\"**Envelope follower** - Tracks input level while leaving the audio path unchanged.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node TimingBlock --param Comment --value '\"Fixed 16-sample blocks make the follower-to-EQ modulation update interval deterministic.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node CutDepthPMA --param Comment --value '\"PMA unscaled multiplies raw depth dB by the follower amount.\"' --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module DynamicMidCut --node HarshBandEQ --param Comment --value '\"Peak EQ cuts more as the follower output rises.\"' --agent\n```",
+      "text": "Dynamic mid-cut EQ\nPrimary node: dynamics.envelope_follower.\nTracks input amplitude with dynamics.envelope_follower and uses it to drive a level-dependent EQ cut.\nUse this when you need an envelope follower to modulate another parameter, such as a dynamic EQ band, without replacing the audio signal.\nRelated nodes: dynamics.envelope_follower, container.fix16_block, control.pma_unscaled, filters.svf_eq.\nTags: envelope-follower, dynamic-eq, amplitude-tracking, parameter-modulation, fixed-block, raw-db-control.\nAliases: dynamic EQ, envelope controlled EQ, level dependent EQ, duck harsh frequencies, amplitude follower modulation.\nKey parameters: FollowerAttack, FollowerRelease, MidCutDepth, HarshBandEQ.Gain."
+    },
+    "dynamics.gate": {
+      "schemaVersion": 1,
+      "id": "dynamics.gate.noise-layer-gate",
+      "factory": "dynamics",
+      "node": "dynamics.gate",
+      "slug": "gate",
+      "name": "dynamics.gate",
+      "description": "A noise gate that attenuates signals falling below the threshold.",
+      "scenario": {
+        "title": "Noise layer gate from split signal",
+        "projectContext": "A transient-rich source should open a filtered noise layer only while the source is active, adding a short burst of texture around note attacks. The main signal feeds `dynamics.gate`, and the gate's modulation output controls the gain of a second split branch that contains an oscillator set to noise. In a real project, a looped noise sample in a file player would often be the better source, but the oscillator keeps the example minimal.",
+        "teachingGoal": "Demonstrate how `dynamics.gate` can derive a control signal from an input and use that signal to open or close a separate texture layer."
+      },
+      "supportNodes": {
+        "required": [
+          "container.split",
+          "core.gain",
+          "core.oscillator"
+        ],
+        "optional": [
+          "container.fix16_block",
+          "filters.svf_eq"
+        ],
+        "rationale": "`container.split` makes the dry branch and the gated noise branch visible in one topology. `core.gain` is the practical target for the gate modulation, and `core.oscillator` provides a minimal noise source for the secondary branch. `container.fix16_block` is optional if the example wants deterministic gate/modulation timing, while EQ can shape the noise layer into a more deliberate texture."
+      },
+      "assumptions": {
+        "Channels": "default stereo",
+        "Public control needed": "yes",
+        "Raw node values acceptable": "yes"
+      },
+      "builderSetup": {
+        "moduleId": "NoiseLayerGate",
+        "networkId": "noise_layer_gate",
+        "details": {
+          "Host context": "Script FX",
+          "Additional builder steps applied": [],
+          "Channel/routing setup verified": "",
+          "Required channels": "default stereo",
+          "Module routing": "[0,1]",
+          "Master routing": "default stereo"
+        }
+      },
+      "graphPlan": "noise_layer_gate\n  TextureSplit          container.split\n    DryPath             container.chain\n    GateControlPath     container.chain\n      SelfGate          dynamics.gate\n      ControlClear      math.clear\n    NoisePath           container.chain\n      NoiseClear        math.clear\n      NoiseSource       core.oscillator\n      NoiseFilter       filters.svf_eq\n      NoiseGain         core.gain",
+      "publicParameters": [
+        "GateThreshold -> `SelfGate.Threshhold` matched",
+        "Target range before connection: `[-48, -18]`",
+        "Macro range: `[-48, -18]`",
+        "Default: `-30`",
+        "GateRelease -> `SelfGate.Release` matched",
+        "Target range before connection: `[20, 160]`",
+        "Macro range: `[20, 160]`",
+        "Default: `80`",
+        "GateDepth -> `SelfGate.Ratio` matched",
+        "Target range before connection: `[4, 16]`",
+        "Macro range: `[4, 16]`",
+        "Default: `10`"
+      ],
+      "gotchas": [
+        {
+          "title": "Sidechain mode needs extra channels",
+          "wrong": "Enabling Sidechain mode on a stereo signal and expecting it to use an external key signal",
+          "right": "Route four channels into the node: channels 1-2 for audio, channels 3-4 for the sidechain key signal.",
+          "explanation": "Sidechain mode splits the incoming channels in half. For stereo processing with an external key signal, the container must provide four channels."
+        }
+      ],
+      "lockedBuildValues": [
+        "None from Phase 2."
+      ],
+      "verifiedParameters": [
+        "`SelfGate.Threshhold` = `-30` range `-48..-18` stepSize `0.1`",
+        "`SelfGate.Release` = `80` range `20..160` stepSize `0.1`",
+        "`SelfGate.Ratio` = `10` range `4..16` stepSize `0.1`",
+        "`noise_layer_gate.GateThreshold` = `-30` range `-48..-18` stepSize `0.1`",
+        "`noise_layer_gate.GateRelease` = `80` range `20..160` stepSize `0.1`",
+        "`noise_layer_gate.GateDepth` = `10` range `4..16` stepSize `0.1`",
+        "`NoiseSource.Mode` = `4` range `0..4` stepSize `1`",
+        "`NoiseSource.Gain` = `0.25` range `0..1`",
+        "`NoiseFilter.Mode` = `1` range `0..4` stepSize `1`",
+        "`NoiseFilter.Frequency` = `2500` range `20..20000`",
+        "`NoiseFilter.Q` = `0.8` range `0.3..9.9`",
+        "`NoiseGain.Gain` = `0` range `0..-100` stepSize `0.1`",
+        "`NoiseGain.Smoothing` = `0`"
+      ],
+      "verifiedConnections": [
+        "`noise_layer_gate.GateThreshold` -> `SelfGate.Threshhold` matched: true",
+        "`noise_layer_gate.GateRelease` -> `SelfGate.Release` matched: true",
+        "`noise_layer_gate.GateDepth` -> `SelfGate.Ratio` matched: true",
+        "`SelfGate` -> `NoiseGain.Gain` matched: false, target range reversed `0..-100`"
+      ],
+      "traceValidation": {
+        "commands": [
+          "`hise-cli dsp trace --module NoiseLayerGate --container noise_layer_gate --inject-param noise_layer_gate.GateThreshold=-24 --inject-param noise_layer_gate.GateRelease=120 --inject-param noise_layer_gate.GateDepth=14 --probe-param SelfGate.Threshhold --probe-param SelfGate.Release --probe-param SelfGate.Ratio --trace-compact --agent`",
+          "`hise-cli dsp trace --module NoiseLayerGate --container noise_layer_gate --inject silence --delay-ms 100 --probe-recursive --probe-param NoiseGain.Gain --trace-compact --agent`",
+          "`hise-cli dsp trace --module NoiseLayerGate --container noise_layer_gate --inject noise --gain 1 --seed 1234 --inject-param noise_layer_gate.GateThreshold=-48 --inject-param noise_layer_gate.GateDepth=4 --probe-recursive --probe-param NoiseGain.Gain --trace-compact --agent`",
+          "`hise-cli dsp trace --module NoiseLayerGate --container noise_layer_gate --inject noise --gain 0.001 --seed 1234 --probe-recursive --probe-param NoiseGain.Gain --trace-compact --agent`"
+        ],
+        "evidence": [
+          "`SelfGate.Threshhold` probed as `-24`, `SelfGate.Release` as `120`, and `SelfGate.Ratio` as `14`; all matched the injected root control values.",
+          "Delayed silence trace: after the gate release settled, `DryPath`, `GateControlPath`, `NoisePath`, and final output were silent; `NoiseSource` and `NoiseFilter` generated stereo noise internally; reversed `NoiseGain.Gain` mapped to `-100`, making `NoisePath` silent at the split output.",
+          "Open-state trace: with temporary `GateThreshold=-48` and `GateDepth=4`, `DryPath` passed the original source, `SelfGate` analysed a duplicate source in `GateControlPath`, `ControlClear` removed the gated duplicate audio, and `NoiseGain.Gain` mapped to about `-25.2`, making the filtered noise layer audible on both channels.",
+          "Low-signal trace: low-level source still passed through `DryPath`; `SelfGate` stayed closed in the control branch; `NoiseGain.Gain` mapped to `-100`, muting the texture layer.",
+          "Recursive specs stayed stereo throughout: sample rate `44100`, block size `512`, `numChannels=2`, `polyphonic=false`, `processMidi=false`."
+        ],
+        "caveats": [
+          "`dynamics.gate` has no `ProcessSignal` parameter, so the original dry signal must remain on a separate split branch if it should be unmodified.",
+          "`dynamics.gate` native modulation is gain-reduction amount, not open-gate activity. The `NoiseGain.Gain` target range is reversed (`0..-100`) before connection so closed gate maps to attenuation and open gate maps toward unity.",
+          "`NoiseGain.Smoothing` is locked to `0` so the audible texture envelope follows `SelfGate.Release` instead of adding a second gain-node smoothing stage.",
+          "Immediate first-block silence traces can show the gate release state before it settles. Use a delayed silence trace when validating closed-state attenuation.",
+          "The empty `DryPath` is intentionally folded because it has no visible child nodes. `GateControlPath` is intentionally not folded so `SelfGate` remains visible."
+        ]
+      },
+      "commentsToPreserve": [
+        "Before `TextureSplit`: split into three branches so the original dry source remains unmodified, the gate analyses a duplicate, and the noise layer can be generated separately.",
+        "Before `ControlClear`: clear the gated duplicate after `SelfGate` so the control branch does not add audio to the split output.",
+        "Before `NoiseClear`: clear the inherited split signal first so the noise branch does not double the dry source.",
+        "Before `NoiseSource`: set the oscillator to noise; a looped file-player noise bed would often be better in production.",
+        "Before the modulation connection to `NoiseGain.Gain`: the gate modulation output is gain-reduction amount, so reverse `NoiseGain.Gain` to `0..-100` before connecting it.",
+        "Before `NoiseGain.Smoothing`: disable gain-node smoothing so `SelfGate.Release` is the only release envelope demonstrated by the noise layer.",
+        "Before cosmetic properties: do not fold `GateControlPath`, because folding a parent would hide the demonstrated `SelfGate` child."
+      ],
+      "defaultsOmitted": [
+        "`SelfGate.Attack` default `50`",
+        "`SelfGate.Sidechain` default `Disabled`",
+        "`ControlClear.Value` default `0.0`",
+        "`NoiseClear.Value` default `0.0`",
+        "`NoiseSource.Frequency` default `220`",
+        "`NoiseSource.Freq Ratio` default `1`",
+        "`NoiseSource.Gate` default `On`",
+        "`NoiseSource.Phase` default `0`",
+        "`NoiseFilter.Gain` default `0`",
+        "`NoiseFilter.Smoothing` default `0.01`",
+        "`NoiseFilter.Enabled` default `On`",
+        "`NoiseGain.ResetValue` default `0`"
+      ],
+      "openIssues": [
+        "None"
+      ],
+      "commandList": "hise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id NoiseLayerGate --agent\nhise-cli builder set --module NoiseLayerGate --network noise_layer_gate --agent\n\nhise-cli dsp add --module NoiseLayerGate --type container.split --id TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id DryPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id GateControlPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type dynamics.gate --id SelfGate --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id ControlClear --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id NoisePath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id NoiseClear --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.oscillator --id NoiseSource --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type filters.svf_eq --id NoiseFilter --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.gain --id NoiseGain --parent NoisePath --agent\n\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Mode --value 4 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Gain --value 0.25 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Mode --value 1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Frequency --value 2500 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Q --value 0.8 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Gain --range \"0,-100\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Smoothing --value 0 --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --range \"-48,-18\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --value -30 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --range \"20,160\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --value 80 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --range \"4,16\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --value 10 --agent\n\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateThreshold --range \"-48,-18\" --default -30 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateRelease --range \"20,160\" --default 80 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateDepth --range \"4,16\" --default 10 --stepSize 0.1 --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateThreshold --target SelfGate --param Threshhold --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateRelease --target SelfGate --param Release --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateDepth --target SelfGate --param Ratio --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source SelfGate --target NoiseGain --param Gain --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Comment --value '\"**Self-keyed gate** - This duplicate input branch drives the gate modulation while the original dry branch stays untouched.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param Comment --value '\"Texture split keeps the dry source and control branch separate.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node GateControlPath --param Comment --value '\"Control branch only. SelfGate analyses a dry copy and ControlClear removes duplicate audio.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Comment --value '\"Clear the gated duplicate so only the dry branch reaches the output.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Comment --value '\"Clear inherited signal before adding the synthetic noise layer.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Comment --value '\"Oscillator noise keeps the example compact.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Comment --value '\"Reversed target range maps gate reduction to open gate texture gain.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node DryPath --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Folded --value true --agent",
+      "hscScript": "#!/usr/bin/env hise-cli run\n# dynamics.gate: use a self-keyed gate to open a filtered noise texture while dry audio passes unchanged.\n#\n# Notes for this example:\n# - dynamics.gate has no ProcessSignal switch, so the dry signal is kept on a separate split branch.\n# - The gate branch analyses a duplicate input and then clears that duplicate audio.\n# - The noise branch clears inherited split audio before generating its synthetic texture.\n# - Gate modulation is gain-reduction amount, so NoiseGain uses a reversed target range.\n\n/hise playground open\n/builder\nreset\n\nadd ScriptFX as \"NoiseLayerGate\"\nset NoiseLayerGate.network \"noise_layer_gate\"\n/exit\n\n/dsp\ncd NoiseLayerGate\n\n# Split into three branches: dry passthrough, gate analysis, and generated texture.\nadd container.split as \"TextureSplit\"\nadd container.chain as \"DryPath\" to TextureSplit\nadd container.chain as \"GateControlPath\" to TextureSplit\nadd dynamics.gate as \"SelfGate\" to GateControlPath\n\n# Clear the gated duplicate so the control branch does not add audio to the split output.\nadd math.clear as \"ControlClear\" to GateControlPath\n\nadd container.chain as \"NoisePath\" to TextureSplit\n\n# Clear inherited split audio first so the noise branch does not double the dry source.\nadd math.clear as \"NoiseClear\" to NoisePath\n\n# Oscillator noise keeps the example compact; a looped noise file would often be better in production.\nadd core.oscillator as \"NoiseSource\" to NoisePath\nadd filters.svf_eq as \"NoiseFilter\" to NoisePath\nadd core.gain as \"NoiseGain\" to NoisePath\n\nset NoiseSource.Mode 4\nset NoiseSource.Gain 0.25\nset NoiseFilter.Mode 1\nset NoiseFilter.Frequency 2500\nset NoiseFilter.Q 0.8\n\n# Gate modulation is gain-reduction amount, so this reversed range maps open-gate activity toward audibility.\nset NoiseGain.Gain.range [0, -100], NoiseGain.Gain.stepSize 0.1\n\n# Disable gain smoothing so SelfGate.Release is the only release envelope demonstrated by the texture layer.\nset NoiseGain.Smoothing 0\n\nset SelfGate.Threshhold.range [-48, -18], SelfGate.Threshhold.stepSize 0.1\nset SelfGate.Threshhold -30\nset SelfGate.Release.range [20, 160], SelfGate.Release.stepSize 0.1\nset SelfGate.Release 80\nset SelfGate.Ratio.range [4, 16], SelfGate.Ratio.stepSize 0.1\nset SelfGate.Ratio 10\n\ncreate_parameter noise_layer_gate.GateThreshold [-48, -18] default -30 stepSize 0.1\ncreate_parameter noise_layer_gate.GateRelease [20, 160] default 80 stepSize 0.1\ncreate_parameter noise_layer_gate.GateDepth [4, 16] default 10 stepSize 0.1\nconnect noise_layer_gate.GateThreshold to SelfGate.Threshhold matched\nconnect noise_layer_gate.GateRelease to SelfGate.Release matched\nconnect noise_layer_gate.GateDepth to SelfGate.Ratio matched\nconnect SelfGate to NoiseGain.Gain\n\n# Screenshot-oriented annotations and layout. Do not fold GateControlPath because it would hide SelfGate.\nset SelfGate.NodeColour 0xFFE67E22\nset SelfGate.Comment \"**Self-keyed gate** - This duplicate input branch drives the gate modulation while the original dry branch stays untouched.\"\n\nset TextureSplit.NodeColour 0xFF8F7766\nset TextureSplit.Comment \"Texture split keeps the dry source and control branch separate.\"\n\nset GateControlPath.Comment \"Control branch only. SelfGate analyses a dry copy and ControlClear removes duplicate audio.\"\n\nset ControlClear.NodeColour 0xFF8F7766\nset ControlClear.Comment \"Clear the gated duplicate so only the dry branch reaches the output.\"\n\nset NoiseClear.NodeColour 0xFF8F7766\nset NoiseClear.Comment \"Clear inherited signal before adding the synthetic noise layer.\"\n\nset NoiseSource.NodeColour 0xFF8F7766\nset NoiseSource.Comment \"Oscillator noise keeps the example compact.\"\n\nset NoiseFilter.NodeColour 0xFF8F7766\nset NoiseGain.NodeColour 0xFF8F7766\nset NoiseGain.Comment \"Reversed target range maps gate reduction to open gate texture gain.\"\n\nset DryPath.Folded true\nset ControlClear.Folded true\nset NoiseClear.Folded true\nset NoiseSource.Folded true\nset NoiseFilter.Folded true\n/exit\n",
+      "screenshot": "gate.png",
+      "screenshotUrl": "/data/v2/scriptnode-examples/dynamics/gate.png",
+      "domain": "scriptnode",
+      "category": "dsp-network",
+      "title": "Noise layer gate from split signal",
+      "summary": "Uses dynamics.gate as an analysis branch to open a generated noise texture while dry audio passes unchanged.",
+      "useCase": "Use this when you need an input-driven gate control signal that modulates a separate texture or effect branch.",
+      "difficulty": "intermediate",
+      "networkName": "noise_layer_gate",
+      "moduleType": "ScriptFX",
+      "moduleId": "NoiseLayerGate",
+      "tags": [
+        "gate",
+        "noise-layer",
+        "split-routing",
+        "modulation-output",
+        "dry-passthrough"
+      ],
+      "aliases": [
+        "noise gate texture",
+        "gated noise layer",
+        "gate controlled branch",
+        "dry passthrough gate",
+        "gate modulation to gain"
+      ],
+      "relatedNodes": [
+        "dynamics.gate",
+        "container.split",
+        "container.chain",
+        "math.clear",
+        "core.oscillator",
+        "filters.svf_eq",
+        "core.gain"
+      ],
+      "parameters": {
+        "GateThreshold": "Controls when SelfGate opens from the duplicate analysis branch.",
+        "GateRelease": "Controls the audible release envelope of the texture layer.",
+        "GateDepth": "Controls gate ratio/depth on SelfGate.",
+        "NoiseGain.Gain": "Uses a reversed 0..-100 range because dynamics.gate outputs gain-reduction amount."
+      },
+      "body": "scriptnode example: dynamics.gate\n\nNoise layer gate from split signal.\nUse this to derive a gate control signal from the input while keeping dry audio untouched, then use the gate output to open a generated noise texture on a separate branch.\n\nGraph:\n```text\nnoise_layer_gate\n  TextureSplit          container.split\n    DryPath             container.chain\n    GateControlPath     container.chain\n      SelfGate          dynamics.gate\n      ControlClear      math.clear\n    NoisePath           container.chain\n      NoiseClear        math.clear\n      NoiseSource       core.oscillator\n      NoiseFilter       filters.svf_eq\n      NoiseGain         core.gain\n```\n\nHost:\n  Module: `NoiseLayerGate`\n  Type: `ScriptFX`\n  Network: `noise_layer_gate`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"NoiseLayerGate\"`\n    - `set NoiseLayerGate.network \"noise_layer_gate\"`\n\nSupport nodes:\n  Required: `container.split`, `core.gain`, `core.oscillator`\n  Optional: `container.fix16_block`, `filters.svf_eq`\n\nKey rules:\n  - Use `container.split` so dry audio, gate analysis, and generated texture stay on separate branches.\n  - Keep the dry path separate because `dynamics.gate` has no `ProcessSignal` switch for analysis-only operation.\n  - Run `SelfGate` on a duplicate input branch, then clear that branch with `ControlClear` so it does not add gated duplicate audio to the output.\n  - Clear inherited split audio in `NoisePath` before adding `NoiseSource`, otherwise the texture branch doubles the dry signal.\n  - `dynamics.gate` outputs gain-reduction amount, not open-gate activity; reverse `NoiseGain.Gain` to `0..-100` before connecting `SelfGate`.\n  - Set `NoiseGain.Smoothing` to `0` so the audible texture envelope follows `SelfGate.Release` instead of an added gain smoothing stage.\n  - Use `matched` for root controls whose ranges mirror gate parameters, but connect `SelfGate` to `NoiseGain.Gain` without `matched` because the target range is intentionally reversed.\n\nPublic controls:\n  - `GateThreshold` -> `SelfGate.Threshhold`, matched, `-48..-18`, default `-30`\n  - `GateRelease` -> `SelfGate.Release`, matched, `20..160`, default `80`\n  - `GateDepth` -> `SelfGate.Ratio`, matched, `4..16`, default `10`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id NoiseLayerGate --agent\nhise-cli builder set --module NoiseLayerGate --network noise_layer_gate --agent\n\nhise-cli dsp add --module NoiseLayerGate --type container.split --id TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id DryPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id GateControlPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type dynamics.gate --id SelfGate --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id ControlClear --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id NoisePath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id NoiseClear --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.oscillator --id NoiseSource --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type filters.svf_eq --id NoiseFilter --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.gain --id NoiseGain --parent NoisePath --agent\n\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Mode --value 4 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Gain --value 0.25 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Mode --value 1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Frequency --value 2500 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Q --value 0.8 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Gain --range \"0,-100\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Smoothing --value 0 --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --range \"-48,-18\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --value -30 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --range \"20,160\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --value 80 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --range \"4,16\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --value 10 --agent\n\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateThreshold --range \"-48,-18\" --default -30 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateRelease --range \"20,160\" --default 80 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateDepth --range \"4,16\" --default 10 --stepSize 0.1 --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateThreshold --target SelfGate --param Threshhold --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateRelease --target SelfGate --param Release --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateDepth --target SelfGate --param Ratio --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source SelfGate --target NoiseGain --param Gain --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Comment --value '\"**Self-keyed gate** - This duplicate input branch drives the gate modulation while the original dry branch stays untouched.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param Comment --value '\"Texture split keeps the dry source and control branch separate.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node GateControlPath --param Comment --value '\"Control branch only. SelfGate analyses a dry copy and ControlClear removes duplicate audio.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Comment --value '\"Clear the gated duplicate so only the dry branch reaches the output.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Comment --value '\"Clear inherited signal before adding the synthetic noise layer.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Comment --value '\"Oscillator noise keeps the example compact.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Comment --value '\"Reversed target range maps gate reduction to open gate texture gain.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node DryPath --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Folded --value true --agent\n```",
+      "llmRef": "scriptnode example: dynamics.gate\n\nNoise layer gate from split signal.\nUse this to derive a gate control signal from the input while keeping dry audio untouched, then use the gate output to open a generated noise texture on a separate branch.\n\nGraph:\n```text\nnoise_layer_gate\n  TextureSplit          container.split\n    DryPath             container.chain\n    GateControlPath     container.chain\n      SelfGate          dynamics.gate\n      ControlClear      math.clear\n    NoisePath           container.chain\n      NoiseClear        math.clear\n      NoiseSource       core.oscillator\n      NoiseFilter       filters.svf_eq\n      NoiseGain         core.gain\n```\n\nHost:\n  Module: `NoiseLayerGate`\n  Type: `ScriptFX`\n  Network: `noise_layer_gate`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"NoiseLayerGate\"`\n    - `set NoiseLayerGate.network \"noise_layer_gate\"`\n\nSupport nodes:\n  Required: `container.split`, `core.gain`, `core.oscillator`\n  Optional: `container.fix16_block`, `filters.svf_eq`\n\nKey rules:\n  - Use `container.split` so dry audio, gate analysis, and generated texture stay on separate branches.\n  - Keep the dry path separate because `dynamics.gate` has no `ProcessSignal` switch for analysis-only operation.\n  - Run `SelfGate` on a duplicate input branch, then clear that branch with `ControlClear` so it does not add gated duplicate audio to the output.\n  - Clear inherited split audio in `NoisePath` before adding `NoiseSource`, otherwise the texture branch doubles the dry signal.\n  - `dynamics.gate` outputs gain-reduction amount, not open-gate activity; reverse `NoiseGain.Gain` to `0..-100` before connecting `SelfGate`.\n  - Set `NoiseGain.Smoothing` to `0` so the audible texture envelope follows `SelfGate.Release` instead of an added gain smoothing stage.\n  - Use `matched` for root controls whose ranges mirror gate parameters, but connect `SelfGate` to `NoiseGain.Gain` without `matched` because the target range is intentionally reversed.\n\nPublic controls:\n  - `GateThreshold` -> `SelfGate.Threshhold`, matched, `-48..-18`, default `-30`\n  - `GateRelease` -> `SelfGate.Release`, matched, `20..160`, default `80`\n  - `GateDepth` -> `SelfGate.Ratio`, matched, `4..16`, default `10`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id NoiseLayerGate --agent\nhise-cli builder set --module NoiseLayerGate --network noise_layer_gate --agent\n\nhise-cli dsp add --module NoiseLayerGate --type container.split --id TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id DryPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id GateControlPath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type dynamics.gate --id SelfGate --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id ControlClear --parent GateControlPath --agent\nhise-cli dsp add --module NoiseLayerGate --type container.chain --id NoisePath --parent TextureSplit --agent\nhise-cli dsp add --module NoiseLayerGate --type math.clear --id NoiseClear --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.oscillator --id NoiseSource --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type filters.svf_eq --id NoiseFilter --parent NoisePath --agent\nhise-cli dsp add --module NoiseLayerGate --type core.gain --id NoiseGain --parent NoisePath --agent\n\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Mode --value 4 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Gain --value 0.25 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Mode --value 1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Frequency --value 2500 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Q --value 0.8 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Gain --range \"0,-100\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Smoothing --value 0 --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --range \"-48,-18\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Threshhold --value -30 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --range \"20,160\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Release --value 80 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --range \"4,16\" --stepSize 0.1 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Ratio --value 10 --agent\n\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateThreshold --range \"-48,-18\" --default -30 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateRelease --range \"20,160\" --default 80 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module NoiseLayerGate --container noise_layer_gate --id GateDepth --range \"4,16\" --default 10 --stepSize 0.1 --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateThreshold --target SelfGate --param Threshhold --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateRelease --target SelfGate --param Release --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source noise_layer_gate --source-param GateDepth --target SelfGate --param Ratio --matched --agent\nhise-cli dsp connect --module NoiseLayerGate --source SelfGate --target NoiseGain --param Gain --agent\n\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module NoiseLayerGate --node SelfGate --param Comment --value '\"**Self-keyed gate** - This duplicate input branch drives the gate modulation while the original dry branch stays untouched.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node TextureSplit --param Comment --value '\"Texture split keeps the dry source and control branch separate.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node GateControlPath --param Comment --value '\"Control branch only. SelfGate analyses a dry copy and ControlClear removes duplicate audio.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Comment --value '\"Clear the gated duplicate so only the dry branch reaches the output.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Comment --value '\"Clear inherited signal before adding the synthetic noise layer.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Comment --value '\"Oscillator noise keeps the example compact.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseGain --param Comment --value '\"Reversed target range maps gate reduction to open gate texture gain.\"' --agent\nhise-cli dsp set --module NoiseLayerGate --node DryPath --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node ControlClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseClear --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseSource --param Folded --value true --agent\nhise-cli dsp set --module NoiseLayerGate --node NoiseFilter --param Folded --value true --agent\n```",
+      "text": "Noise layer gate from split signal\nPrimary node: dynamics.gate.\nUses dynamics.gate as an analysis branch to open a generated noise texture while dry audio passes unchanged.\nUse this when you need an input-driven gate control signal that modulates a separate texture or effect branch.\nRelated nodes: dynamics.gate, container.split, container.chain, math.clear, core.oscillator, filters.svf_eq, core.gain.\nTags: gate, noise-layer, split-routing, modulation-output, dry-passthrough.\nAliases: noise gate texture, gated noise layer, gate controlled branch, dry passthrough gate, gate modulation to gain.\nKey parameters: GateThreshold, GateRelease, GateDepth, NoiseGain.Gain."
+    },
+    "dynamics.limiter": {
+      "schemaVersion": 1,
+      "id": "dynamics.limiter.fixed-lookahead-peak-safety",
+      "factory": "dynamics",
+      "node": "dynamics.limiter",
+      "slug": "limiter",
+      "name": "dynamics.limiter",
+      "description": "A peak limiter with fast envelope detection for transparent peak control.",
+      "scenario": {
+        "title": "Fixed-lookahead peak safety limiter",
+        "projectContext": "A stereo Script FX chain ends with a `core.expr` waveshaper that adds strong non-linear colour without being a literal hard clipper, but can still create overs that need containment. The final processor is `dynamics.limiter`, configured as a safety stage to catch transient peaks before the signal leaves the effect.",
+        "teachingGoal": "Demonstrate how `dynamics.limiter` is used as a final peak-control stage, with its attack treated as a fixed lookahead/latency setting rather than a performance control."
+      },
+      "supportNodes": {
+        "required": [
+          "math.expr"
+        ],
+        "optional": [
+          "core.gain",
+          "math.mul"
+        ],
+        "rationale": "`core.expr` provides a realistic non-linear stage that can produce overs without relying on a nonexistent dedicated clipper node. Optional gain or modulation wiring can make the amount of limiting visible, but the limiter itself should stay the focus."
+      },
+      "assumptions": {
+        "Channels": "default stereo",
+        "Public control needed": "yes",
+        "Raw node values acceptable": "yes"
+      },
+      "builderSetup": {
+        "moduleId": "SafetyPeakLimiter",
+        "networkId": "safety_peak_limiter",
+        "details": {
+          "Host context": "Script FX",
+          "Additional builder steps applied": [
+            "Setting `DriveShaper.Code` applies HISE's compile-flag fix automatically for the SNEX expression node."
+          ],
+          "Channel/routing setup verified": "",
+          "Required channels": "default stereo",
+          "Module routing": "default stereo",
+          "Master routing": "default stereo"
+        }
+      },
+      "graphPlan": "safety_peak_limiter\n  DriveShaper           math.expr\n  SafetyLimiter         dynamics.limiter",
+      "publicParameters": [
+        "DriveAmount -> `DriveShaper.Value` matched",
+        "Target range before connection: `[0.0, 0.75]`",
+        "Macro range: `[0.0, 0.75]`",
+        "Default: `0.5`",
+        "LimitThreshold -> `SafetyLimiter.Threshhold` matched",
+        "Target range before connection: `[-12, -1]`",
+        "Macro range: `[-12, -1]`",
+        "Default: `-3`",
+        "LimitRelease -> `SafetyLimiter.Release` matched",
+        "Target range before connection: `[20, 180]`",
+        "Macro range: `[20, 180]`",
+        "Default: `90`",
+        "LimitRatio -> `SafetyLimiter.Ratio` matched",
+        "Target range before connection: `[12, 32]`",
+        "Macro range: `[12, 32]`",
+        "Default: `20`"
+      ],
+      "gotchas": [
+        {
+          "title": "Sidechain mode needs extra channels",
+          "wrong": "Enabling Sidechain mode on a stereo signal and expecting it to use an external key signal",
+          "right": "Route four channels into the node: channels 1-2 for audio, channels 3-4 for the sidechain key signal.",
+          "explanation": "Sidechain mode splits the incoming channels in half. For stereo processing with an external key signal, the container must provide four channels."
+        },
+        {
+          "title": "Set a high ratio for brickwall limiting",
+          "wrong": "Using Ratio 1 and expecting the limiter to catch peaks",
+          "right": "Set Ratio to a high value (16 or above) for effective peak limiting.",
+          "explanation": "Ratio 1:1 means no gain reduction. The limiter only becomes effective at higher ratios, with very high values approaching brickwall behaviour."
+        },
+        {
+          "title": "Latency varies with attack time",
+          "wrong": "Expecting zero latency from the limiter, or automating attack time during playback",
+          "right": "The limiter uses lookahead tied to the attack setting. Longer attack = more latency. Call Engine.setLatencySamples() with the maximum expected latency.",
+          "explanation": "This is a lookahead limiter whose delay equals the attack time. The latency is not automatically reported to the DAW, so manual compensation is required. Changing the attack time during playback causes audible clicks and sudden delay changes."
+        },
+        {
+          "title": "Do not automate attack time",
+          "wrong": "Modulating or automating the Attack parameter at runtime",
+          "right": "Treat Attack as a fixed setting. Set it once and do not change it during playback.",
+          "explanation": "Changing the attack parameter at runtime causes an internal processing mode switch that introduces sudden large delay spikes and audible clicks. This is inherent to the lookahead design."
+        }
+      ],
+      "lockedBuildValues": [
+        "`DriveShaper.Code` = `input + value * input * input * input`",
+        "`SafetyLimiter.Attack` = `5`"
+      ],
+      "verifiedParameters": [
+        "`DriveShaper.Value` = `0.5` range `0..0.75` stepSize `0.01`",
+        "`DriveShaper.Code` = `input + value * input * input * input`",
+        "`SafetyLimiter.Threshhold` = `-3` range `-12..-1` stepSize `0.1`",
+        "`SafetyLimiter.Attack` = `5` range `0..250` stepSize `0.1`",
+        "`SafetyLimiter.Release` = `90` range `20..180` stepSize `0.1`",
+        "`SafetyLimiter.Ratio` = `20` range `12..32` stepSize `0.1`",
+        "`safety_peak_limiter.DriveAmount` = `0.5` range `0..0.75` stepSize `0.01`",
+        "`safety_peak_limiter.LimitThreshold` = `-3` range `-12..-1` stepSize `0.1`",
+        "`safety_peak_limiter.LimitRelease` = `90` range `20..180` stepSize `0.1`",
+        "`safety_peak_limiter.LimitRatio` = `20` range `12..32` stepSize `0.1`"
+      ],
+      "verifiedConnections": [
+        "`safety_peak_limiter.DriveAmount` -> `DriveShaper.Value` matched: true",
+        "`safety_peak_limiter.LimitThreshold` -> `SafetyLimiter.Threshhold` matched: true",
+        "`safety_peak_limiter.LimitRelease` -> `SafetyLimiter.Release` matched: true",
+        "`safety_peak_limiter.LimitRatio` -> `SafetyLimiter.Ratio` matched: true"
+      ],
+      "traceValidation": {
+        "commands": [
+          "`hise-cli dsp status --module SafetyPeakLimiter --agent`",
+          "`hise-cli dsp trace --module SafetyPeakLimiter --container safety_peak_limiter --inject silence --inject-param safety_peak_limiter.DriveAmount=0.75 --inject-param safety_peak_limiter.LimitThreshold=-6 --inject-param safety_peak_limiter.LimitRelease=150 --inject-param safety_peak_limiter.LimitRatio=32 --probe-param DriveShaper.Value --probe-param SafetyLimiter.Threshhold --probe-param SafetyLimiter.Release --probe-param SafetyLimiter.Ratio --trace-compact --agent`",
+          "`hise-cli dsp trace --module SafetyPeakLimiter --container safety_peak_limiter --inject noise --gain 0.9 --seed 1234 --probe-recursive --probe-param SafetyLimiter.Threshhold --probe-param SafetyLimiter.Attack --probe-param SafetyLimiter.Release --probe-param SafetyLimiter.Ratio --trace-compact --agent`",
+          "`hise-cli dsp trace --module SafetyPeakLimiter --container safety_peak_limiter --inject dirac --gain 1 --probe-recursive --probe-param SafetyLimiter.Attack --trace-compact --agent`"
+        ],
+        "evidence": [
+          "After `DriveShaper.Code` was set, status returned `success=true`, `ok=true`, `autofixRequested=false`, and `autofixApplied=false`; the CLI Code setter applied the required compile-flag fix automatically.",
+          "`DriveShaper.Value` probed as `0.75`, `SafetyLimiter.Threshhold` as `-6`, `SafetyLimiter.Release` as `150`, and `SafetyLimiter.Ratio` as `32`; all matched injected root control values.",
+          "Noise trace: `DriveShaper` produced about `-1.2624..1.2623`, then `SafetyLimiter` reduced the traced output to about `-0.709..-0.7099` with threshold `-3`, attack `5`, release `90`, and ratio `20`.",
+          "Dirac trace: `DriveShaper` produced `1.5`, then `SafetyLimiter` reduced the traced output to `0.7122` with attack `5`."
+        ],
+        "caveats": [
+          "`math.expr` requires a compile-enabled network; current CLI builds resolve that automatically when setting the node's `Code` property.",
+          "`SafetyLimiter.Attack` is deliberately fixed at `5 ms`; it is not exposed as a root parameter because attack changes alter lookahead latency and can click at runtime."
+        ]
+      },
+      "commentsToPreserve": [
+        "Before `DriveShaper.Code`: lock the expression to `input + value * input * input * input`; setting Code also applies the compile-flag fix required by `math.expr`.",
+        "Before `SafetyLimiter`: place the limiter last so it reads as a safety stage after the non-linear shaper.",
+        "Before `SafetyLimiter.Attack`: treat attack as a fixed lookahead/latency choice, not a performance macro, because changing it at runtime causes clicks."
+      ],
+      "defaultsOmitted": [
+        "`SafetyLimiter.Sidechain` default `Disabled`",
+        "`DriveShaper.Debug` default `false`"
+      ],
+      "openIssues": [
+        "None"
+      ],
+      "commandList": "hise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SafetyPeakLimiter --agent\nhise-cli builder set --module SafetyPeakLimiter --network safety_peak_limiter --agent\n\nhise-cli dsp add --module SafetyPeakLimiter --type math.expr --id DriveShaper --agent\nhise-cli dsp add --module SafetyPeakLimiter --type dynamics.limiter --id SafetyLimiter --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Code --value '\"input + value * input * input * input\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --range \"0,0.75\" --stepSize 0.01 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --value 0.5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Attack --value 5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --range \"-12,-1\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --value -3 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --range \"20,180\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --value 90 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --range \"12,32\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --value 20 --agent\n\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id DriveAmount --range \"0,0.75\" --default 0.5 --stepSize 0.01 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitThreshold --range \"-12,-1\" --default -3 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRelease --range \"20,180\" --default 90 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRatio --range \"12,32\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param DriveAmount --target DriveShaper --param Value --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitThreshold --target SafetyLimiter --param Threshhold --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRelease --target SafetyLimiter --param Release --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRatio --target SafetyLimiter --param Ratio --matched --agent\n\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Comment --value '\"DriveShaper adds cubic colour before the limiter so the safety stage has real overs to catch.\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Comment --value '\"**Peak safety limiter** - Final stage catches shaper peaks. Attack is fixed because it changes lookahead latency.\"' --agent",
+      "hscScript": "#!/usr/bin/env hise-cli run\n# dynamics.limiter: catch non-linear shaper peaks with a final safety limiter.\n#\n# Notes for this example:\n# - DriveShaper uses a fixed cubic expression so the limiter has visible peaks to catch.\n# - math.expr requires HISE's compile-enabled network flag; setting Code now applies that\n#   runtime graph fix automatically.\n# - SafetyLimiter is placed last so it reads as a final peak-safety stage.\n# - Attack is fixed because changing limiter attack changes lookahead latency and can click at runtime.\n\n/hise playground open\n/builder\nreset\n\nadd ScriptFX as \"SafetyPeakLimiter\"\nset SafetyPeakLimiter.network \"safety_peak_limiter\"\n/exit\n\n/dsp\ncd SafetyPeakLimiter\nadd math.expr as \"DriveShaper\"\n\n# Place the limiter after the non-linear shaper so it acts as a final safety stage.\nadd dynamics.limiter as \"SafetyLimiter\"\n\n# Lock the shaper expression to a simple cubic curve that compiles cleanly in SNEX.\nset DriveShaper.Code \"input + value * input * input * input\"\nset DriveShaper.Value.range [0, 0.75], DriveShaper.Value.stepSize 0.01\nset DriveShaper.Value 0.5\n\n# Fixed lookahead/latency choice, not a performance macro.\nset SafetyLimiter.Attack 5\nset SafetyLimiter.Threshhold.range [-12, -1], SafetyLimiter.Threshhold.stepSize 0.1\nset SafetyLimiter.Threshhold -3\nset SafetyLimiter.Release.range [20, 180], SafetyLimiter.Release.stepSize 0.1\nset SafetyLimiter.Release 90\nset SafetyLimiter.Ratio.range [12, 32], SafetyLimiter.Ratio.stepSize 0.1\nset SafetyLimiter.Ratio 20\n\ncreate_parameter safety_peak_limiter.DriveAmount [0, 0.75] default 0.5 stepSize 0.01\ncreate_parameter safety_peak_limiter.LimitThreshold [-12, -1] default -3 stepSize 0.1\ncreate_parameter safety_peak_limiter.LimitRelease [20, 180] default 90 stepSize 0.1\ncreate_parameter safety_peak_limiter.LimitRatio [12, 32] default 20 stepSize 0.1\nconnect safety_peak_limiter.DriveAmount to DriveShaper.Value matched\nconnect safety_peak_limiter.LimitThreshold to SafetyLimiter.Threshhold matched\nconnect safety_peak_limiter.LimitRelease to SafetyLimiter.Release matched\nconnect safety_peak_limiter.LimitRatio to SafetyLimiter.Ratio matched\n\n# Screenshot-oriented annotations and layout.\nset DriveShaper.NodeColour 0xFF8F7766\nset DriveShaper.Comment \"DriveShaper adds cubic colour before the limiter so the safety stage has real overs to catch.\"\n\nset SafetyLimiter.NodeColour 0xFFE67E22\nset SafetyLimiter.Comment \"**Peak safety limiter** - Final stage catches shaper peaks. Attack is fixed because it changes lookahead latency.\"\n/exit\n",
+      "screenshot": "limiter.png",
+      "screenshotUrl": "/data/v2/scriptnode-examples/dynamics/limiter.png",
+      "domain": "scriptnode",
+      "category": "dsp-network",
+      "title": "Fixed-lookahead peak safety limiter",
+      "summary": "Places dynamics.limiter after a non-linear shaper as a final peak-safety stage with fixed attack/lookahead.",
+      "useCase": "Use this when you need a final limiter after distortion or shaping, and the limiter attack should stay fixed to avoid runtime latency changes.",
+      "difficulty": "intermediate",
+      "networkName": "safety_peak_limiter",
+      "moduleType": "ScriptFX",
+      "moduleId": "SafetyPeakLimiter",
+      "tags": [
+        "limiter",
+        "peak-control",
+        "safety-limiter",
+        "lookahead",
+        "waveshaper",
+        "latency"
+      ],
+      "aliases": [
+        "peak safety limiter",
+        "final limiter",
+        "limiter after distortion",
+        "lookahead limiter",
+        "shaper peak control"
+      ],
+      "relatedNodes": [
+        "dynamics.limiter",
+        "math.expr",
+        "core.gain",
+        "math.mul"
+      ],
+      "parameters": {
+        "DriveAmount": "Controls DriveShaper.Value and how hard the cubic shaper feeds the limiter.",
+        "LimitThreshold": "Controls SafetyLimiter.Threshhold for final peak containment.",
+        "LimitRelease": "Controls how quickly SafetyLimiter releases after gain reduction.",
+        "LimitRatio": "Controls limiting strength; high values approach brickwall limiting.",
+        "SafetyLimiter.Attack": "Fixed at 5 ms because attack changes lookahead latency and can click at runtime."
+      },
+      "body": "scriptnode example: dynamics.limiter\n\nFixed-lookahead peak safety limiter.\nUse this to place `dynamics.limiter` after a non-linear shaper so peaks are contained before the signal leaves the effect.\n\nGraph:\n```text\nsafety_peak_limiter\n  DriveShaper           math.expr\n  SafetyLimiter         dynamics.limiter\n```\n\nHost:\n  Module: `SafetyPeakLimiter`\n  Type: `ScriptFX`\n  Network: `safety_peak_limiter`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"SafetyPeakLimiter\"`\n    - `set SafetyPeakLimiter.network \"safety_peak_limiter\"`\n\nSupport nodes:\n  Required: `math.expr`\n  Optional: `core.gain`, `math.mul`\n\nKey rules:\n  - Put `SafetyLimiter` last so it acts as the final peak-safety stage after non-linear shaping.\n  - Lock `DriveShaper.Code` to `input + value * input * input * input` for a simple cubic curve that generates peaks for the limiter to catch.\n  - Setting `DriveShaper.Code` applies the compile-enabled expression setup required by `math.expr`.\n  - Keep `SafetyLimiter.Attack` fixed at `5 ms`; limiter attack changes lookahead latency and can click if changed at runtime.\n  - Use a high `SafetyLimiter.Ratio`; `1:1` means no gain reduction, while high values approach brickwall limiting.\n  - Do not expose attack as a performance macro unless the user explicitly wants variable lookahead latency.\n\nPublic controls:\n  - `DriveAmount` -> `DriveShaper.Value`, matched, `0..0.75`, default `0.5`\n  - `LimitThreshold` -> `SafetyLimiter.Threshhold`, matched, `-12..-1`, default `-3`\n  - `LimitRelease` -> `SafetyLimiter.Release`, matched, `20..180`, default `90`\n  - `LimitRatio` -> `SafetyLimiter.Ratio`, matched, `12..32`, default `20`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SafetyPeakLimiter --agent\nhise-cli builder set --module SafetyPeakLimiter --network safety_peak_limiter --agent\n\nhise-cli dsp add --module SafetyPeakLimiter --type math.expr --id DriveShaper --agent\nhise-cli dsp add --module SafetyPeakLimiter --type dynamics.limiter --id SafetyLimiter --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Code --value '\"input + value * input * input * input\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --range \"0,0.75\" --stepSize 0.01 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --value 0.5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Attack --value 5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --range \"-12,-1\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --value -3 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --range \"20,180\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --value 90 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --range \"12,32\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --value 20 --agent\n\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id DriveAmount --range \"0,0.75\" --default 0.5 --stepSize 0.01 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitThreshold --range \"-12,-1\" --default -3 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRelease --range \"20,180\" --default 90 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRatio --range \"12,32\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param DriveAmount --target DriveShaper --param Value --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitThreshold --target SafetyLimiter --param Threshhold --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRelease --target SafetyLimiter --param Release --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRatio --target SafetyLimiter --param Ratio --matched --agent\n\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Comment --value '\"DriveShaper adds cubic colour before the limiter so the safety stage has real overs to catch.\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Comment --value '\"**Peak safety limiter** - Final stage catches shaper peaks. Attack is fixed because it changes lookahead latency.\"' --agent\n```",
+      "llmRef": "scriptnode example: dynamics.limiter\n\nFixed-lookahead peak safety limiter.\nUse this to place `dynamics.limiter` after a non-linear shaper so peaks are contained before the signal leaves the effect.\n\nGraph:\n```text\nsafety_peak_limiter\n  DriveShaper           math.expr\n  SafetyLimiter         dynamics.limiter\n```\n\nHost:\n  Module: `SafetyPeakLimiter`\n  Type: `ScriptFX`\n  Network: `safety_peak_limiter`\n  Routing: default stereo\n  Builder setup:\n    - `add ScriptFX as \"SafetyPeakLimiter\"`\n    - `set SafetyPeakLimiter.network \"safety_peak_limiter\"`\n\nSupport nodes:\n  Required: `math.expr`\n  Optional: `core.gain`, `math.mul`\n\nKey rules:\n  - Put `SafetyLimiter` last so it acts as the final peak-safety stage after non-linear shaping.\n  - Lock `DriveShaper.Code` to `input + value * input * input * input` for a simple cubic curve that generates peaks for the limiter to catch.\n  - Setting `DriveShaper.Code` applies the compile-enabled expression setup required by `math.expr`.\n  - Keep `SafetyLimiter.Attack` fixed at `5 ms`; limiter attack changes lookahead latency and can click if changed at runtime.\n  - Use a high `SafetyLimiter.Ratio`; `1:1` means no gain reduction, while high values approach brickwall limiting.\n  - Do not expose attack as a performance macro unless the user explicitly wants variable lookahead latency.\n\nPublic controls:\n  - `DriveAmount` -> `DriveShaper.Value`, matched, `0..0.75`, default `0.5`\n  - `LimitThreshold` -> `SafetyLimiter.Threshhold`, matched, `-12..-1`, default `-3`\n  - `LimitRelease` -> `SafetyLimiter.Release`, matched, `20..180`, default `90`\n  - `LimitRatio` -> `SafetyLimiter.Ratio`, matched, `12..32`, default `20`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id SafetyPeakLimiter --agent\nhise-cli builder set --module SafetyPeakLimiter --network safety_peak_limiter --agent\n\nhise-cli dsp add --module SafetyPeakLimiter --type math.expr --id DriveShaper --agent\nhise-cli dsp add --module SafetyPeakLimiter --type dynamics.limiter --id SafetyLimiter --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Code --value '\"input + value * input * input * input\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --range \"0,0.75\" --stepSize 0.01 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Value --value 0.5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Attack --value 5 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --range \"-12,-1\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Threshhold --value -3 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --range \"20,180\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Release --value 90 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --range \"12,32\" --stepSize 0.1 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Ratio --value 20 --agent\n\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id DriveAmount --range \"0,0.75\" --default 0.5 --stepSize 0.01 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitThreshold --range \"-12,-1\" --default -3 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRelease --range \"20,180\" --default 90 --stepSize 0.1 --agent\nhise-cli dsp create_parameter --module SafetyPeakLimiter --container safety_peak_limiter --id LimitRatio --range \"12,32\" --default 20 --stepSize 0.1 --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param DriveAmount --target DriveShaper --param Value --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitThreshold --target SafetyLimiter --param Threshhold --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRelease --target SafetyLimiter --param Release --matched --agent\nhise-cli dsp connect --module SafetyPeakLimiter --source safety_peak_limiter --source-param LimitRatio --target SafetyLimiter --param Ratio --matched --agent\n\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param NodeColour --value 0xFF8F7766 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node DriveShaper --param Comment --value '\"DriveShaper adds cubic colour before the limiter so the safety stage has real overs to catch.\"' --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param NodeColour --value 0xFFE67E22 --agent\nhise-cli dsp set --module SafetyPeakLimiter --node SafetyLimiter --param Comment --value '\"**Peak safety limiter** - Final stage catches shaper peaks. Attack is fixed because it changes lookahead latency.\"' --agent\n```",
+      "text": "Fixed-lookahead peak safety limiter\nPrimary node: dynamics.limiter.\nPlaces dynamics.limiter after a non-linear shaper as a final peak-safety stage with fixed attack/lookahead.\nUse this when you need a final limiter after distortion or shaping, and the limiter attack should stay fixed to avoid runtime latency changes.\nRelated nodes: dynamics.limiter, math.expr, core.gain, math.mul.\nTags: limiter, peak-control, safety-limiter, lookahead, waveshaper, latency.\nAliases: peak safety limiter, final limiter, limiter after distortion, lookahead limiter, shaper peak control.\nKey parameters: DriveAmount, LimitThreshold, LimitRelease, LimitRatio, SafetyLimiter.Attack."
+    },
+    "routing.selector": {
+      "schemaVersion": 1,
+      "id": "routing.selector.cab-mic-pair-selector",
+      "factory": "routing",
+      "node": "routing.selector",
+      "slug": "selector",
+      "name": "routing.selector",
+      "description": "Dynamically routes channels between selected positions and the front of the buffer.",
+      "scenario": {
+        "title": "Cab mic pair selector",
+        "projectContext": "A guitar cabinet processor receives two internal stereo mic pairs: a close pair on channels 0-1 and a room pair on channels 2-3. The project needs a public control that chooses which pair feeds the cabinet tone-shaping chain.",
+        "teachingGoal": "Demonstrate how `routing.selector` dynamically copies one selected stereo pair to the front of a multichannel buffer for downstream processing."
+      },
+      "supportNodes": {
+        "required": [
+          "container.multi",
+          "container.chain",
+          "filters.svf_eq",
+          "jdsp.jcompressor",
+          "core.gain"
+        ],
+        "optional": [],
+        "rationale": "`container.multi` isolates the selected stereo pair after routing. EQ, compressor, and gain provide a minimal real-world FX chain that makes the routing use case concrete."
+      },
+      "assumptions": {
+        "Channels": "multichannel required",
+        "Public control needed": "yes",
+        "Raw node values acceptable": "yes"
+      },
+      "builderSetup": {
+        "moduleId": "CabMicSelector",
+        "networkId": "cab_mic_selector",
+        "details": {
+          "Host context": "Script FX",
+          "Additional builder steps applied": [
+            "Set Master Chain routing to `[0,1,0,1]` and `CabMicSelector` routing to `[0,1,2,3]`."
+          ],
+          "Channel/routing setup verified": "",
+          "Required channels": "four internal channels",
+          "Module routing": "[0,1,2,3]",
+          "Master routing": "[0,1,0,1]"
+        }
+      },
+      "graphPlan": "cab_mic_selector\n  MicPairSelector        routing.selector\n  PairSplit             container.multi\n    SelectedPair        container.chain\n      CabToneEQ         filters.svf_eq\n      CabGlueComp       jdsp.jcompressor\n      CabMakeupGain     core.gain\n    UnusedPair          container.chain",
+      "publicParameters": [
+        "MicPosition -> `MicPairSelector.ChannelIndex` matched",
+        "Target range before connection: `[0, 2]`",
+        "Macro range: `[0, 2]`",
+        "Default: `2`"
+      ],
+      "gotchas": [
+        {
+          "title": "SelectOutput direction is not obvious",
+          "wrong": "Assuming SelectOutput controls whether the node is active",
+          "right": "SelectOutput controls the copy direction: Disabled copies from ChannelIndex to the front; Enabled copies from the front to ChannelIndex.",
+          "explanation": "The parameter name is misleading. Think of it as choosing whether you are selecting which input channels to bring forward, or selecting which output position to send the front channels to."
+        }
+      ],
+      "lockedBuildValues": [],
+      "verifiedParameters": [
+        "`MicPairSelector.ChannelIndex` = `2` range `0..2` stepSize `2`",
+        "`MicPairSelector.NumChannels` = `2` range `1..16` stepSize `1`",
+        "`CabToneEQ.Mode` = `4`",
+        "`CabToneEQ.Frequency` = `3500`",
+        "`CabToneEQ.Q` = `1.2`",
+        "`CabToneEQ.Gain` = `-3`",
+        "`CabGlueComp.Treshold` = `-18`",
+        "`CabGlueComp.Ratio` = `3`",
+        "`CabGlueComp.Attack` = `12`",
+        "`CabGlueComp.Release` = `120`",
+        "`CabMakeupGain.Gain` = `3` range `-24..6` stepSize `0.1`",
+        "`cab_mic_selector.MicPosition` = `2` range `0..2` stepSize `2`"
+      ],
+      "verifiedConnections": [
+        "`cab_mic_selector.MicPosition` -> `MicPairSelector.ChannelIndex` matched: true"
+      ],
+      "traceValidation": {
+        "commands": [],
+        "evidence": [],
+        "caveats": []
+      },
+      "commentsToPreserve": [
+        "Header: The ScriptFX is explicitly routed as four internal channels, but the Master Chain folds those channels back to stereo output.",
+        "Header: `MicPosition` uses raw channel offsets: `0 = first stereo pair`, `2 = second stereo pair`.",
+        "Header: `ChannelIndex` is narrowed before connecting `MicPosition`, then connected with `matched`.",
+        "Header: `container.multi` is required after `routing.selector` so the FX chain does not process the full 4-channel buffer.",
+        "Header: `SelectOutput` and `ClearOtherChannels` are left at defaults.",
+        "Header: Colours use `0xAARRGGBB` literals.",
+        "Before routing setup: four internal source channels are folded back to HISE stereo output.",
+        "Before `PairSplit`: split the post-selector buffer so only channels 0-1 hit the FX chain.",
+        "Before `create_parameter`: root macro values use raw channel offsets.",
+        "Before cosmetic properties: these settings are screenshot-oriented annotations and layout."
+      ],
+      "defaultsOmitted": [
+        "`MicPairSelector.SelectOutput` default `0`",
+        "`MicPairSelector.ClearOtherChannels` default `1`"
+      ],
+      "openIssues": [
+        "None"
+      ],
+      "commandList": "hise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id CabMicSelector --agent\nhise-cli builder set --module CabMicSelector --network cab_mic_selector --agent\nhise-cli builder set --module \"Master Chain\" --routing \"[0,1,0,1]\" --agent\nhise-cli builder set --module CabMicSelector --routing \"[0,1,2,3]\" --agent\n\nhise-cli dsp add --module CabMicSelector --type routing.selector --id MicPairSelector --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NumChannels --value 2 --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param ChannelIndex --range \"0,2\" --stepSize 2 --agent\n\nhise-cli dsp add --module CabMicSelector --type container.multi --id PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id SelectedPair --parent PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id UnusedPair --parent PairSplit --agent\n\nhise-cli dsp add --module CabMicSelector --type filters.svf_eq --id CabToneEQ --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Mode --value 4 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Frequency --value 3500 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Q --value 1.2 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Gain --value -3 --agent\n\nhise-cli dsp add --module CabMicSelector --type jdsp.jcompressor --id CabGlueComp --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Treshold --value -18 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Ratio --value 3 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Attack --value 12 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Release --value 120 --agent\n\nhise-cli dsp add --module CabMicSelector --type core.gain --id CabMakeupGain --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --range \"-24,6\" --stepSize 0.1 --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --value 3 --agent\n\nhise-cli dsp create_parameter --module CabMicSelector --container cab_mic_selector --id MicPosition --range \"0,2\" --default 2 --stepSize 2 --agent\nhise-cli dsp connect --module CabMicSelector --source cab_mic_selector --source-param MicPosition --target MicPairSelector --param ChannelIndex --matched --agent\n\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NodeColour --value 0xFF2F80ED --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param Comment --value \"**Mic pair selector** - Dynamically routes one of two input stereo pairs into a subsequent FX chain.\" --agent\nhise-cli dsp set --module CabMicSelector --node PairSplit --param Comment --value \"**Channel isolation** - Splits the 4-channel buffer into stereo slices so the FX chain only processes the selected pair on channels 0-1.\" --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node UnusedPair --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Folded --value true --agent",
+      "hscScript": "#!/usr/bin/env hise-cli run\n# routing.selector: choose one of two internal stereo mic pairs, then process only the selected pair.\n#\n# Notes for this example:\n# - The ScriptFX is explicitly routed as four internal channels, but the Master Chain still folds those\n#   channels back to the normal stereo output.\n# - The public MicPosition parameter uses actual channel offsets: 0 = first stereo pair, 2 = second stereo pair.\n# - ChannelIndex is narrowed before connecting MicPosition, then connected with matched so the macro range\n#   mirrors the meaningful target range.\n# - container.multi is necessary after routing.selector: otherwise the EQ, compressor, and gain would still\n#   process the whole 4-channel buffer. The multi container splits the buffer into stereo slices.\n# - SelectOutput and ClearOtherChannels are left at their defaults: selected channels are copied to the front,\n#   and non-selected channels are cleared.\n# - Colours use 0xAARRGGBB literals so screenshot rendering is deterministic.\n\n/hise playground open\n/builder\nreset\n\nadd ScriptFX as \"CabMicSelector\"\nset CabMicSelector.network \"cab_mic_selector\"\n\n# Four internal source channels, folded back to the stereo output of HISE.\nset \"Master Chain\".routing [0, 1, 0, 1]\nset CabMicSelector.routing [0, 1, 2, 3]\n/exit\n\n/dsp\ncd CabMicSelector\nadd routing.selector as \"MicPairSelector\"\nset MicPairSelector.NumChannels 2\nset MicPairSelector.ChannelIndex.range [0, 2], MicPairSelector.ChannelIndex.stepSize 2\n\n# Split the post-selector buffer into stereo slices so only channels 0-1 hit the FX chain.\nadd container.multi as \"PairSplit\"\nadd container.chain as \"SelectedPair\" to PairSplit\nadd container.chain as \"UnusedPair\" to PairSplit\n\nadd filters.svf_eq as \"CabToneEQ\" to SelectedPair\nset CabToneEQ.Mode 4\nset CabToneEQ.Frequency 3500\nset CabToneEQ.Q 1.2\nset CabToneEQ.Gain -3\n\nadd jdsp.jcompressor as \"CabGlueComp\" to SelectedPair\nset CabGlueComp.Treshold -18\nset CabGlueComp.Ratio 3\nset CabGlueComp.Attack 12\nset CabGlueComp.Release 120\n\nadd core.gain as \"CabMakeupGain\" to SelectedPair\nset CabMakeupGain.Gain.range [-24, 6], CabMakeupGain.Gain.stepSize 0.1\nset CabMakeupGain.Gain 3\n\n# Root macro: 0 selects channels 0-1, 2 selects channels 2-3.\ncreate_parameter cab_mic_selector.MicPosition [0, 2] default 2 stepSize 2\nconnect cab_mic_selector.MicPosition to MicPairSelector.ChannelIndex matched\n\n# Screenshot-oriented annotations and layout.\nset MicPairSelector.NodeColour 0xFF2F80ED\nset MicPairSelector.Comment \"**Mic pair selector** - Dynamically routes one of two input stereo pairs into a subsequent FX chain.\"\n\nset PairSplit.Comment \"**Channel isolation** - Splits the 4-channel buffer into stereo slices so the FX chain only processes the selected pair on channels 0-1.\"\n\nset CabToneEQ.NodeColour 0xFF6F8FAF\nset CabGlueComp.NodeColour 0xFF6F8FAF\n\nset UnusedPair.Folded true\nset CabToneEQ.Folded true\nset CabGlueComp.Folded true\nset CabMakeupGain.Folded true\n/exit\n",
+      "screenshot": "selector.png",
+      "screenshotUrl": "/data/v2/scriptnode-examples/routing/selector.png",
+      "domain": "scriptnode",
+      "category": "dsp-network",
+      "title": "Cab mic pair selector",
+      "summary": "Uses routing.selector to choose one stereo pair from a four-channel buffer and route it into a cabinet tone chain.",
+      "useCase": "Use this when you need a public control that selects which stereo pair in a multichannel buffer feeds downstream processing.",
+      "difficulty": "intermediate",
+      "networkName": "cab_mic_selector",
+      "moduleType": "ScriptFX",
+      "moduleId": "CabMicSelector",
+      "tags": [
+        "channel-routing",
+        "stereo-pair-selection",
+        "multichannel-buffer",
+        "cabinet-chain",
+        "selector"
+      ],
+      "aliases": [
+        "mic pair selector",
+        "stereo pair routing",
+        "dynamic channel selector",
+        "multichannel pair selection",
+        "route selected pair to front"
+      ],
+      "relatedNodes": [
+        "routing.selector",
+        "container.multi",
+        "container.chain",
+        "filters.svf_eq",
+        "jdsp.jcompressor",
+        "core.gain"
+      ],
+      "parameters": {
+        "MicPosition": "Public raw channel-offset control connected to MicPairSelector.ChannelIndex.",
+        "MicPairSelector.ChannelIndex": "Selects the source stereo pair offset, using 0 for channels 0-1 and 2 for channels 2-3.",
+        "MicPairSelector.NumChannels": "Fixed to 2 so each selection copies one stereo pair.",
+        "MicPairSelector.SelectOutput": "Left at default so selected input channels are copied to the front of the buffer.",
+        "MicPairSelector.ClearOtherChannels": "Left enabled so non-selected channels are cleared."
+      },
+      "body": "scriptnode example: routing.selector\n\nCab mic pair selector.\nUse this to select one stereo mic pair from a four-channel buffer and send only that pair into a cabinet tone-shaping chain.\n\nGraph:\n```text\ncab_mic_selector\n  MicPairSelector        routing.selector\n  PairSplit             container.multi\n    SelectedPair        container.chain\n      CabToneEQ         filters.svf_eq\n      CabGlueComp       jdsp.jcompressor\n      CabMakeupGain     core.gain\n    UnusedPair          container.chain\n```\n\nHost:\n  Module: `CabMicSelector`\n  Type: `ScriptFX`\n  Network: `cab_mic_selector`\n  Routing: ScriptFX uses four internal channels; Master Chain folds channels `[0,1,0,1]` back to stereo output.\n  Builder setup:\n    - `add ScriptFX as \"CabMicSelector\"`\n    - `set CabMicSelector.network \"cab_mic_selector\"`\n    - `set \"Master Chain\".routing [0, 1, 0, 1]`\n    - `set CabMicSelector.routing [0, 1, 2, 3]`\n\nSupport nodes:\n  Required: `container.multi`, `container.chain`, `filters.svf_eq`, `jdsp.jcompressor`, `core.gain`\n\nKey rules:\n  - Use four ScriptFX channels so `routing.selector` can choose between two stereo pairs.\n  - Set `MicPairSelector.NumChannels` to `2` so the selector copies a stereo pair, not a single channel.\n  - Use raw channel offsets for `MicPosition`: `0` selects channels 0-1 and `2` selects channels 2-3.\n  - Narrow `ChannelIndex` to `0..2` with step `2` before connecting the public control with `matched`.\n  - Leave `SelectOutput` at default so the selected input pair is copied to the front of the buffer.\n  - Leave `ClearOtherChannels` enabled so non-selected channels are zeroed.\n  - Use `container.multi` after `routing.selector` so the FX chain only processes the selected pair on channels 0-1.\n\nPublic controls:\n  - `MicPosition` -> `MicPairSelector.ChannelIndex`, matched, `0..2`, step `2`, default `2`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id CabMicSelector --agent\nhise-cli builder set --module CabMicSelector --network cab_mic_selector --agent\nhise-cli builder set --module \"Master Chain\" --routing \"[0,1,0,1]\" --agent\nhise-cli builder set --module CabMicSelector --routing \"[0,1,2,3]\" --agent\n\nhise-cli dsp add --module CabMicSelector --type routing.selector --id MicPairSelector --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NumChannels --value 2 --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param ChannelIndex --range \"0,2\" --stepSize 2 --agent\n\nhise-cli dsp add --module CabMicSelector --type container.multi --id PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id SelectedPair --parent PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id UnusedPair --parent PairSplit --agent\n\nhise-cli dsp add --module CabMicSelector --type filters.svf_eq --id CabToneEQ --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Mode --value 4 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Frequency --value 3500 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Q --value 1.2 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Gain --value -3 --agent\n\nhise-cli dsp add --module CabMicSelector --type jdsp.jcompressor --id CabGlueComp --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Treshold --value -18 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Ratio --value 3 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Attack --value 12 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Release --value 120 --agent\n\nhise-cli dsp add --module CabMicSelector --type core.gain --id CabMakeupGain --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --range \"-24,6\" --stepSize 0.1 --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --value 3 --agent\n\nhise-cli dsp create_parameter --module CabMicSelector --container cab_mic_selector --id MicPosition --range \"0,2\" --default 2 --stepSize 2 --agent\nhise-cli dsp connect --module CabMicSelector --source cab_mic_selector --source-param MicPosition --target MicPairSelector --param ChannelIndex --matched --agent\n\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NodeColour --value 0xFF2F80ED --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param Comment --value \"**Mic pair selector** - Dynamically routes one of two input stereo pairs into a subsequent FX chain.\" --agent\nhise-cli dsp set --module CabMicSelector --node PairSplit --param Comment --value \"**Channel isolation** - Splits the 4-channel buffer into stereo slices so the FX chain only processes the selected pair on channels 0-1.\" --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node UnusedPair --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Folded --value true --agent\n```",
+      "llmRef": "scriptnode example: routing.selector\n\nCab mic pair selector.\nUse this to select one stereo mic pair from a four-channel buffer and send only that pair into a cabinet tone-shaping chain.\n\nGraph:\n```text\ncab_mic_selector\n  MicPairSelector        routing.selector\n  PairSplit             container.multi\n    SelectedPair        container.chain\n      CabToneEQ         filters.svf_eq\n      CabGlueComp       jdsp.jcompressor\n      CabMakeupGain     core.gain\n    UnusedPair          container.chain\n```\n\nHost:\n  Module: `CabMicSelector`\n  Type: `ScriptFX`\n  Network: `cab_mic_selector`\n  Routing: ScriptFX uses four internal channels; Master Chain folds channels `[0,1,0,1]` back to stereo output.\n  Builder setup:\n    - `add ScriptFX as \"CabMicSelector\"`\n    - `set CabMicSelector.network \"cab_mic_selector\"`\n    - `set \"Master Chain\".routing [0, 1, 0, 1]`\n    - `set CabMicSelector.routing [0, 1, 2, 3]`\n\nSupport nodes:\n  Required: `container.multi`, `container.chain`, `filters.svf_eq`, `jdsp.jcompressor`, `core.gain`\n\nKey rules:\n  - Use four ScriptFX channels so `routing.selector` can choose between two stereo pairs.\n  - Set `MicPairSelector.NumChannels` to `2` so the selector copies a stereo pair, not a single channel.\n  - Use raw channel offsets for `MicPosition`: `0` selects channels 0-1 and `2` selects channels 2-3.\n  - Narrow `ChannelIndex` to `0..2` with step `2` before connecting the public control with `matched`.\n  - Leave `SelectOutput` at default so the selected input pair is copied to the front of the buffer.\n  - Leave `ClearOtherChannels` enabled so non-selected channels are zeroed.\n  - Use `container.multi` after `routing.selector` so the FX chain only processes the selected pair on channels 0-1.\n\nPublic controls:\n  - `MicPosition` -> `MicPairSelector.ChannelIndex`, matched, `0..2`, step `2`, default `2`\n\nHISE CLI build commands:\n```bash\nhise-cli -hise \"playground open\" --agent\nhise-cli builder reset --agent\nhise-cli builder add --type ScriptFX --id CabMicSelector --agent\nhise-cli builder set --module CabMicSelector --network cab_mic_selector --agent\nhise-cli builder set --module \"Master Chain\" --routing \"[0,1,0,1]\" --agent\nhise-cli builder set --module CabMicSelector --routing \"[0,1,2,3]\" --agent\n\nhise-cli dsp add --module CabMicSelector --type routing.selector --id MicPairSelector --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NumChannels --value 2 --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param ChannelIndex --range \"0,2\" --stepSize 2 --agent\n\nhise-cli dsp add --module CabMicSelector --type container.multi --id PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id SelectedPair --parent PairSplit --agent\nhise-cli dsp add --module CabMicSelector --type container.chain --id UnusedPair --parent PairSplit --agent\n\nhise-cli dsp add --module CabMicSelector --type filters.svf_eq --id CabToneEQ --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Mode --value 4 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Frequency --value 3500 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Q --value 1.2 --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Gain --value -3 --agent\n\nhise-cli dsp add --module CabMicSelector --type jdsp.jcompressor --id CabGlueComp --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Treshold --value -18 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Ratio --value 3 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Attack --value 12 --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Release --value 120 --agent\n\nhise-cli dsp add --module CabMicSelector --type core.gain --id CabMakeupGain --parent SelectedPair --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --range \"-24,6\" --stepSize 0.1 --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Gain --value 3 --agent\n\nhise-cli dsp create_parameter --module CabMicSelector --container cab_mic_selector --id MicPosition --range \"0,2\" --default 2 --stepSize 2 --agent\nhise-cli dsp connect --module CabMicSelector --source cab_mic_selector --source-param MicPosition --target MicPairSelector --param ChannelIndex --matched --agent\n\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param NodeColour --value 0xFF2F80ED --agent\nhise-cli dsp set --module CabMicSelector --node MicPairSelector --param Comment --value \"**Mic pair selector** - Dynamically routes one of two input stereo pairs into a subsequent FX chain.\" --agent\nhise-cli dsp set --module CabMicSelector --node PairSplit --param Comment --value \"**Channel isolation** - Splits the 4-channel buffer into stereo slices so the FX chain only processes the selected pair on channels 0-1.\" --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param NodeColour --value 0xFF6F8FAF --agent\nhise-cli dsp set --module CabMicSelector --node UnusedPair --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabToneEQ --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabGlueComp --param Folded --value true --agent\nhise-cli dsp set --module CabMicSelector --node CabMakeupGain --param Folded --value true --agent\n```",
+      "text": "Cab mic pair selector\nPrimary node: routing.selector.\nUses routing.selector to choose one stereo pair from a four-channel buffer and route it into a cabinet tone chain.\nUse this when you need a public control that selects which stereo pair in a multichannel buffer feeds downstream processing.\nRelated nodes: routing.selector, container.multi, container.chain, filters.svf_eq, jdsp.jcompressor, core.gain.\nTags: channel-routing, stereo-pair-selection, multichannel-buffer, cabinet-chain, selector.\nAliases: mic pair selector, stereo pair routing, dynamic channel selector, multichannel pair selection, route selected pair to front.\nKey parameters: MicPosition, MicPairSelector.ChannelIndex, MicPairSelector.NumChannels, MicPairSelector.SelectOutput, MicPairSelector.ClearOtherChannels."
+    }
+  }
+}

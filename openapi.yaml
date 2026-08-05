@@ -287,7 +287,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [all, example, snippet, forum]
+            enum: [all, example, snippet, forum, scriptnode]
         - name: className
           in: query
           required: false

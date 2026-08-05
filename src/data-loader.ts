@@ -2016,6 +2016,15 @@ export class HISEDataLoader {
     }> = [];
 
     for (const [key, item] of this.exploreEnrichmentIndex) {
+      if (options?.role) continue;
+      if (options?.domain) {
+        const categoryForDomain: Record<string, string> = {
+          audio: 'module',
+          scriptnode: 'scriptnode',
+          ui: 'ui',
+        };
+        if (item.category !== categoryForDomain[options.domain]) continue;
+      }
       let score = 0;
 
       // Name match

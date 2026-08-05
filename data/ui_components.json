@@ -291,6 +291,111 @@
       }
     ]
   },
+  "ScriptedViewport": {
+    "id": "ScriptedViewport",
+    "type": "plugin-component",
+    "llmRef": "ScriptedViewport (UI component)\nCreate via: Content.addViewport(\"name\", x, y)\nScripting API: $API.ScriptedViewport$\n\nMulti-mode viewport supporting scrollable viewport, selectable list, and interactive table modes. Mode is determined at init time: default is a plain scrollable viewport, useList enables list mode, setTableMode() enables table mode.\n\nProperties (component-specific):\n  useList: enable list mode with selectable items\n  items: newline-separated list items (for list mode)\n  scrollBarThickness: scrollbar width in pixels\n  autoHide: auto-hide scrollbar when not scrolling\n  viewPositionX: horizontal scroll position\n  viewPositionY: vertical scroll position (normalised 0.0-1.0 in list/table modes)\n  fontName: font family for list item text\n  fontSize: font size for list items\n  fontStyle: font style for list items\n  alignment: text alignment for list items\n\nList mode: value = selected index, setValue(-1) to deselect. Fixed 30px row height. CSS tr selectors for styling (no LAF).\nTable mode: setup sequence setTableMode() -> setTableColumns() -> setTableCallback() -> setTableRowData(). Cell types: Text, Button, Slider, ComboBox, Image, Hidden. No getTableCellValue() - mirror state in a script-side object.\nPlain viewport: 4000x4000 canvas, child panels for content. Scrollbar overlaps content - reduce child width by scrollBarThickness.\nScroll: control callback fires on item selection only, not scroll. Poll viewPositionY with timer for scroll detection. viewPositionY in onInit may need timer deferral in compiled plugins.\n\nCustomisation:\n  LAF (list mode): none (use CSS)\n  LAF (table mode): drawTableRowBackground, drawTableCell, drawTableHeaderBackground, drawTableHeaderColumn\n  LAF (all modes): drawScrollbar (use obj.handle for thumb bounds, not obj.area)\n  CSS: .scriptviewport with tr (list items), scrollbar; tr supports :hover, :active, :checked\n  Filmstrip: no",
+    "commonMistakes": [
+      {
+        "title": "Using pixel values for viewPositionY",
+        "wrong": "vp.set(\"viewPositionY\", 150) — assuming pixel offset",
+        "right": "vp.set(\"viewPositionY\", 0.5) — use normalized 0.0-1.0 range",
+        "explanation": "viewPositionY is a normalized value (0.0 to 1.0), not a pixel offset. Use (targetRow + 1) / totalRows to scroll to a specific row."
+      },
+      {
+        "title": "Calling setTableMode() outside onInit",
+        "wrong": "Calling setTableMode() or setTableColumns() in a callback",
+        "right": "Call setTableMode() and setTableColumns() during onInit only",
+        "explanation": "Table setup methods report a script error when called after initialisation. All table configuration must happen during onInit."
+      },
+      {
+        "title": "Using component type names as table column Type",
+        "wrong": "\"Type\": \"ScriptComboBox\" in setTableColumns()",
+        "right": "\"Type\": \"ComboBox\" — use the short cell type name, not the component class name",
+        "explanation": "Table column types are short names (Text, Button, Slider, ComboBox, Image, Hidden), not ScriptComponent class names. Using the class name silently falls back to Text."
+      },
+      {
+        "title": "Calling setTableColumns() before setTableMode()",
+        "wrong": "Calling setTableColumns() without calling setTableMode() first",
+        "right": "Always call setTableMode() before setTableColumns()",
+        "explanation": "setTableColumns() requires the internal table model to exist. Calling it before setTableMode() throws a script error because the model has not been created yet."
+      },
+      {
+        "title": "Using obj.rowIndex for data access with sorting enabled",
+        "wrong": "data[obj.rowIndex] — display indices differ from data indices when sorted",
+        "right": "data[getOriginalRowIndex(obj.rowIndex)] to get the original data index",
+        "explanation": "When table sorting is enabled, display row indices no longer match the original data array indices. Use getOriginalRowIndex() to translate."
+      },
+      {
+        "title": "Setting viewPositionY in onInit for compiled plugins",
+        "wrong": "vp.set(\"viewPositionY\", 0.0) in onInit — may not take effect in compiled plugins",
+        "right": "Defer the call with a short timer: Engine.createTimerObject().startTimer(100, function() { vp.set(\"viewPositionY\", 0.0); this.stopTimer(); })",
+        "explanation": "viewPositionY updates are dispatched asynchronously. In compiled plugins, the viewport content may not be laid out yet when onInit runs, so the position reset is ignored. A short timer ensures the content is ready."
+      }
+    ],
+    "properties": {
+      "scrollBarThickness": {
+        "defaultValue": 16.0,
+        "type": "undefined"
+      },
+      "autoHide": {
+        "defaultValue": true,
+        "type": "bool"
+      },
+      "useList": {
+        "defaultValue": false,
+        "type": "bool"
+      },
+      "viewPositionX": {
+        "defaultValue": 0.0,
+        "type": "undefined"
+      },
+      "viewPositionY": {
+        "defaultValue": 0.0,
+        "type": "undefined"
+      },
+      "items": {
+        "defaultValue": "",
+        "type": "String"
+      },
+      "fontName": {
+        "defaultValue": "Arial",
+        "type": "String"
+      },
+      "fontSize": {
+        "defaultValue": 13.0,
+        "type": "undefined"
+      },
+      "fontStyle": {
+        "defaultValue": "plain",
+        "type": "String",
+        "options": [
+          "Regular",
+          "Italic",
+          "Bold",
+          "Bold Italic",
+          "Black"
+        ]
+      },
+      "alignment": {
+        "defaultValue": "centred",
+        "type": "String",
+        "options": [
+          "left",
+          "right",
+          "top",
+          "bottom",
+          "centred",
+          "centredTop",
+          "centredBottom",
+          "topLeft",
+          "topRight",
+          "bottomLeft",
+          "bottomRight"
+        ]
+      }
+    }
+  },
   "ScriptImage": {
     "id": "ScriptImage",
     "type": "plugin-component",
@@ -754,110 +859,37 @@
       }
     }
   },
-  "ScriptedViewport": {
-    "id": "ScriptedViewport",
-    "type": "plugin-component",
-    "llmRef": "ScriptedViewport (UI component)\nCreate via: Content.addViewport(\"name\", x, y)\nScripting API: $API.ScriptedViewport$\n\nMulti-mode viewport supporting scrollable viewport, selectable list, and interactive table modes. Mode is determined at init time: default is a plain scrollable viewport, useList enables list mode, setTableMode() enables table mode.\n\nProperties (component-specific):\n  useList: enable list mode with selectable items\n  items: newline-separated list items (for list mode)\n  scrollBarThickness: scrollbar width in pixels\n  autoHide: auto-hide scrollbar when not scrolling\n  viewPositionX: horizontal scroll position\n  viewPositionY: vertical scroll position (normalised 0.0-1.0 in list/table modes)\n  fontName: font family for list item text\n  fontSize: font size for list items\n  fontStyle: font style for list items\n  alignment: text alignment for list items\n\nList mode: value = selected index, setValue(-1) to deselect. Fixed 30px row height. CSS tr selectors for styling (no LAF).\nTable mode: setup sequence setTableMode() -> setTableColumns() -> setTableCallback() -> setTableRowData(). Cell types: Text, Button, Slider, ComboBox, Image, Hidden. No getTableCellValue() - mirror state in a script-side object.\nPlain viewport: 4000x4000 canvas, child panels for content. Scrollbar overlaps content - reduce child width by scrollBarThickness.\nScroll: control callback fires on item selection only, not scroll. Poll viewPositionY with timer for scroll detection. viewPositionY in onInit may need timer deferral in compiled plugins.\n\nCustomisation:\n  LAF (list mode): none (use CSS)\n  LAF (table mode): drawTableRowBackground, drawTableCell, drawTableHeaderBackground, drawTableHeaderColumn\n  LAF (all modes): drawScrollbar (use obj.handle for thumb bounds, not obj.area)\n  CSS: .scriptviewport with tr (list items), scrollbar; tr supports :hover, :active, :checked\n  Filmstrip: no",
+  "AboutPagePanel": {
+    "id": "AboutPagePanel",
+    "type": "floating-tile",
+    "llmRef": "AboutPagePanel (FloatingTile)\nContentType string: \"AboutPagePanel\"\nSet via: FloatingTile.set(\"ContentType\", \"AboutPagePanel\")\n\nAbout / credits page that auto-fills product information from project settings (product name, version, build date) and the licensee data, plus configurable copyright string and website URL.\n\nJSON Properties:\n  ShowProductName: Show the product name from project settings (default: true)\n  UseCustomImage: Use a custom background image instead of the auto-generated text (default: false)\n  CopyrightNotice: Plain string to render as copyright notice\n  ShowLicensedEmail: Show the licensee's email address from the licence file (default: true)\n  ShowVersion: Show the product version from project settings (default: true)\n  BuildDate: Show the build date string (default: true)\n  WebsiteURL: Plain URL string to render as a clickable link\n\nCustomisation:\n  LAF: none\n  CSS: none",
     "commonMistakes": [
       {
-        "title": "Using pixel values for viewPositionY",
-        "wrong": "vp.set(\"viewPositionY\", 150) — assuming pixel offset",
-        "right": "vp.set(\"viewPositionY\", 0.5) — use normalized 0.0-1.0 range",
-        "explanation": "viewPositionY is a normalized value (0.0 to 1.0), not a pixel offset. Use (targetRow + 1) / totalRows to scroll to a specific row."
-      },
-      {
-        "title": "Calling setTableMode() outside onInit",
-        "wrong": "Calling setTableMode() or setTableColumns() in a callback",
-        "right": "Call setTableMode() and setTableColumns() during onInit only",
-        "explanation": "Table setup methods report a script error when called after initialisation. All table configuration must happen during onInit."
-      },
-      {
-        "title": "Using component type names as table column Type",
-        "wrong": "\"Type\": \"ScriptComboBox\" in setTableColumns()",
-        "right": "\"Type\": \"ComboBox\" — use the short cell type name, not the component class name",
-        "explanation": "Table column types are short names (Text, Button, Slider, ComboBox, Image, Hidden), not ScriptComponent class names. Using the class name silently falls back to Text."
-      },
-      {
-        "title": "Calling setTableColumns() before setTableMode()",
-        "wrong": "Calling setTableColumns() without calling setTableMode() first",
-        "right": "Always call setTableMode() before setTableColumns()",
-        "explanation": "setTableColumns() requires the internal table model to exist. Calling it before setTableMode() throws a script error because the model has not been created yet."
-      },
-      {
-        "title": "Using obj.rowIndex for data access with sorting enabled",
-        "wrong": "data[obj.rowIndex] — display indices differ from data indices when sorted",
-        "right": "data[getOriginalRowIndex(obj.rowIndex)] to get the original data index",
-        "explanation": "When table sorting is enabled, display row indices no longer match the original data array indices. Use getOriginalRowIndex() to translate."
-      },
-      {
-        "title": "Setting viewPositionY in onInit for compiled plugins",
-        "wrong": "vp.set(\"viewPositionY\", 0.0) in onInit — may not take effect in compiled plugins",
-        "right": "Defer the call with a short timer: Engine.createTimerObject().startTimer(100, function() { vp.set(\"viewPositionY\", 0.0); this.stopTimer(); })",
-        "explanation": "viewPositionY updates are dispatched asynchronously. In compiled plugins, the viewport content may not be laid out yet when onInit runs, so the position reset is ignored. A short timer ensures the content is ready."
+        "title": "Licensee email blank in development",
+        "wrong": "Expecting ShowLicensedEmail to display an email while testing in HISE — it is empty",
+        "right": "ShowLicensedEmail only resolves to a real address in a compiled, licensed plugin build. In HISE / unlicensed builds it is blank",
+        "explanation": "The licensee email is read from the user's licence file. Inside HISE there is no licence, so the field is empty by design."
       }
-    ],
-    "properties": {
-      "scrollBarThickness": {
-        "defaultValue": 16.0,
-        "type": "undefined"
+    ]
+  },
+  "ActivityLed": {
+    "id": "ActivityLed",
+    "type": "floating-tile",
+    "llmRef": "ActivityLed (FloatingTile)\nContentType string: \"ActivityLed\"\nSet via: FloatingTile.set(\"ContentType\", \"ActivityLed\")\n\nVisual MIDI activity indicator. Renders an \"off\" image when idle and an \"on\" image when MIDI is being received. Optionally shows a \"MIDI\" text label. Custom on/off images go in the project's Images folder, or use a Base64 path icon for a vector look.\n\nJSON Properties:\n  OffImage: Path to the off-state image (typically \"{PROJECT_FOLDER}offLed.png\")\n  OnImage: Path to the on-state image\n  ShowMidiLabel: Show a text label next to the LED (default: true)\n  MidiLabel: Text label content (default: \"MIDI\")\n  UseMidiPath: Render the LED using a Base64 vector path instead of images (default: false)\n  Base64MidiPath: The Base64 path data when UseMidiPath is true\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "ActivityLed never lights up",
+        "wrong": "Adding the panel and expecting it to react to a specific MIDI Player or external MIDI source",
+        "right": "ActivityLed reflects all incoming MIDI to the plugin (host/standalone MIDI input). It does not filter by source",
+        "explanation": "The LED listens to the global MIDI input of the plugin. There is no ProcessorId — any incoming MIDI message triggers the indicator."
       },
-      "autoHide": {
-        "defaultValue": true,
-        "type": "bool"
-      },
-      "useList": {
-        "defaultValue": false,
-        "type": "bool"
-      },
-      "viewPositionX": {
-        "defaultValue": 0.0,
-        "type": "undefined"
-      },
-      "viewPositionY": {
-        "defaultValue": 0.0,
-        "type": "undefined"
-      },
-      "items": {
-        "defaultValue": "",
-        "type": "String"
-      },
-      "fontName": {
-        "defaultValue": "Arial",
-        "type": "String"
-      },
-      "fontSize": {
-        "defaultValue": 13.0,
-        "type": "undefined"
-      },
-      "fontStyle": {
-        "defaultValue": "plain",
-        "type": "String",
-        "options": [
-          "Regular",
-          "Italic",
-          "Bold",
-          "Bold Italic",
-          "Black"
-        ]
-      },
-      "alignment": {
-        "defaultValue": "centred",
-        "type": "String",
-        "options": [
-          "left",
-          "right",
-          "top",
-          "bottom",
-          "centred",
-          "centredTop",
-          "centredBottom",
-          "topLeft",
-          "topRight",
-          "bottomLeft",
-          "bottomRight"
-        ]
+      {
+        "title": "Custom images do not load",
+        "wrong": "Pointing OffImage / OnImage at an absolute system path or a relative project path",
+        "right": "Use the {PROJECT_FOLDER} prefix and place the files in the project's Images subfolder (e.g. {PROJECT_FOLDER}offLed.png)",
+        "explanation": "The LED loads images through the project's image pool. Files must live inside the Images folder and the path must use the {PROJECT_FOLDER} placeholder so it resolves at runtime."
       }
-    }
+    ]
   },
   "AHDSRGraph": {
     "id": "AHDSRGraph",
@@ -875,6 +907,139 @@
         "wrong": "Writing a single drawAhdsrPath implementation without checking obj.isActive",
         "right": "Check obj.isActive to distinguish: false = full path outline, true = active section highlight",
         "explanation": "drawAhdsrPath is called twice per repaint — once for the full envelope curve and once for the currently active section. Without the isActive check, both calls render identically and the active section highlight is lost."
+      }
+    ]
+  },
+  "AudioAnalyser": {
+    "id": "AudioAnalyser",
+    "type": "floating-tile",
+    "llmRef": "AudioAnalyser (FloatingTile)\nContentType string: \"AudioAnalyser\"\nSet via: FloatingTile.set(\"ContentType\", \"AudioAnalyser\")\n\nVisualises the audio signal collected by an Analyser module. Three visualisation modes selected via the Index property: 0 = Goniometer, 1 = Oscilloscope, 2 = Spectral Analyser. The Plotter floating tile reuses the same LAF functions.\n\nJSON Properties:\n  ProcessorId: ID of the connected Analyser module\n  Index: Visualisation mode (0=Goniometer, 1=Oscilloscope, 2=Spectral Analyser)\n\nCustomisation:\n  LAF: drawAnalyserBackground, drawAnalyserPath, drawAnalyserGrid\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "No signal in the analyser",
+        "wrong": "Adding an AudioAnalyser floating tile and connecting it to an audio FX module that is not an Analyser",
+        "right": "Insert an Analyser module in the signal chain and connect the floating tile to that Analyser",
+        "explanation": "AudioAnalyser visualises data collected by an Analyser module. Without an Analyser in the chain (or with the wrong ProcessorId), no buffer data is available and the view stays empty."
+      },
+      {
+        "title": "drawAnalyserGrid never fires for the goniometer",
+        "wrong": "Registering drawAnalyserGrid and expecting it to be called for every visualisation mode",
+        "right": "Implement grid drawing only for the oscilloscope and spectral analyser; the goniometer does not use a grid",
+        "explanation": "The goniometer renders dots in a circular field and does not paint a grid path. Only the oscilloscope and FFT modes call drawAnalyserGrid."
+      }
+    ]
+  },
+  "CustomSettings": {
+    "id": "CustomSettings",
+    "type": "floating-tile",
+    "llmRef": "CustomSettings (FloatingTile)\nContentType string: \"CustomSettings\"\nSet via: FloatingTile.set(\"ContentType\", \"CustomSettings\")\n\nSettings panel that lets the end user change audio device, buffer size, sample rate, voice limit, scale factor, streaming mode and other engine-level preferences. Each setting is opt-in via a boolean property — set true to expose the row, false to hide it.\n\nJSON Properties (each true/false to show/hide row):\n  Driver, Device, Output, BufferSize, SampleRate, GlobalBPM, ScaleFactor, GraphicRendering,\n  StreamingMode, SustainCC, VoiceAmount, ClearMidiCC, SampleLocation, DebugMode\n  ScaleFactorList: Array of available zoom factors (e.g. [0.5, 1.0, 1.25, 1.5])\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Audio settings shown in a plugin build",
+        "wrong": "Showing Driver / Device / BufferSize / SampleRate rows in a hosted plugin build (VST/AU/AAX)",
+        "right": "Hide the audio device rows for plugin builds — the host owns the audio device. Show them only in standalone builds",
+        "explanation": "Driver, Device, BufferSize, SampleRate and Output have no effect when running as a plugin — the host controls those. Showing them confuses users. Use HiseDeviceSimulator.isStandalone() to gate visibility at scripting time."
+      },
+      {
+        "title": "ScaleFactor visible without ScaleFactorList",
+        "wrong": "Setting ScaleFactor to true without specifying ScaleFactorList — user gets a default zoom range",
+        "right": "Set ScaleFactorList to the zoom levels you want to support, e.g. [0.75, 1.0, 1.25, 1.5]",
+        "explanation": "The ScaleFactor combobox reads its options from ScaleFactorList. Without it, only the built-in defaults appear, which may not match the resolutions your interface was designed for."
+      }
+    ]
+  },
+  "DraggableFilterPanel": {
+    "id": "DraggableFilterPanel",
+    "type": "floating-tile",
+    "llmRef": "DraggableFilterPanel (FloatingTile)\nContentType string: \"DraggableFilterPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"DraggableFilterPanel\")\n\nInteractive filter graph: extends FilterDisplay with draggable handles for each band, an optional spectrum analyser overlay, and a context menu. Connects to a Parametric EQ or any module that supplies a draggable filter definition via Effect.setDraggableFilterData().\n\nJSON Properties:\n  ProcessorId: ID of the connected module (CurveEQ or compatible)\n  Index: Display index for the filter coefficients\n  AllowFilterResizing: Allow adding / removing bands (default: true)\n  AllowDynamicSpectrumAnalyser: Spectrum analyser visibility (0=off, 1=always, 2=toggleable; default: 0)\n  UseUndoManager: Route changes through the control undo manager (default: false)\n  ResetOnDoubleClick: Reset a band to defaults on double click (default: false)\n  AllowContextMenu: Enable the right-click context menu (default: true)\n  ShowLines: Draw the grid lines (default: true)\n  GainRange: Vertical dB range (default: 24.0)\n  PathType: One of \"StrokeFullWidth\", \"StrokeMinimal\", \"FillFullWidth\", \"FillMinimal\"\n  PathMargin: Margin in pixels around the path (default: 3.0)\n\nCustomisation:\n  LAF: drawFilterDragHandle\n  CSS: .filtergraph (path/background) + .filterHandle (per-band drag handles)",
+    "commonMistakes": [
+      {
+        "title": "No persistence for filter parameters",
+        "wrong": "Adding a DraggableFilterPanel and assuming the filter state will be saved with the user preset automatically",
+        "right": "Call Engine.addModuleStateToUserPreset() to store the connected module in the preset, or use a saveInPreset Panel that writes the data manually",
+        "explanation": "The DraggableFilterPanel does not own the filter data — it only edits the connected module. Parameter persistence is the responsibility of the script (typically by adding the module's state to the user preset)."
+      },
+      {
+        "title": "Connecting to non-EQ modules in HISE 5+ without a JSON definition",
+        "wrong": "Setting ProcessorId to a module other than the Parametric EQ in HISE 5.0+ and expecting bands to appear",
+        "right": "Provide a JSON definition via Effect.setDraggableFilterData() on the target module before showing the panel",
+        "explanation": "From HISE 5.0 onwards, modules other than the Parametric EQ require an explicit draggable filter definition. Without it the panel renders an empty graph."
+      },
+      {
+        "title": "Filter handle text is empty in CSS",
+        "wrong": "Writing `.filterHandle { content: 'Band'; }` and expecting per-band parameter values",
+        "right": "Use the supplied CSS variables: var(--type), var(--frequency), var(--q), var(--gain), var(--index)",
+        "explanation": "The handle exposes its current parameters as CSS variables. Using a static string ignores the live filter values and the band index."
+      }
+    ]
+  },
+  "Empty": {
+    "id": "Empty",
+    "type": "floating-tile",
+    "llmRef": "Empty (FloatingTile)\nContentType string: \"Empty\"\nSet via: FloatingTile.set(\"ContentType\", \"Empty\")\n\nPlaceholder floating tile that draws nothing but its background colour. Useful for reserving space inside a floating layout, prototyping, or as a visible spacer. Replace later with a real ContentType.\n\nJSON Properties:\n  (none beyond base ColourData)\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Using Empty for permanent layout spacing",
+        "wrong": "Leaving an Empty tile in a final layout to push other tiles around",
+        "right": "Use the Spacer floating tile (ContentType `Spacer`) for invisible layout padding",
+        "explanation": "Empty draws its bgColour and intercepts mouse clicks. For pure layout spacing that should not catch input or paint, the Spacer ContentType is a better fit."
+      }
+    ]
+  },
+  "FilterDisplay": {
+    "id": "FilterDisplay",
+    "type": "floating-tile",
+    "llmRef": "FilterDisplay (FloatingTile)\nContentType string: \"FilterDisplay\"\nSet via: FloatingTile.set(\"ContentType\", \"FilterDisplay\")\n\nDisplays the frequency / magnitude response of any module that provides FilterCoefficients (e.g. PolyphonicFilter, CurveEQ). Read-only — for an interactive variant that lets the user drag filter parameters, use DraggableFilterPanel.\n\nJSON Properties:\n  ProcessorId: ID of the connected filter or EQ module\n  Index: Display slot for the filter coefficients\n  ShowLines: Draw the frequency / magnitude grid lines (default: false)\n  GainRange: Vertical dB range of the graph (default: 24.0)\n  PathMargin: Margin in pixels around the path inside the graph (default: 3.0)\n  PathType: One of \"StrokeFullWidth\", \"StrokeMinimal\", \"FillFullWidth\", \"FillMinimal\"\n\nCustomisation:\n  LAF: drawFilterBackground, drawFilterPath, drawFilterGridLines\n  CSS: .filtergraph with --filterPath variable",
+    "commonMistakes": [
+      {
+        "title": "Connecting to a module that does not expose coefficients",
+        "wrong": "Setting ProcessorId to a module that has no filter coefficients (e.g. an EQ section without a CurveEQ instance)",
+        "right": "Connect to a PolyphonicFilter, CurveEQ, or any module derived from FilterEffect",
+        "explanation": "FilterDisplay reads its data from the connected module's filter coefficients. If the module does not expose them, the graph stays flat. Use DraggableFilterPanel for editable curves."
+      },
+      {
+        "title": "Using FilterDisplay for editable filter curves",
+        "wrong": "Adding a FilterDisplay and trying to drag the curve to change the filter",
+        "right": "Use the DraggableFilterPanel content type for an interactive filter graph",
+        "explanation": "FilterDisplay is purely a visualisation. Mouse interaction is not handled — connect a DraggableFilterPanel instead when users need to edit bands directly."
+      },
+      {
+        "title": "Border stroke distorting the path",
+        "wrong": "Adding a CSS border to .filtergraph without setting box-sizing",
+        "right": "Set `box-sizing: border-box` on .filtergraph when the path is rendered as a background image with a border",
+        "explanation": "Without `border-box`, the border occupies space outside the path's coordinate system, causing the rendered curve to scale inconsistently when margin or padding is applied."
+      }
+    ]
+  },
+  "FlexAHDSRGraph": {
+    "id": "FlexAHDSRGraph",
+    "type": "floating-tile",
+    "llmRef": "FlexAHDSRGraph (FloatingTile)\nContentType string: \"FlexAHDSRGraph\"\nSet via: FloatingTile.set(\"ContentType\", \"FlexAHDSRGraph\")\n\nEditable envelope graph for the Flex AHDSR modulator. Each stage has a drag point that adjusts time and level; curve points between stages adjust shape. A position indicator tracks the active envelope stage during playback. Connects via ProcessorId.\n\nJSON Properties:\n  ProcessorId: ID of the connected Flex AHDSR modulator\n  Index: Display buffer index (default: -1)\n  CurvePointTolerance: Pixel tolerance for hitting a curve point (default: 20)\n  UseOneDimensionDrag: Restrict each drag to a single axis (default: true)\n\nCustomisation:\n  LAF: drawFlexAhdsrBackground, drawFlexAhdsrFullPath, drawFlexAhdsrSegment, drawFlexAhdsrCurvePoint, drawFlexAhdsrPosition, drawFlexAhdsrText\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Connecting to a regular AHDSR modulator",
+        "wrong": "Setting ProcessorId to a classic AHDSR modulator and expecting per-stage curve points",
+        "right": "Use the AHDSRGraph floating tile for AHDSR modulators; FlexAHDSRGraph only renders Flex AHDSR data",
+        "explanation": "FlexAHDSRGraph reads its parameters from the Flex AHDSR display buffer (parameter values + position index). A regular AHDSR modulator does not expose this data layout, so the path will not render."
+      },
+      {
+        "title": "Hold has no drag point",
+        "wrong": "Looking for a hold-stage drag point in the graph or in the LAF callbacks",
+        "right": "Hold has only Time and Level (Level is shared with Attack); there is no curve point for the Hold segment",
+        "explanation": "Hold is a static stage — its level is taken from the attack peak, and there is no curve parameter. The graph only renders curve points for the dynamic stages (Attack, Decay, Release)."
+      }
+    ]
+  },
+  "FrontendMacroPanel": {
+    "id": "FrontendMacroPanel",
+    "type": "floating-tile",
+    "llmRef": "FrontendMacroPanel (FloatingTile)\nContentType string: \"FrontendMacroPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"FrontendMacroPanel\")\n\nTable of all macro-control assignments. Each row shows the source macro, the target parameter, an invert toggle and the macro range. Requires Engine.setFrontendMacros() to enable the macro system. Identical CSS styling to MidiLearnPanel.\n\nJSON Properties:\n  Font: Optional font override\n  FontSize: Optional font size\n\nCustomisation:\n  LAF: none (use CSS instead)\n  CSS: table, th, tr, td, button, .range-slider, scrollbar",
+    "commonMistakes": [
+      {
+        "title": "Panel always empty",
+        "wrong": "Adding a FrontendMacroPanel without calling Engine.setFrontendMacros() during onInit",
+        "right": "Call Engine.setFrontendMacros(['Macro 1', 'Macro 2', ...]) once during onInit to enable the macro system and define the macro names",
+        "explanation": "Without setFrontendMacros() the macro management system is disabled and no rows can appear. The function takes the macro display names and turns the system on."
       }
     ]
   },
@@ -909,6 +1074,70 @@
       }
     ]
   },
+  "MarkdownPanel": {
+    "id": "MarkdownPanel",
+    "type": "floating-tile",
+    "llmRef": "MarkdownPanel (FloatingTile)\nContentType string: \"MarkdownPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"MarkdownPanel\")\n\nEmbedded markdown documentation browser. Renders a TOC, search box, navigation buttons, and the page view. Powers the in-HISE help system and can host a project's own documentation.\n\nJSON Properties:\n  ShowToc: Show the table of contents (default: true)\n  ShowSearch: Show the search box (default: true)\n  ShowBack: Show the navigation buttons (default: true)\n  BoldFontName: Font for bold and headlines\n  FixTocWidth: Pin the TOC to a fixed pixel width (default: -1 = auto)\n  StartURL: Initial page URL\n  ServerUpdateURL: Server URL for fetching cached docs\n  CustomContent: Inline markdown content (overrides file lookup)\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Markdown does not render in compiled plugin",
+        "wrong": "Shipping a plugin without compiling the docs or pointing ServerUpdateURL at a working host",
+        "right": "Compile the markdown into content.dat / images.dat (cache mode) and ship those with the plugin, or set ServerUpdateURL to a reachable server",
+        "explanation": "Compiled plugins use the cache-based mode (content.dat / images.dat). Without those files (or a ServerUpdateURL fetching them) the panel has nothing to render."
+      }
+    ]
+  },
+  "MatrixPeakMeter": {
+    "id": "MatrixPeakMeter",
+    "type": "floating-tile",
+    "llmRef": "MatrixPeakMeter (FloatingTile)\nContentType string: \"MatrixPeakMeter\"\nSet via: FloatingTile.set(\"ContentType\", \"MatrixPeakMeter\")\n\nMulti-channel peak meter rendering current and max-hold peak levels for the channels of a routable processor (sound generator, FX). Configurable channel selection, decay times, segment style and orientation.\n\nJSON Properties:\n  ProcessorId: ID of the connected RoutableProcessor (sound generator, FX, etc.)\n  SegmentLedSize: Segment height in pixels for stepped LED rendering (0 = smooth)\n  UseSourceChannels: Read source channels instead of destination (default: false)\n  ChannelIndexes: Array of channel indexes to display (empty = all)\n  UpDecayTime: Smoothing time for peak rise in ms (0 = instant)\n  DownDecayTime: Smoothing time for peak fall in ms (0 = instant)\n  SkewFactor: Skew applied to dB-to-position mapping (default: 1.0)\n  PaddingSize: Padding in pixels between channel meters (default: 1.0)\n  ShowMaxPeak: Render the max-hold peak indicator (default: true)\n\nCustomisation:\n  LAF: drawMatrixPeakMeter\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Showing all channels when only stereo output is wanted",
+        "wrong": "Leaving ChannelIndexes empty on a 16-channel module and getting 16 meter columns",
+        "right": "Set ChannelIndexes to [0, 1] (or whichever pair) to limit the display",
+        "explanation": "An empty ChannelIndexes array shows every channel exposed by the routable processor. For typical stereo monitoring, restrict the array to the relevant indexes."
+      },
+      {
+        "title": "Custom LAF too wide because of leftover channels",
+        "wrong": "Drawing all numChannels in drawMatrixPeakMeter without checking which channel indexes were requested",
+        "right": "Use obj.numChannels and obj.peaks/obj.maxPeaks length — the array is already filtered to the configured ChannelIndexes",
+        "explanation": "obj.peaks and obj.maxPeaks are pre-filtered: their length equals the number of configured channels. Layout the meter based on obj.numChannels rather than the parent module's channel count."
+      }
+    ]
+  },
+  "MidiChannelList": {
+    "id": "MidiChannelList",
+    "type": "floating-tile",
+    "llmRef": "MidiChannelList (FloatingTile)\nContentType string: \"MidiChannelList\"\nSet via: FloatingTile.set(\"ContentType\", \"MidiChannelList\")\n\nLists all 16 MIDI channels with a check box per row. Disabled channels are filtered out at the engine input — modules downstream do not receive events from them.\n\nJSON Properties:\n  Font: Optional font override\n  FontSize: Optional font size\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Disabling a channel does not silence a sub-synth",
+        "wrong": "Unchecking channel 2 in MidiChannelList expecting only channel 1 events to reach a specific child synth",
+        "right": "MidiChannelList filters MIDI at the global engine input. To route specific channels to specific child synths, use the per-module MIDI processor with Message.ignoreEvent or filter on the channel manually",
+        "explanation": "Disabling a channel here drops the events at the plugin input — no module receives them. It is not a routing mechanism. For per-synth channel routing add a Script Processor to each child and gate inside onNoteOn."
+      }
+    ]
+  },
+  "MidiLearnPanel": {
+    "id": "MidiLearnPanel",
+    "type": "floating-tile",
+    "llmRef": "MidiLearnPanel (FloatingTile)\nContentType string: \"MidiLearnPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"MidiLearnPanel\")\n\nTable of all MIDI-CC learned parameters. Columns: CC #, target parameter, inverted toggle, min, max. Rows can be edited (range, invert) or deleted. A control becomes eligible for learning when its enableMidiLearn property is true.\n\nJSON Properties:\n  Font: Optional font override\n  FontSize: Optional font size\n\nCustomisation:\n  LAF: none (use CSS instead)\n  CSS: table, th, tr, td, button, .range-slider, scrollbar",
+    "commonMistakes": [
+      {
+        "title": "Control never appears in MidiLearnPanel",
+        "wrong": "Right-clicking a knob to MIDI-learn and getting nothing in the panel",
+        "right": "Set the control's enableMidiLearn property to true — only opt-in components are eligible for MIDI learn",
+        "explanation": "Without enableMidiLearn the right-click context menu does not show the Learn entry, so no assignment is created."
+      },
+      {
+        "title": "Styling MidiLearnPanel with LAF callbacks",
+        "wrong": "Trying to register drawTable / drawCell LAF callbacks for MidiLearnPanel",
+        "right": "Use CSS — register a stylesheet on the FloatingTile and target table / th / tr / td / button / .range-slider",
+        "explanation": "MidiLearnPanel does not provide scripted LAF callbacks. The CSS renderer is the supported way to fully restyle it (rendering and layout)."
+      }
+    ]
+  },
   "MidiOverlayPanel": {
     "id": "MidiOverlayPanel",
     "type": "floating-tile",
@@ -928,6 +1157,64 @@
       }
     ]
   },
+  "MidiSources": {
+    "id": "MidiSources",
+    "type": "floating-tile",
+    "llmRef": "MidiSources (FloatingTile)\nContentType string: \"MidiSources\"\nSet via: FloatingTile.set(\"ContentType\", \"MidiSources\")\n\nRenders a list of every MIDI input device exposed by the OS, each with a check box to toggle whether the standalone application listens to it. No effect in plugin builds — the host owns MIDI routing there.\n\nJSON Properties:\n  Font: Optional font override\n  FontSize: Optional font size\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "MidiSources empty in plugin build",
+        "wrong": "Showing MidiSources in a hosted plugin and expecting users to enable inputs",
+        "right": "Hide MidiSources in plugin builds — only the standalone application opens MIDI devices directly",
+        "explanation": "Plugins receive MIDI from the host, not from the OS. The MidiSources list only has meaning when running the standalone build of the project."
+      }
+    ]
+  },
+  "ModulationMatrix": {
+    "id": "ModulationMatrix",
+    "type": "floating-tile",
+    "llmRef": "ModulationMatrix (FloatingTile)\nContentType string: \"ModulationMatrix\"\nSet via: FloatingTile.set(\"ContentType\", \"ModulationMatrix\")\n\nEditor surface for the HISE 5.0 matrix modulation system. Renders a matrix of modulation sources (rows) against a target processor's parameters (columns) with per-cell intensity controls. Two layouts via MatrixStyle: TableMatrix (full grid) or SliderMatrix (slider per source).\n\nJSON Properties:\n  ProcessorId: ID of the target module (must be a GlobalModulatorContainer or compatible)\n  MatrixStyle: Layout style (\"TableMatrix\" or \"SliderMatrix\"; default: \"TableMatrix\")\n  SliderStyle: Slider type for intensity controls (\"Knob\", \"Horizontal\", \"Vertical\"; default: \"Knob\")\n  TargetFilter: Optional target ID filter; empty = use ProcessorId as target\n\nCustomisation:\n  LAF: getModulatorDragData, drawModulationDragBackground, drawModulationDragger\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "No matrix container in the project",
+        "wrong": "Adding a ModulationMatrix without a GlobalModulatorContainer in the signal chain",
+        "right": "Insert a Global Modulator Container at the top of the modulator chain — the matrix editor reads its connections from there",
+        "explanation": "The matrix modulation system stores all source/target connections inside the first GlobalModulatorContainer of the project. Without it, the editor has nothing to display."
+      },
+      {
+        "title": "Confusing MatrixType property name",
+        "wrong": "Setting `MatrixType` in the JSON `Data` and getting the default layout",
+        "right": "Use `MatrixStyle` (with values `TableMatrix` or `SliderMatrix`) — that is what the panel actually reads",
+        "explanation": "The Interface Designer property column shows MatrixType, but the panel runtime reads MatrixStyle from the JSON. When configuring via Data JSON, use MatrixStyle / SliderStyle."
+      }
+    ]
+  },
+  "ModulationMatrixController": {
+    "id": "ModulationMatrixController",
+    "type": "floating-tile",
+    "llmRef": "ModulationMatrixController (FloatingTile)\nContentType string: \"ModulationMatrixController\"\nSet via: FloatingTile.set(\"ContentType\", \"ModulationMatrixController\")\n\nCompanion to ModulationMatrix. Lists the available modulation sources and lets the user pick which one the matrix grid edits next. Optional UnselectableExclusiveSource flag prevents users from clicking exclusive sources (those owning all current routes).\n\nJSON Properties:\n  ProcessorId: ID of the target module (typically the same as the linked ModulationMatrix)\n  UnselectableExclusiveSource: Disable selection of sources whose connections would be exclusive (default: false)\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Controller has no effect",
+        "wrong": "Adding a ModulationMatrixController without a ModulationMatrix on the same page",
+        "right": "Pair the controller with a ModulationMatrix — the controller selects sources, the matrix renders connections for the selected target",
+        "explanation": "The controller is purely a source picker. Without a ModulationMatrix listening to the same target it has nothing to drive."
+      }
+    ]
+  },
+  "MPEPanel": {
+    "id": "MPEPanel",
+    "type": "floating-tile",
+    "llmRef": "MPEPanel (FloatingTile)\nContentType string: \"MPEPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"MPEPanel\")\n\nMPE configuration surface. Detects all MPEModulator instances in the module tree and renders them in a list with per-row controls (smoothing time, target selector, intensity, default value). Includes a master MPE on/off toggle.\n\nJSON Properties:\n  Font: Optional font override\n  FontSize: Optional font size\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "MPE panel empty after enabling MPE",
+        "wrong": "Toggling MPE on inside the panel and expecting it to populate with rows automatically",
+        "right": "Add MPEModulator instances to the relevant modulator chains — the panel discovers them after the next refresh",
+        "explanation": "The MPE panel only shows MPE modulators that exist in the module tree. Without any MPEModulator placed (e.g. on pitch / pressure / slide chains) the panel has nothing to list."
+      }
+    ]
+  },
   "PerformanceLabel": {
     "id": "PerformanceLabel",
     "type": "floating-tile",
@@ -938,6 +1225,31 @@
         "wrong": "Using PerformanceLabel to monitor CPU usage of a specific processor",
         "right": "Use Engine.getCpuUsage() for global stats, or the HISE profiler for per-module analysis",
         "explanation": "PerformanceLabel shows global engine performance (total CPU, memory, voice count), not per-processor metrics. There is no floating tile for per-module CPU monitoring."
+      }
+    ]
+  },
+  "Plotter": {
+    "id": "Plotter",
+    "type": "floating-tile",
+    "llmRef": "Plotter (FloatingTile)\nContentType string: \"Plotter\"\nSet via: FloatingTile.set(\"ContentType\", \"Plotter\")\n\nVisualises the output of a TimeModulation modulator as a scrolling oscilloscope. Reuses the AudioAnalyser LAF functions (drawAnalyserBackground, drawAnalyserPath). Right-click context menu controls timespan and freeze. Modulation values are only sampled while the interface is visible.\n\nJSON Properties:\n  ProcessorId: ID of the connected modulator\n  Font: Optional override font for the timespan label\n  FontSize: Optional override font size\n\nCustomisation:\n  LAF: drawAnalyserBackground, drawAnalyserPath (drawAnalyserGrid is never called)\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Plotter shows no signal in the background",
+        "wrong": "Hiding the interface and assuming the plotter still records modulation values",
+        "right": "The plotter only samples modulation while the interface is visible — keep the page on screen to capture data",
+        "explanation": "To keep CPU low across many modulators, the plotter only reads modulation values when its parent interface is visible. Switching pages or hiding the plugin window pauses the capture."
+      },
+      {
+        "title": "Registering drawAnalyserGrid for the plotter",
+        "wrong": "Drawing a grid in drawAnalyserGrid expecting it to render on the plotter",
+        "right": "Skip drawAnalyserGrid for plotter LAFs — it is never called in this content type",
+        "explanation": "Unlike the spectrum / oscilloscope modes of AudioAnalyser, the plotter does not invoke drawAnalyserGrid. Any grid lines must be drawn inside drawAnalyserBackground or drawAnalyserPath."
+      },
+      {
+        "title": "Hiding the timespan label",
+        "wrong": "Trying to suppress the timespan text via the LAF callback",
+        "right": "Set textColour to a transparent ARGB value (e.g. 0x00000000) — the text overlay is not LAF-customisable",
+        "explanation": "The timespan / freeze indicator is drawn outside the LAF callbacks. The only way to hide it is to render it transparently by giving textColour zero alpha."
       }
     ]
   },
@@ -969,6 +1281,51 @@
         "wrong": "Setting a control callback on the preset browser FloatingTile to react when a preset is loaded",
         "right": "Use UserPresetHandler.setPostCallback() to get notified after a preset is loaded",
         "explanation": "The PresetBrowser floating tile does not fire a control callback when presets are loaded. To react to preset changes (e.g. updating a label with the current preset name), use UserPresetHandler.setPostCallback() instead."
+      }
+    ]
+  },
+  "TooltipPanel": {
+    "id": "TooltipPanel",
+    "type": "floating-tile",
+    "llmRef": "TooltipPanel (FloatingTile)\nContentType string: \"TooltipPanel\"\nSet via: FloatingTile.set(\"ContentType\", \"TooltipPanel\")\n\nSurface that displays the tooltip text of whichever component the mouse is currently over. Tooltips are configured per-component via the \"tooltip\" property. Optional fade animation and info icon.\n\nJSON Properties:\n  Fade: Animate text in/out (default: true)\n  ShowIcon: Show an info icon to the left of the text (default: true)\n  Font: Override font for the tooltip text\n  FontSize: Override font size\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "TooltipPanel always empty",
+        "wrong": "Adding a TooltipPanel and forgetting to set the `tooltip` property on the components that should display text",
+        "right": "Set the `tooltip` property on each ScriptComponent (knob, button, etc.) — that string is what TooltipPanel renders",
+        "explanation": "TooltipPanel is purely a display surface. The actual tooltip text is configured per component via its `tooltip` property in the Interface Designer or via setProperty in script."
+      }
+    ]
+  },
+  "Waveform": {
+    "id": "Waveform",
+    "type": "floating-tile",
+    "llmRef": "Waveform (FloatingTile)\nContentType string: \"Waveform\"\nSet via: FloatingTile.set(\"ContentType\", \"Waveform\")\n\nRenders the waveform of a Sine Wave Generator or Waveform Generator. The path updates whenever the underlying oscillator selects a different waveform.\n\nJSON Properties:\n  ProcessorId: ID of the connected oscillator module\n\nCustomisation:\n  LAF: drawWavetableBackground, drawWavetablePath\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Connecting to a non-oscillator module",
+        "wrong": "Setting ProcessorId to a sampler, filter or modulator and expecting a waveform",
+        "right": "Connect to a Sine Wave Generator or Waveform Generator (any module derived from WavetableSynth)",
+        "explanation": "Waveform reads its path from a wavetable-style oscillator. Other module types do not publish that data, so the display stays empty."
+      }
+    ]
+  },
+  "WavetableWaterfall": {
+    "id": "WavetableWaterfall",
+    "type": "floating-tile",
+    "llmRef": "WavetableWaterfall (FloatingTile)\nContentType string: \"WavetableWaterfall\"\nSet via: FloatingTile.set(\"ContentType\", \"WavetableWaterfall\")\n\nPseudo-3D waterfall view of a Wavetable Synthesiser's tables. Renders many path slices stacked back-to-front with perspective displacement, the active cycle highlighted, optional glow / fill effects, and audio-file drag & drop into the synth. AlphaData JSON object controls colour processing in detail.\n\nJSON Properties:\n  ProcessorId: ID of the connected Wavetable Synthesiser\n  Index: 0 (the wavetable index)\n  Displacement: [x, y] perspective displacement (y must be negative)\n  LineThickness: [active, background] line thicknesses\n  DownsamplingFactor: Path simplification factor (1 = 1 segment per pixel, can go below 1 to upsample)\n  NumDisplayTables: Number of waterfall slices (interpolated from the loaded wavetable)\n  IsometricFactor: 0..1+ skew for an isometric look\n  AlphaData: JSON object with colour / glow / fill effect parameters\n  GainGamma: Vertical gain shaping\n  Margin: Pixel margin between bounding box and paths\n\nCustomisation:\n  LAF: none\n  CSS: none",
+    "commonMistakes": [
+      {
+        "title": "Performance tanking with high NumDisplayTables",
+        "wrong": "Setting NumDisplayTables to 512 with NeighbourGlow > 0 and PrerenderBackground = false",
+        "right": "Keep PrerenderBackground = true and use NeighbourGlow only when needed; lower NumDisplayTables for live editing",
+        "explanation": "PrerenderBackground caches the static slices into an image — without it, every repaint draws all slices live. NeighbourGlow forces extra slices to be redrawn dynamically, which compounds the cost."
+      },
+      {
+        "title": "Positive Y displacement looks weird",
+        "wrong": "Setting Displacement to [0.3, 0.5] expecting the waterfall to scroll downwards",
+        "right": "Use a negative Y displacement (e.g. [0.3, -0.8]) — positive Y values produce a broken perspective",
+        "explanation": "The renderer expects the waterfall to recede away from the viewer, which corresponds to a negative Y component. Positive Y inverts the perspective."
       }
     ]
   },

@@ -27,6 +27,7 @@ import { semanticSearch, getDocContent, getDocContentById, isAvailable as isSema
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
 import { log } from './log.js';
+import type { ChunkMetadata, MetadataFilter } from './semantic-search.js';
 
 // Process-level safety nets — log and (for unknown state) exit.
 // Installed as early as possible so handler bugs at startup are visible.
@@ -60,6 +61,26 @@ const server = new Server(
 );
 
 let dataLoader: HISEDataLoader;
+
+type ExampleSource = 'all' | 'example' | 'snippet' | 'forum' | 'scriptnode';
+
+function buildExampleFilter(options: {
+  source?: ExampleSource;
+  className?: string;
+  featured?: boolean;
+  domain?: string;
+}): MetadataFilter | undefined {
+  const source = options.source || 'all';
+  if (source === 'all' && !options.className && !options.featured && !options.domain) return undefined;
+
+  return (metadata: ChunkMetadata) => {
+    if (source !== 'all' && metadata.source !== source) return false;
+    if (options.className && metadata.class?.toLowerCase() !== options.className.toLowerCase()) return false;
+    if (options.featured && !metadata.featured) return false;
+    if (options.domain && metadata.domain !== options.domain) return false;
+    return true;
+  };
+}
 
 function formatClassExamplesInLlmRef(llmRef: string): string {
   return llmRef.replace(
@@ -133,7 +154,7 @@ const DOC_TOOLS: Tool[] = [
         source: {
           type: 'string',
           enum: ['all', 'docs', 'tutorials'],
-          description: 'Filter by source: "docs" (API/content only), "tutorials" (video tutorials only), or "all" (default — searches both)',
+          description: 'Filter by source: "docs" (API/content/examples), "tutorials" (video tutorials only), or "all" (default - searches both)',
         },
       },
     },
@@ -204,7 +225,7 @@ const DOC_TOOLS: Tool[] = [
   // CODE EXAMPLE TOOLS
   {
     name: 'search_examples',
-    description: `Search HISE code examples and snippets by description (e.g., "midi routing", "slider callback", "wavetable"). Returns summaries — use get_example for full code.`,
+    description: `Search HISE code examples, snippets, and Scriptnode networks by description (e.g., "midi routing", "slider callback", "noise gate texture"). Returns summaries - use get_example for the full example.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -214,8 +235,8 @@ const DOC_TOOLS: Tool[] = [
         },
         source: {
           type: 'string',
-          enum: ['all', 'example', 'snippet', 'forum'],
-          description: 'Filter by source type: "example" (API method examples), "snippet" (self-contained code snippets), "forum" (forum code examples), or "all" (default)',
+          enum: ['all', 'example', 'snippet', 'forum', 'scriptnode'],
+          description: 'Filter by source type: "example" (API methods), "snippet", "forum", "scriptnode" (validated DSP networks), or "all" (default)',
         },
         className: {
           type: 'string',
@@ -744,22 +765,35 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
           }
 
           // Doc semantic search
-          if (searchSource !== 'tutorials' && isSemanticSearchAvailable()) {
-            searchPromises.push(semanticSearch(query, { topK: 10, maxResults: 15 }));
+          if (searchSource !== 'tutorials' && !role && isSemanticSearchAvailable()) {
+            const filter = domain ? (metadata: ChunkMetadata) => metadata.domain === domain : undefined;
+            searchPromises.push(semanticSearch(query, { topK: 10, maxResults: 15, filter }));
           } else {
             searchPromises.push(Promise.resolve([]));
           }
 
           // Video tutorial search
-          if (searchSource !== 'docs' && isTutorialsAvailable()) {
-            searchPromises.push(searchTutorials(query, { topK: 10, maxResults: 15 }));
+          if (searchSource !== 'docs' && !role && isTutorialsAvailable()) {
+            const filter = domain ? (metadata: ChunkMetadata) => metadata.domain === domain : undefined;
+            searchPromises.push(searchTutorials(query, { topK: 10, maxResults: 15, filter }));
           } else {
             searchPromises.push(Promise.resolve([]));
           }
 
-          const [keywordResult, semanticResults, tutorialResults] = await Promise.all(searchPromises);
+          // Complete Scriptnode networks are indexed separately from reference docs.
+          if (domain === 'scriptnode' && !role && searchSource !== 'tutorials' && isExamplesAvailable()) {
+            searchPromises.push(searchExamples(query, {
+              topK: 10,
+              maxResults: 15,
+              filter: buildExampleFilter({ source: 'scriptnode' }),
+            }));
+          } else {
+            searchPromises.push(Promise.resolve([]));
+          }
 
-          const hasResults = semanticResults.length > 0 || tutorialResults.length > 0;
+          const [keywordResult, semanticResults, tutorialResults, scriptnodeExampleResults] = await Promise.all(searchPromises);
+
+          const hasResults = semanticResults.length > 0 || tutorialResults.length > 0 || scriptnodeExampleResults.length > 0;
 
           if (hasResults) {
             const lines: string[] = [];
@@ -798,9 +832,22 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
               }
             }
 
+            if (scriptnodeExampleResults.length > 0) {
+              lines.push('\n--- Scriptnode examples ---\n');
+              for (const r of scriptnodeExampleResults.slice(0, 8)) {
+                const m = r.metadata;
+                lines.push(`${m.title || m.node || r.id}  (${r.score.toFixed(3)})`);
+                lines.push(`  ID: ${r.id}`);
+                if (m.node) lines.push(`  Primary node: ${m.node}`);
+                if (m.description) lines.push(`  ${m.description}`);
+                lines.push('');
+              }
+            }
+
             const hints: string[] = [];
             if (semanticResults.length > 0) hints.push('Use get_doc_content({ url: "..." }) to read full documentation for any result.');
             if (tutorialResults.length > 0) hints.push('Use get_tutorial({ id: "..." }) to read full tutorial content.');
+            if (scriptnodeExampleResults.length > 0) hints.push('Use get_example({ id: "..." }) to read a full Scriptnode example.');
             lines.push(hints.join('\n'));
 
             return {
@@ -822,6 +869,17 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
         // filter-only mode (domain and/or role without query)
         if (domain || role) {
           const result = await dataLoader.exploreSurveyByFilter({ domain, role });
+          if (domain === 'scriptnode' && !role && isExamplesAvailable()) {
+            const examples = listAllExamples(buildExampleFilter({ source: 'scriptnode' }));
+            const lines = [result, `\n--- Scriptnode examples (${examples.length}) ---\n`];
+            for (const example of examples.slice(0, 10)) {
+              lines.push(`${example.metadata.title || example.metadata.node || example.id}`);
+              lines.push(`  ID: ${example.id}`);
+            }
+            if (examples.length > 10) lines.push(`\nShowing 10 of ${examples.length}.`);
+            lines.push('\nUse search_examples({ query: "...", source: "scriptnode" }) to search these networks.');
+            return { content: [{ type: 'text', text: lines.join('\n') }] };
+          }
           return {
             content: [{ type: 'text', text: result }],
           };
@@ -1094,7 +1152,7 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
       case 'search_examples': {
         const { query, source, className, featured, limit: rawLimit } = args as {
           query: string;
-          source?: 'all' | 'example' | 'snippet' | 'forum';
+          source?: ExampleSource;
           className?: string;
           featured?: boolean;
           limit?: number;
@@ -1109,21 +1167,8 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
         const limit = Math.min(Math.max(rawLimit || 10, 1), 30);
         const sourceFilter = source || 'all';
 
-        // Fetch more if filtering, to ensure enough results after filtering
-        const fetchLimit = (sourceFilter !== 'all' || className || featured) ? limit * 3 : limit;
-        let results = await searchExamples(query, { maxResults: fetchLimit });
-
-        if (sourceFilter !== 'all') {
-          results = results.filter(r => r.metadata.source === sourceFilter);
-        }
-        if (className) {
-          results = results.filter(r => r.metadata.class?.toLowerCase() === className.toLowerCase());
-        }
-        if (featured) {
-          results = results.filter(r => r.metadata.featured);
-        }
-
-        results = results.slice(0, limit);
+        const filter = buildExampleFilter({ source: sourceFilter, className, featured });
+        const results = (await searchExamples(query, { topK: Math.max(limit, 15), maxResults: limit, filter })).slice(0, limit);
 
         const summaries = results.map(r => ({
           id: r.id,
@@ -1857,21 +1902,19 @@ async function main() {
       const domain = req.query.domain as string | undefined;
       const source = req.query.source as string | undefined;
       try {
-        const fetchLimit = domain ? limit * 3 : limit;
+        const filter = domain ? (metadata: ChunkMetadata) => metadata.domain === domain : undefined;
 
         const searchPromises: Promise<any[]>[] = [];
-        if (source !== 'tutorials') searchPromises.push(semanticSearch(q, { maxResults: fetchLimit }));
+        if (source !== 'tutorials') searchPromises.push(semanticSearch(q, { topK: limit, maxResults: limit, filter }));
         else searchPromises.push(Promise.resolve([]));
-        if (source !== 'docs' && isTutorialsAvailable()) searchPromises.push(searchTutorials(q, { maxResults: fetchLimit }));
+        if (source !== 'docs' && isTutorialsAvailable()) searchPromises.push(searchTutorials(q, { topK: limit, maxResults: limit, filter }));
         else searchPromises.push(Promise.resolve([]));
 
         const [docResults, videoResults] = await Promise.all(searchPromises);
         let results = [...docResults, ...videoResults].sort((a: any, b: any) => b.score - a.score);
 
-        const filtered = domain
-          ? results.filter((r: any) => r.metadata.domain === domain).slice(0, limit)
-          : results.slice(0, limit);
-        res.json(filtered.map(r => ({
+        results = results.slice(0, limit);
+        res.json(results.map(r => ({
           id: r.id,
           score: r.score,
           via: r.via,
@@ -1932,19 +1975,11 @@ async function main() {
       const className = req.query.className as string | undefined;
       const featured = req.query.featured === 'true';
       try {
-        let results = q === '*'
-          ? listAllExamples()
-          : await searchExamples(q, { maxResults: (source || className || featured) ? limit * 3 : limit });
-        if (source && source !== 'all') {
-          results = results.filter(r => r.metadata.source === source);
-        }
-        if (className) {
-          results = results.filter(r => r.metadata.class?.toLowerCase() === className.toLowerCase());
-        }
-        if (featured) {
-          results = results.filter(r => r.metadata.featured);
-        }
-        results = results.slice(0, limit);
+        const filter = buildExampleFilter({ source: source as ExampleSource, className, featured });
+        const results = (q === '*'
+          ? listAllExamples(filter)
+          : await searchExamples(q, { topK: limit, maxResults: limit, filter }))
+          .slice(0, limit);
         res.json(results.map(r => ({
           id: r.id,
           score: r.score,
@@ -2112,23 +2147,20 @@ async function main() {
       );
     });
 
-    // Warm up embeddings model + indices before accepting traffic so the
-    // first search request doesn't block for ~seconds. On failure we log and
-    // continue: search endpoints return 503 until `isEmbeddingsReady()` flips,
-    // and they (plus /ready and any MCP search tool) re-kick warmupSearch() on
-    // demand, so a transient failure self-heals without a restart.
-    const warmupStart = Date.now();
-    try {
-      await warmupSearch();
-      log.info(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`);
-    } catch (err) {
-      log.error(`[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`, err);
-    }
-
     const httpServer = app.listen(port, host, () => {
       log.info(`HISE MCP server running in production mode on ${host}:${port}`);
       log.info(`MCP endpoint: /mcp (open, no auth)`);
     });
+
+    // Expose health immediately, then warm in the background. Search endpoints
+    // and /ready return 503 until warmup completes and can retry after failure.
+    const warmupStart = Date.now();
+    void warmupSearch()
+      .then(() => log.info(`[semantic-search] Warmup complete in ${Date.now() - warmupStart}ms`))
+      .catch(err => log.error(
+        `[semantic-search] Warmup failed after ${Date.now() - warmupStart}ms, falling back to lazy load:`,
+        err
+      ));
 
     // Slowloris / idle-socket protections.
     httpServer.requestTimeout = 30_000;     // total time to receive a request

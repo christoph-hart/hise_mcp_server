@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Build example_chunks.json + example_graph.json from API examples,
- * snippet dataset, and forum code examples.
+ * snippet dataset, forum code examples, and Scriptnode networks.
  *
  * Usage:
  *   node scripts/build-example-chunks.mjs
@@ -11,13 +11,15 @@
  *   - data/snippet_dataset.json
  *   - data/forum_examples.json
  *   - data/class_survey_data.json
+ *   - data/scriptnode_examples.json
  *
  * Writes:
  *   - data/example_chunks.json
  *   - data/example_graph.json
  */
 import { readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 const SCRIPT_DIR = import.meta.dirname;
 const DATA_DIR = join(SCRIPT_DIR, '..', 'data');
@@ -25,6 +27,7 @@ const API_REF = join(DATA_DIR, 'api_reference.json');
 const SNIPPET_DATA = join(DATA_DIR, 'snippet_dataset.json');
 const FORUM_DATA = join(DATA_DIR, 'forum_examples.json');
 const SURVEY_DATA = join(DATA_DIR, 'class_survey_data.json');
+const SCRIPTNODE_DATA = join(DATA_DIR, 'scriptnode_examples.json');
 const CHUNKS_OUT = join(DATA_DIR, 'example_chunks.json');
 const GRAPH_OUT = join(DATA_DIR, 'example_graph.json');
 
@@ -86,6 +89,59 @@ function categoryToDomain(category) {
     'All': 'general',
   };
   return map[category] || 'general';
+}
+
+export function collectScriptnodeExampleChunks(dataset) {
+  if (!dataset || dataset.schemaVersion !== 1 || !dataset.examples || Array.isArray(dataset.examples)) {
+    throw new Error('scriptnode_examples.json must contain schemaVersion 1 and an examples object');
+  }
+
+  const chunks = [];
+  const graph = {};
+  const seenIds = new Set();
+
+  for (const [node, example] of Object.entries(dataset.examples).sort(([a], [b]) => a.localeCompare(b))) {
+    for (const field of ['id', 'node', 'factory', 'slug', 'title', 'summary', 'text', 'llmRef']) {
+      if (typeof example[field] !== 'string' || !example[field].trim()) {
+        throw new Error(`${node}: Scriptnode example field ${field} must be a non-empty string`);
+      }
+    }
+    if (example.node !== node) {
+      throw new Error(`${node}: payload node is ${JSON.stringify(example.node)}`);
+    }
+
+    const chunkId = `scriptnode:${example.id}`;
+    if (!/^[a-zA-Z0-9:._-]+$/.test(chunkId)) {
+      throw new Error(`${node}: invalid Scriptnode example chunk id ${JSON.stringify(chunkId)}`);
+    }
+    if (seenIds.has(chunkId)) {
+      throw new Error(`Duplicate Scriptnode example chunk id: ${chunkId}`);
+    }
+    seenIds.add(chunkId);
+
+    chunks.push({
+      id: chunkId,
+      text: example.text,
+      body: example.llmRef,
+      metadata: {
+        source: 'scriptnode',
+        type: 'scriptnode-example',
+        title: example.title,
+        description: example.summary,
+        category: example.category || 'dsp-network',
+        tags: Array.isArray(example.tags) ? example.tags : [],
+        domain: 'scriptnode',
+        node,
+        relatedNodes: Array.isArray(example.relatedNodes) ? example.relatedNodes : [],
+        difficulty: example.difficulty || '',
+        moduleType: example.moduleType || '',
+        url: `/v2/scriptnode/list/${example.factory}/${example.slug}`
+      }
+    });
+    graph[chunkId] = [];
+  }
+
+  return { chunks, graph };
 }
 
 function collectChunks() {
@@ -299,18 +355,26 @@ function collectChunks() {
     console.warn('Warning: Could not read forum batch files:', e.message);
   }
 
+  // Source D: Validated Scriptnode example networks
+  console.log('Reading scriptnode_examples.json...');
+  const scriptnodeDataset = JSON.parse(readFileSync(SCRIPTNODE_DATA, 'utf-8'));
+  const scriptnode = collectScriptnodeExampleChunks(scriptnodeDataset);
+  chunks.push(...scriptnode.chunks);
+  Object.assign(graph, scriptnode.graph);
+  const scriptnodeCount = scriptnode.chunks.length;
+
   // Deduplicate graph edges
   for (const key of Object.keys(graph)) {
     graph[key] = [...new Set(graph[key])];
   }
 
-  return { chunks, graph, apiExampleCount, snippetCount, forumCount };
+  return { chunks, graph, apiExampleCount, snippetCount, forumCount, scriptnodeCount };
 }
 
 function main() {
-  const { chunks, graph, apiExampleCount, snippetCount, forumCount } = collectChunks();
+  const { chunks, graph, apiExampleCount, snippetCount, forumCount, scriptnodeCount } = collectChunks();
 
-  console.log(`Collected ${chunks.length} chunks (${apiExampleCount} API examples + ${snippetCount} snippets + ${forumCount} forum)`);
+  console.log(`Collected ${chunks.length} chunks (${apiExampleCount} API examples + ${snippetCount} snippets + ${forumCount} forum + ${scriptnodeCount} Scriptnode)`);
   console.log(`Graph: ${Object.keys(graph).length} nodes, ${Object.values(graph).reduce((s, e) => s + e.length, 0)} edges`);
 
   console.log('Saving example_chunks.json...');
@@ -323,4 +387,6 @@ function main() {
   console.log(`Done! ${chunks.length} chunks (${chunksMB}MB), graph: ${Object.keys(graph).length} nodes`);
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
