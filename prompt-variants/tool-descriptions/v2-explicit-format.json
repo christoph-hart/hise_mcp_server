@@ -5,14 +5,14 @@
     "search_hise": {
       "description": "Search across all HISE documentation: API methods, UI properties, module parameters, and code snippets.\n\nUSE THIS WHEN:\n- You don't know the exact name\n- You want to find items by keyword (e.g., \"midi\", \"filter\")\n- You want to list all methods in a namespace (e.g., \"Synth.*\")\n\nSUPPORTS: Keywords, prefix patterns (Synth.*), fuzzy matching\nRETURNS: Array of matches with relevance scores"
     },
-    "query_ui_property": {
-      "description": "Get full details for a UI component property.\n\nFORMAT: \"ComponentType.propertyName\"\nEXAMPLES: \"ScriptButton.filmstripImage\", \"ScriptSlider.mode\", \"ScriptLabel.text\"\n\nUSE FOR: Properties accessed via .get(\"property\") or .set(\"property\", value)\nRETURNS: Type, default value, description, possible values, related properties"
+    "query_ui": {
+      "description": "Get full details for a UI component or one property.\n\nFORMAT: \"ComponentType\" for full docs or \"ComponentType.propertyName\" to filter\nEXAMPLES: \"ScriptSlider\", \"ScriptButton.filmstripImage\", \"ScriptSlider.mode\"\n\nUSE FOR: UI components and properties accessed via .get(\"property\") or .set(\"property\", value)\nRETURNS: Component docs or property type, default value, description, possible values, related properties"
     },
     "query_scripting_api": {
       "description": "Get full details for a Scripting API method.\n\nFORMAT: \"Namespace.methodName\" (parentheses optional)\nEXAMPLES: \"Synth.addNoteOn\", \"Math.round\", \"Engine.getSampleRate\"\n\nUSE FOR: Any method/function calls in HiseScript code\nRETURNS: Signature, parameters, return type, description, example, related methods"
     },
-    "query_module_parameter": {
-      "description": "Get full details for a module/processor parameter.\n\nFORMAT: \"ModuleType.ParameterId\"\nEXAMPLES: \"SimpleEnvelope.Attack\", \"HardcodedSynth.Gain\"\n\nUSE FOR: DSP module parameters accessed via setAttribute()\nRETURNS: Min/max, step, default, description, related parameters"
+    "query_module": {
+      "description": "Get full details for a module/processor or one parameter.\n\nFORMAT: \"ModuleType\" for full docs or \"ModuleType.ParameterId\" to filter\nEXAMPLES: \"AHDSR\", \"SimpleEnvelope.Attack\", \"HardcodedSynth.Gain\"\n\nUSE FOR: DSP modules and parameters accessed via setAttribute()\nRETURNS: Module docs or parameter min/max, step, default, description, related parameters"
     },
     "list_snippets": {
       "description": "Browse code snippets with optional filtering.\n\nFILTERS: category, difficulty, tags\nWORKFLOW: Browse here -> get ID -> use get_snippet for full code"

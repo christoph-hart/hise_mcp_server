@@ -61,6 +61,21 @@ const server = new Server(
 
 let dataLoader: HISEDataLoader;
 
+function formatClassExamplesInLlmRef(llmRef: string): string {
+  return llmRef.replace(
+    /(^|\n)(Example:\n)(?!```javascript\n)([\s\S]*?)(\n\nMethods \(\d+\):)/g,
+    (_match, prefix: string, heading: string, code: string, methods: string) => {
+      const normalizedCode = code
+        .split('\n')
+        .map(line => line.startsWith('  ') ? line.slice(2) : line)
+        .join('\n')
+        .trimEnd();
+
+      return `${prefix}${heading}\`\`\`javascript\n${normalizedCode}\n\`\`\`${methods}`;
+    }
+  );
+}
+
 // Documentation tools - all tools are static (no local HISE runtime).
 const DOC_TOOLS: Tool[] = [
   // PRIMARY TOOL - Use this first for discovery and searching
@@ -144,31 +159,45 @@ const DOC_TOOLS: Tool[] = [
     },
   },
   {
-    name: 'query_ui_property',
-    description: `Get UI component property details. Format: "Component.property" (e.g., "ScriptButton.filmstripImage") for property details, or just "Component" (e.g., "ScriptSlider") for component overview with creation method, customization options, and common mistakes.`,
+    name: 'query_ui',
+    description: `Query a HISE UI component reference. Pass "Component" (e.g., "ScriptSlider") for the full component reference, or "Component.property" (e.g., "ScriptSlider.mode") to filter to one property and save tokens.`,
     inputSchema: {
       type: 'object',
       properties: {
-        componentProperty: {
+        query: {
           type: 'string',
-          description: '"Component.property" (e.g., "ScriptSlider.mode")',
+          description: '"Component" for full docs or "Component.property" for one property (e.g., "ScriptSlider.mode")',
         },
       },
-      required: ['componentProperty'],
+      required: ['query'],
     },
   },
   {
-    name: 'query_module_parameter',
-    description: `Get module parameter details. Format: "Module.param" (e.g., "SimpleEnvelope.Attack") for parameter details, or just "Module" (e.g., "LFO") for module overview with signal flow, all parameters, and common mistakes.`,
+    name: 'query_module',
+    description: `Query a HISE module reference. Pass "Module" (e.g., "AHDSR") for the full module reference, or "Module.Parameter" (e.g., "AHDSR.Attack") to filter to one parameter and save tokens.`,
     inputSchema: {
       type: 'object',
       properties: {
-        moduleParameter: {
+        query: {
           type: 'string',
-          description: '"Module.param" (e.g., "SimpleGain.Gain")',
+          description: '"Module" for full docs or "Module.Parameter" for one parameter (e.g., "AHDSR.Attack")',
         },
       },
-      required: ['moduleParameter'],
+      required: ['query'],
+    },
+  },
+  {
+    name: 'query_scriptnode',
+    description: `Query a Scriptnode reference. Pass "factory.node" (e.g., "filters.svf") for the full node reference, or "factory.node.Parameter" (e.g., "filters.svf.Frequency") to filter to one parameter and save tokens. Use list_scriptnode_nodes for factory browsing.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '"factory.node" for full docs or "factory.node.Parameter" for one parameter (e.g., "filters.svf.Frequency")',
+        },
+      },
+      required: ['query'],
     },
   },
 
@@ -256,6 +285,19 @@ const DOC_TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'list_scriptnode_nodes',
+    description: 'List documented Scriptnode nodes grouped by factory, optionally filtered by factory name (e.g., "analyse", "filters").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        factory: {
+          type: 'string',
+          description: 'Optional factory/category filter (e.g., "analyse")',
+        },
+      },
     },
   },
 
@@ -796,8 +838,8 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
       }
 
       // EXACT QUERY TOOLS (with enriched responses)
-      case 'query_ui_property': {
-        const { componentProperty } = args as { componentProperty: string };
+      case 'query_ui': {
+        const { query: componentProperty } = args as { query: string };
 
         // Component-level query (no dot) - return enriched llmRef if available
         if (!componentProperty.includes('.')) {
@@ -817,12 +859,12 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             return {
               content: [{
                 type: 'text',
-                text: `No property found for "${componentProperty}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use search_hise to find properties by keyword.`
+              text: `No UI component or property found for "${componentProperty}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use search_hise to find UI references by keyword.`
               }],
             };
           }
           return {
-            content: [{ type: 'text', text: `No property found for "${componentProperty}". Use list_ui_components to see available components, or search_hise to search by keyword.` }],
+            content: [{ type: 'text', text: `No UI component or property found for "${componentProperty}". Use list_ui_components to see available components, or search_hise to search by keyword.` }],
           };
         }
 
@@ -841,9 +883,9 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             const canonicalName = dataLoader.resolveClassName(apiCall) || apiCall;
 
             if (classData.llmRef) {
-              // Enriched class: serve llmRef verbatim
+              // Enriched class: serve llmRef with Markdown-friendly examples.
               return {
-                content: [{ type: 'text', text: classData.llmRef }],
+                content: [{ type: 'text', text: formatClassExamplesInLlmRef(classData.llmRef) }],
               };
             }
 
@@ -919,10 +961,9 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             lines.push('');
             for (const ex of method.examples) {
               lines.push(`Example: ${ex.title}`);
-              // Indent each line of code by 2 spaces
-              for (const codeLine of ex.code.split('\n')) {
-                lines.push(`  ${codeLine}`);
-              }
+              lines.push('```javascript');
+              lines.push(ex.code);
+              lines.push('```');
               lines.push('');
             }
           }
@@ -942,9 +983,9 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             lines.push('');
             for (const ex of method.examples) {
               lines.push(`Example: ${ex.title}`);
-              for (const codeLine of ex.code.split('\n')) {
-                lines.push(`  ${codeLine}`);
-              }
+              lines.push('```javascript');
+              lines.push(ex.code);
+              lines.push('```');
               lines.push('');
             }
           }
@@ -960,8 +1001,8 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
         };
       }
 
-      case 'query_module_parameter': {
-        const { moduleParameter } = args as { moduleParameter: string };
+      case 'query_module': {
+        const { query: moduleParameter } = args as { query: string };
 
         // Module-level query (no dot) - return enriched llmRef if available
         if (!moduleParameter.includes('.')) {
@@ -981,17 +1022,71 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             return {
               content: [{
                 type: 'text',
-                text: `No parameter found for "${moduleParameter}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use search_hise to find parameters by keyword.`
+              text: `No module or parameter found for "${moduleParameter}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use search_hise to find module references by keyword.`
               }],
             };
           }
           return {
-            content: [{ type: 'text', text: `No parameter found for "${moduleParameter}". Use list_module_types to see available modules, or search_hise to search by keyword.` }],
+            content: [{ type: 'text', text: `No module or parameter found for "${moduleParameter}". Use list_module_types to see available modules, or search_hise to search by keyword.` }],
           };
         }
 
         return {
           content: [{ type: 'text', text: JSON.stringify(enriched, null, 2) }],
+        };
+      }
+
+      case 'query_scriptnode': {
+        const { query } = args as { query: string };
+        const result = dataLoader.queryScriptnodeReference(query);
+
+        if (!result) {
+          const suggestions = await dataLoader.findSimilar(query, 3, 'scriptnode');
+          if (suggestions.length > 0) {
+            return {
+              content: [{
+                type: 'text',
+                text: `No Scriptnode node or parameter found for "${query}". Did you mean:\n${suggestions.map(s => `  - ${s}`).join('\n')}\n\nTip: Use list_scriptnode_nodes or search_hise with domain "scriptnode" to find nodes.`
+              }],
+              isError: true,
+            };
+          }
+          return {
+            content: [{ type: 'text', text: `No Scriptnode node or parameter found for "${query}". Use list_scriptnode_nodes to see available nodes, or search_hise with domain "scriptnode" to search by keyword.` }],
+            isError: true,
+          };
+        }
+
+        if (result.kind === 'factory') {
+          return {
+            content: [{ type: 'text', text: `"${result.factory}" is a Scriptnode factory, not a node reference. Use list_scriptnode_nodes with { "factory": "${result.factory}" } to browse nodes in this factory.` }],
+            isError: true,
+          };
+        }
+
+        if (result.kind === 'missingParameter') {
+          return {
+            content: [{ type: 'text', text: `No parameter "${result.parameterName}" found for Scriptnode node "${result.node.factoryPath}". Available parameters: ${result.availableParameters.join(', ') || 'none'}.` }],
+            isError: true,
+          };
+        }
+
+        if (result.kind === 'parameter') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                node: result.node.factoryPath,
+                title: result.node.title,
+                parameterName: result.parameterName,
+                parameter: result.parameter,
+              }, null, 2)
+            }],
+          };
+        }
+
+        return {
+          content: [{ type: 'text', text: result.node.llmRef || JSON.stringify(result.node, null, 2) }],
         };
       }
 
@@ -1110,7 +1205,7 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             text: JSON.stringify({
               count: components.length,
               components,
-              hint: 'Use query_ui_property with "ComponentName.propertyName" to get property details, or search_hise to search by keyword.'
+              hint: 'Use query_ui with "ComponentName" for full docs or "ComponentName.propertyName" for one property, or search_hise to search by keyword.'
             }, null, 2)
           }],
         };
@@ -1151,7 +1246,21 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
             text: JSON.stringify({
               count: modules.length,
               modules,
-              hint: 'Use query_module_parameter with "ModuleName.parameterId" to get parameter details, or search_hise to search by keyword.'
+              hint: 'Use query_module with "ModuleName" for full docs or "ModuleName.parameterId" for one parameter, or search_hise to search by keyword.'
+            }, null, 2)
+          }],
+        };
+      }
+
+      case 'list_scriptnode_nodes': {
+        const { factory } = args as { factory?: string };
+        const result = dataLoader.listScriptnodeNodes(factory);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              ...result,
+              hint: 'Use query_scriptnode with "factory.node" (e.g., "analyse.fft") for full node details.'
             }, null, 2)
           }],
         };
@@ -1206,35 +1315,68 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
 
       case 'hise_cli_help': {
         const text = [
-          '# hise-cli — live HISE control (runs on the user\'s machine)',
+          '# hise-cli',
           '',
-          'The MCP server is documentation-only. For any **live** action against a running HISE instance, invoke `hise-cli` via the Bash tool on the user\'s shell — this server cannot reach their HISE.',
+          'This MCP server is documentation-only. For current hise-cli command syntax, call the installed CLI directly.',
           '',
-          '## Discovering the command tree',
+          '## Check Availability',
           '',
-          'Run these directly in the user\'s shell — never paraphrase or cache the help text, it changes between releases:',
+          'Check whether hise-cli is available:',
           '',
-          '- `hise-cli --help` — top-level command list',
-          '- `hise-cli -<mode> --help` — per-mode help (e.g. `hise-cli -hise --help`, `hise-cli -script --help`, `hise-cli -ui --help`, `hise-cli -builder --help`, `hise-cli -dsp --help`)',
-          '- `hise-cli --status` — CLI + HISE liveness probe',
-          '- `hise-cli --version` — CLI version',
+          '```bash',
+          'hise-cli --version',
+          '```',
           '',
-          '## Modes the agent should reach for',
+          'If that does not work, install it from:',
           '',
-          '- **Launch / shutdown / screenshot / profile** → `-hise`',
-          '- **Evaluate HiseScript expressions, read/write runtime values** → `-script` (REPL)',
-          '- **Add/remove/edit UI components** → `-ui`',
-          '- **Module tree (synths, FX chains)** → `-builder`',
-          '- **Scriptnode DSP graph** → `-dsp`',
-          '- **Lint a HiseScript file (no HISE needed)** → `hise-cli diagnose <file>`',
+          'GitHub: https://github.com/christophhart/hise-cli',
           '',
-          'Other modes exist (`-publish`, `-assets`, `-wizard`, `-api`, `-undo`, etc.) but are user-driven workflows — leave those to the user unless explicitly asked.',
+          'macOS:',
           '',
-          '## Workflow contract',
+          '```bash',
+          'curl -fsSL -o /tmp/hise-cli.pkg https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.pkg \\',
+          '  && sudo installer -pkg /tmp/hise-cli.pkg -target /',
+          '```',
           '',
-          '1. Call `hise-cli --help` (or the relevant `-<mode> --help`) every time before issuing commands you have not used recently — flag set may have changed.',
-          '2. Default output is markdown / raw text (human-readable). Add `--json` if you need machine-readable JSON for parsing.',
-          '3. Multi-step edits: combine into a `-undo plan "<name>"` group, run the steps, then `-undo apply` (or `-undo discard`).',
+          'Windows PowerShell:',
+          '',
+          '```powershell',
+          'irm https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli-setup.exe -OutFile $env:TEMP\\hise-cli-setup.exe',
+          '& $env:TEMP\\hise-cli-setup.exe /VERYSILENT /NORESTART',
+          '```',
+          '',
+          'npm:',
+          '',
+          '```bash',
+          'npm i -g @hise/cli',
+          'hise-cli',
+          '```',
+          '',
+          'Or run without installing: `npx @hise/cli`.',
+          '',
+          '## Command Discovery',
+          '',
+          'For the current command surface:',
+          '',
+          '```bash',
+          'hise-cli agent-context --agent',
+          '```',
+          '',
+          'For a specific mode:',
+          '',
+          '```bash',
+          'hise-cli agent-context builder --agent',
+          'hise-cli agent-context ui --agent',
+          'hise-cli agent-context dsp --agent',
+          'hise-cli agent-context script --agent',
+          '```',
+          '',
+          'For intent-based lookup:',
+          '',
+          '```bash',
+          'hise-cli which "add a module" --agent',
+          'hise-cli which "edit a slider property" --agent',
+          '```',
         ].join('\n');
 
         return {
@@ -1464,6 +1606,7 @@ function getRestStatusForToolResult(result: ToolCallResult): number {
   const text = result.content.map(item => item.text).join('\n');
   if (/unknown tool/i.test(text)) return 404;
   if (/not available|still indexing|ensure .* in the data\/ directory|run .* pipeline/i.test(text)) return 503;
+  if (/not a node reference/i.test(text)) return 400;
   if (/not found|no .* found|resource not found/i.test(text)) return 404;
   if (/required|provide|missing|invalid/i.test(text)) return 400;
 

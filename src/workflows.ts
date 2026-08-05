@@ -45,11 +45,11 @@ export const WORKFLOWS: Workflow[] = [
     ],
     tools: [
       'list_ui_components',
-      'query_ui_property',
+      'query_ui',
       'get_laf_functions_for_components',
     ],
     tips: [
-      'Use the MCP `query_ui_property` tool to look up the exact property name and value range before writing a `-ui set`',
+      'Use the MCP `query_ui` tool to look up the exact property name and value range before writing a `-ui set`',
       'Comma-chain `-ui` commands to batch edits in one cli round-trip',
       'For LAF/styling work, pass the component type (from `-ui show`) to MCP `get_laf_functions_for_components`',
     ],

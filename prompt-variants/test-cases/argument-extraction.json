@@ -19,21 +19,21 @@
     {
       "id": "ae-003",
       "input": "ScriptButton.filmstripImage",
-      "tool": "query_ui_property",
+      "tool": "query_ui",
       "expectedArg": "ScriptButton.filmstripImage",
       "notes": "Exact format"
     },
     {
       "id": "ae-004",
       "input": "the filmstripImage property of ScriptButton",
-      "tool": "query_ui_property",
+      "tool": "query_ui",
       "expectedArg": "ScriptButton.filmstripImage",
       "notes": "Natural language should be converted to proper format"
     },
     {
       "id": "ae-005",
       "input": "SimpleEnvelope Attack parameter",
-      "tool": "query_module_parameter",
+      "tool": "query_module",
       "expectedArg": "SimpleEnvelope.Attack",
       "notes": "Natural language should be converted to proper format"
     },

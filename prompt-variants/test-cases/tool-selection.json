@@ -30,7 +30,7 @@
       "id": "ts-004",
       "category": "ui-property",
       "input": "What is the filmstripImage property?",
-      "expectedTool": "query_ui_property",
+      "expectedTool": "query_ui",
       "expectedArg": "ScriptButton.filmstripImage",
       "notes": "UI property, not a method"
     },
@@ -38,7 +38,7 @@
       "id": "ts-005",
       "category": "ui-property",
       "input": "How do I set the text property of a label?",
-      "expectedTool": "query_ui_property",
+      "expectedTool": "query_ui",
       "expectedArg": "ScriptLabel.text",
       "notes": "Property access, not method call"
     },
@@ -54,7 +54,7 @@
       "id": "ts-007",
       "category": "module-parameter",
       "input": "What is the Attack parameter range for SimpleEnvelope?",
-      "expectedTool": "query_module_parameter",
+      "expectedTool": "query_module",
       "expectedArg": "SimpleEnvelope.Attack",
       "notes": "Specific parameter query"
     },
@@ -87,7 +87,7 @@
       "input": "How do I use setValue on a knob?",
       "expectedTool": "query_scripting_api",
       "expectedArg": "Knob.setValue",
-      "shouldNotBe": "query_ui_property",
+      "shouldNotBe": "query_ui",
       "notes": "setValue is a METHOD, not a property"
     },
     {

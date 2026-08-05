@@ -125,8 +125,8 @@ const tests = [
   },
   {
     name: 'Query UI property returns related items',
-    request: createToolCallRequest('query_ui_property', {
-      componentProperty: 'ScriptButton.filmstripImage'
+    request: createToolCallRequest('query_ui', {
+      query: 'ScriptButton.filmstripImage'
     }),
     description: 'Should return ScriptButton filmstripImage with related properties'
   },
@@ -143,8 +143,8 @@ const tests = [
   },
   {
     name: 'UI property typo suggests corrections',
-    request: createToolCallRequest('query_ui_property', {
-      componentProperty: 'ScriptButon.filmstripImage'
+    request: createToolCallRequest('query_ui', {
+      query: 'ScriptButon.filmstripImage'
     }),
     description: 'Should suggest correction for typo',
     expectNotFound: true,
@@ -154,15 +154,15 @@ const tests = [
   // Module parameters
   {
     name: 'Query module parameter',
-    request: createToolCallRequest('query_module_parameter', {
-      moduleParameter: 'SimpleEnvelope.Attack'
+    request: createToolCallRequest('query_module', {
+      query: 'SimpleEnvelope.Attack'
     }),
     description: 'Should return SimpleEnvelope Attack parameter details'
   },
   {
     name: 'Non-existent module parameter suggests',
-    request: createToolCallRequest('query_module_parameter', {
-      moduleParameter: 'NonExistent.Parameter'
+    request: createToolCallRequest('query_module', {
+      query: 'NonExistent.Parameter'
     }),
     description: 'Should return suggestions for non-existent parameter',
     expectNotFound: true

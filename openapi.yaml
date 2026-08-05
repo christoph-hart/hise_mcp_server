@@ -93,6 +93,8 @@ paths:
               value: query_scripting_api
             searchHise:
               value: search_hise
+            queryScriptnode:
+              value: query_scriptnode
       requestBody:
         required: false
         content:
@@ -115,6 +117,22 @@ paths:
                   query: midi
                   domain: all
                   limit: 5
+              queryModule:
+                summary: Query a module parameter
+                value:
+                  query: AHDSR.Attack
+              queryUi:
+                summary: Query a UI property
+                value:
+                  query: ScriptSlider.mode
+              queryScriptnode:
+                summary: Query a Scriptnode parameter
+                value:
+                  query: filters.svf.Frequency
+              listScriptnodeNodes:
+                summary: List Scriptnode nodes in a factory
+                value:
+                  factory: analyse
       responses:
         '200':
           description: Tool completed successfully.

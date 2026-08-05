@@ -154,8 +154,8 @@ async function runServerTests() {
     console.log(`  Found ${tools.length} tools`);
 
     const expectedTools = [
-      'search_hise', 'query_scripting_api', 'query_ui_property',
-      'query_module_parameter', 'list_snippets', 'get_snippet',
+      'search_hise', 'query_scripting_api', 'query_ui',
+      'query_module', 'list_snippets', 'get_snippet',
       'list_ui_components', 'list_scripting_namespaces', 'list_module_types'
     ];
 

@@ -137,7 +137,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   try {
     switch (name) {
-      case 'query_ui_property':
+      case 'query_ui':
         return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
       default:
         throw new Error(`Unknown tool: ${name}`);

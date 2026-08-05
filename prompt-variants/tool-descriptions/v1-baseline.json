@@ -5,14 +5,14 @@
     "search_hise": {
       "description": "Search across all HISE documentation: API methods, UI properties, module parameters, and code snippets."
     },
-    "query_ui_property": {
-      "description": "Query UI component properties. Use \"Component.property\" format (e.g., \"ScriptButton.filmstripImage\")."
+    "query_ui": {
+      "description": "Query UI component references. Use \"Component\" for full docs or \"Component.property\" to filter to one property (e.g., \"ScriptButton.filmstripImage\")."
     },
     "query_scripting_api": {
       "description": "Query Scripting API methods. Use \"Namespace.method\" format (e.g., \"Math.round()\", \"Knob.setValue()\")."
     },
-    "query_module_parameter": {
-      "description": "Query module parameter IDs. Use \"Module.parameterId\" format (e.g., \"HardcodedSynth.Gain\")."
+    "query_module": {
+      "description": "Query module references. Use \"Module\" for full docs or \"Module.parameterId\" to filter to one parameter (e.g., \"HardcodedSynth.Gain\")."
     },
     "list_snippets": {
       "description": "List all available code snippets with metadata."

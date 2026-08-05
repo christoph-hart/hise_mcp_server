@@ -21,12 +21,12 @@ You have access to tools that query HISE documentation. Follow this decision tre
 - Format: "Namespace.method" (parentheses optional)
 
 **UI Property (accessed via .get()/.set()):**
-→ Use `query_ui_property`
+→ Use `query_ui`
 - Examples: filmstripImage, text, enabled, visible, itemColour
 - Format: "ComponentType.propertyName"
 
 **Module Parameter (DSP settings):**
-→ Use `query_module_parameter`
+→ Use `query_module`
 - Examples: Gain, Attack, Release, Frequency
 - Format: "ModuleType.ParameterId"
 
@@ -37,9 +37,9 @@ You have access to tools that query HISE documentation. Follow this decision tre
 
 | Wrong | Right |
 |-------|-------|
-| query_scripting_api for "filmstripImage" | query_ui_property |
-| query_ui_property for "setValue()" | query_scripting_api |
-| query_scripting_api for "Gain" | query_module_parameter |
+| query_scripting_api for "filmstripImage" | query_ui |
+| query_ui for "setValue()" | query_scripting_api |
+| query_scripting_api for "Gain" | query_module |
 
 ### Response Pattern
 
