@@ -45,6 +45,8 @@ test('filters candidates before top-K and during graph expansion', () => {
     const expanded = index.graphExpand(vector, filter);
     assert.deepEqual(expanded.map(result => result.id), ['scriptnode:best-match']);
     assert.deepEqual(index.listAll(filter).map(result => result.id), ['scriptnode:best-match']);
+    assert.equal(index.getChunkById('scriptnode:best-match\\'), null);
+    assert.equal(index.getChunkById('scriptnode:best-match')?.body, 'scriptnode');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

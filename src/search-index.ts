@@ -63,10 +63,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot;
 }
 
-function assertValidChunkId(id: string): void {
-  if (typeof id !== 'string' || id.length === 0 || id.length > 512 || !CHUNK_ID_PATTERN.test(id)) {
-    throw new Error(`Invalid chunk id: ${JSON.stringify(id)}`);
-  }
+function isValidChunkId(id: unknown): id is string {
+  return typeof id === 'string'
+    && id.length > 0
+    && id.length <= 512
+    && CHUNK_ID_PATTERN.test(id);
 }
 
 export class SearchIndex {
@@ -174,7 +175,11 @@ export class SearchIndex {
   }
 
   getChunkById(id: string): { body: string; metadata: ChunkMetadata } | null {
-    assertValidChunkId(id);
+    // IDs come from MCP clients and may be malformed (for example, a client
+    // can accidentally append an escape character). Treat those as misses so
+    // one bad lookup does not turn into a tool-handler error.
+    if (!isValidChunkId(id)) return null;
+
     this.ensureLoaded();
     const ci = this.idToChunkIndex!.get(id);
     return ci === undefined ? null : { body: this.chunks![ci].body, metadata: this.chunks![ci].metadata };
