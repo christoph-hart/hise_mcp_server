@@ -28,6 +28,7 @@ const SNIPPET_DATA = join(DATA_DIR, 'snippet_dataset.json');
 const FORUM_DATA = join(DATA_DIR, 'forum_examples.json');
 const SURVEY_DATA = join(DATA_DIR, 'class_survey_data.json');
 const SCRIPTNODE_DATA = join(DATA_DIR, 'scriptnode_examples.json');
+const DETAILS_OUT = join(DATA_DIR, 'example_details.json');
 const CHUNKS_OUT = join(DATA_DIR, 'example_chunks.json');
 const GRAPH_OUT = join(DATA_DIR, 'example_graph.json');
 
@@ -142,6 +143,24 @@ export function collectScriptnodeExampleChunks(dataset) {
   }
 
   return { chunks, graph };
+}
+
+export function collectScriptnodeExampleDetails(dataset) {
+  if (!dataset || dataset.schemaVersion !== 1 || !dataset.examples || Array.isArray(dataset.examples)) {
+    throw new Error('scriptnode_examples.json must contain schemaVersion 1 and an examples object');
+  }
+
+  const details = {};
+  for (const example of Object.values(dataset.examples)) {
+    if (typeof example.id !== 'string' || !example.id.trim()) continue;
+    const { body, llmRef, text, ...metadata } = example;
+    details[`scriptnode:${example.id}`] = {
+      id: `scriptnode:${example.id}`,
+      metadata,
+      body: llmRef || body || ''
+    };
+  }
+  return details;
 }
 
 function collectChunks() {
@@ -373,12 +392,17 @@ function collectChunks() {
 
 function main() {
   const { chunks, graph, apiExampleCount, snippetCount, forumCount, scriptnodeCount } = collectChunks();
+  const scriptnodeDataset = JSON.parse(readFileSync(SCRIPTNODE_DATA, 'utf-8'));
+  const details = collectScriptnodeExampleDetails(scriptnodeDataset);
 
   console.log(`Collected ${chunks.length} chunks (${apiExampleCount} API examples + ${snippetCount} snippets + ${forumCount} forum + ${scriptnodeCount} Scriptnode)`);
   console.log(`Graph: ${Object.keys(graph).length} nodes, ${Object.values(graph).reduce((s, e) => s + e.length, 0)} edges`);
 
   console.log('Saving example_chunks.json...');
   writeFileSync(CHUNKS_OUT, JSON.stringify(chunks));
+
+  console.log('Saving example_details.json...');
+  writeFileSync(DETAILS_OUT, JSON.stringify(details));
 
   console.log('Saving example_graph.json...');
   writeFileSync(GRAPH_OUT, JSON.stringify(graph));

@@ -4,7 +4,7 @@ import { join } from 'path';
 
 const GRAPH_HOPS = 2;
 const GRAPH_DECAY = 0.6;
-const CHUNK_ID_PATTERN = /^[a-zA-Z0-9:._-]+$/;
+const CHUNK_ID_PATTERN = /^[a-zA-Z0-9:._/#-]+$/;
 
 export interface ChunkMetadata {
   source: string;
@@ -26,8 +26,21 @@ export interface ChunkMetadata {
   timestamp?: number;
   node?: string;
   relatedNodes?: string[];
+  aliases?: string[];
+  parameters?: unknown;
   difficulty?: string;
   moduleType?: string;
+  networkName?: string;
+  section?: string;
+  language?: string;
+  concepts?: string[];
+  prerequisites?: string[];
+  complexity?: string;
+  sourcePath?: string;
+  componentId?: string;
+  moduleId?: string;
+  factoryPath?: string;
+  documentType?: string;
 }
 
 interface DocChunk {
@@ -166,12 +179,19 @@ export class SearchIndex {
 
   getChunkByUrl(url: string): { body: string; metadata: ChunkMetadata } | null {
     this.ensureLoaded();
+    const normalized = url.length > 1 ? url.replace(/\/$/, '') : url;
     for (const chunk of this.chunks!) {
-      if (chunk.metadata.url === url) return { body: chunk.body, metadata: chunk.metadata };
+      if (chunk.metadata.url === url || chunk.metadata.url.replace(/\/$/, '') === normalized) {
+        return { body: chunk.body, metadata: chunk.metadata };
+      }
     }
 
-    const ci = this.idToChunkIndex!.get(`content:${url}`);
-    return ci === undefined ? null : { body: this.chunks![ci].body, metadata: this.chunks![ci].metadata };
+    const directIds = [`content:${url}`, `content:${normalized}`, `content:${normalized}/`];
+    for (const id of directIds) {
+      const ci = this.idToChunkIndex!.get(id);
+      if (ci !== undefined) return { body: this.chunks![ci].body, metadata: this.chunks![ci].metadata };
+    }
+    return null;
   }
 
   getChunkById(id: string): { body: string; metadata: ChunkMetadata } | null {

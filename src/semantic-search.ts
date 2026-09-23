@@ -1,6 +1,8 @@
+import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { log } from './log.js';
+import { sanitizeMarkdown } from './markdown-sanitizer.js';
 import { SearchIndex, type MetadataFilter, type SearchOptions } from './search-index.js';
 export { SearchIndex } from './search-index.js';
 export type { ChunkMetadata, MetadataFilter, SearchOptions, SemanticSearchResult } from './search-index.js';
@@ -8,6 +10,8 @@ import type { ChunkMetadata, SemanticSearchResult } from './search-index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
+const EXAMPLE_DETAILS_FILE = join(DATA_DIR, 'example_details.json');
+let exampleDetails: Record<string, { id: string; metadata: ChunkMetadata; body: string }> | null = null;
 
 // ============================================================================
 // Shared embedding model (singleton)
@@ -113,12 +117,16 @@ export async function semanticSearch(
   return docIndex.search(query, embedQuery, options);
 }
 
+function sanitizeResult(result: { body: string; metadata: ChunkMetadata } | null): { body: string; metadata: ChunkMetadata } | null {
+  return result ? { ...result, body: sanitizeMarkdown(result.body) } : null;
+}
+
 export function getDocContent(url: string): { body: string; metadata: ChunkMetadata } | null {
-  return docIndex.getChunkByUrl(url);
+  return sanitizeResult(docIndex.getChunkByUrl(url));
 }
 
 export function getDocContentById(id: string): { body: string; metadata: ChunkMetadata } | null {
-  return docIndex.getChunkById(id);
+  return sanitizeResult(docIndex.getChunkById(id));
 }
 
 export function isAvailable(): boolean {
@@ -137,6 +145,18 @@ export async function searchExamples(
 }
 
 export function getExampleById(id: string): { body: string; metadata: ChunkMetadata } | null {
+  if (id.startsWith('scriptnode:')) {
+    if (!exampleDetails) {
+      try {
+        exampleDetails = JSON.parse(readFileSync(EXAMPLE_DETAILS_FILE, 'utf8'));
+      } catch {
+        exampleDetails = {};
+      }
+    }
+    const details = exampleDetails || {};
+    const detail = details[id];
+    if (detail) return { body: detail.body, metadata: detail.metadata };
+  }
   return exampleIndex.getChunkById(id);
 }
 

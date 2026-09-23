@@ -2635,7 +2635,7 @@
     "tags": [
       "custom"
     ],
-    "llmRef": "Hardcoded Master FX (Effect/MasterEffect)\n\nRuns a compiled C++ scriptnode network or custom C++ DSP node as a monophonic master effect. All parameters, tables, slider packs, and audio files are defined by the loaded network.\n\nSignal flow:\n  audio in -> [compiled C++ processing] -> audio out\n\nModulation: extra slots only (NUM_HARDCODED_FX_MODS, default 0), no built-in Gain or Pitch chains. See modulators parent page.\nChannels: fixed at compile time, must match routing matrix. See sound-generators parent page.\nParameters: all from network, offset 0. See index parent page.\nComplex data: slot counts baked at compile time. See index parent page.\nCustom C++ nodes: see cpp-dsp-nodes language guide.\n\nCPU: negligible framework overhead, actual cost depends on loaded network, monophonic.\n\nCommon mistakes:\n  Must compile DSP networks as DLL before the module can load anything.\n  Channel count between routing matrix and network must match.\n  Avoid reserved parameter names (Bypassed, Type, ID, Network).\n  Must recompile DLL after HISE updates.\n  Use Synth.getSlotFX() for setEffect()/getModuleList(); Synth.getEffect() does not expose slot API.\n  getCurrentEffectId() returns the module ID, not the loaded network name.\n  Do not nest inside a SlotFX - the module already has built-in slot-swapping.\n  UI knob ranges must exactly match network parameter ranges for correct filmstrip display.\n\nSee also:\n  alternative ScriptFX - loads interpreted XML scriptnode networks\n  alternative HardcodedPolyphonicFX - per-voice compiled effect\n  disambiguation SlotFX - swaps between stock HISE effects, not compiled networks\n  guide cpp-dsp-nodes - C++ DSP node callback interface and examples",
+    "llmRef": "Hardcoded Master FX (Effect/MasterEffect)\n\nRuns a compiled C++ scriptnode network or custom C++ DSP node as a monophonic master effect. All parameters, tables, slider packs, and audio files are defined by the loaded network.\n\nSignal flow:\n  audio in -> [compiled C++ processing] -> audio out\n\nModulation: extra slots only (NUM_HARDCODED_FX_MODS, default 0), no built-in Gain or Pitch chains. See modulators parent page.\nInactive modulation: HISE_FORCE_INACTIVE_MOD_RENDERING keeps connected parameter targets updating during silence suspension, but does not call the compiled network process() callback. Parameter-derived displays can update while audio-derived displays remain frozen.\nChannels: fixed at compile time, must match routing matrix. See sound-generators parent page.\nParameters: all from network, offset 0. See index parent page.\nComplex data: slot counts baked at compile time. See index parent page.\nCustom C++ nodes: see cpp-dsp-nodes language guide.\n\nCPU: negligible framework overhead, actual cost depends on loaded network, monophonic.\n\nCommon mistakes:\n  Must compile DSP networks as DLL before the module can load anything.\n  Channel count between routing matrix and network must match.\n  Avoid reserved parameter names (Bypassed, Type, ID, Network).\n  Must recompile DLL after HISE updates.\n  Use Synth.getSlotFX() for setEffect()/getModuleList(); Synth.getEffect() does not expose slot API.\n  getCurrentEffectId() returns the module ID, not the loaded network name.\n  Do not nest inside a SlotFX - the module already has built-in slot-swapping.\n  UI knob ranges must exactly match network parameter ranges for correct filmstrip display.\n\nSee also:\n  alternative ScriptFX - loads interpreted XML scriptnode networks\n  alternative HardcodedPolyphonicFX - per-voice compiled effect\n  disambiguation SlotFX - swaps between stock HISE effects, not compiled networks\n  guide cpp-dsp-nodes - C++ DSP node callback interface and examples",
     "cpuProfile": {
       "baseline": "negligible",
       "polyphonic": false,
@@ -2728,7 +2728,7 @@
     "tags": [
       "custom"
     ],
-    "llmRef": "Hardcoded Polyphonic FX (Effect/VoiceEffect)\n\nRuns a compiled C++ scriptnode network or custom C++ DSP node as a per-voice effect processor. Each voice has independent state. No fixed parameters — all come from the loaded network.\n\nSignal flow:\n  audio in (per voice) -> [compiled network per voice] -> audio out (per voice)\n\nModulation: extra slots only (NUM_HARDCODED_POLY_FX_MODS, default 0), no built-in chains. See modulators parent page.\nChannels: fixed at compile time, must match routing matrix. See sound-generators parent page.\nParameters: all from network, offset 0. See index parent page.\nComplex data: slot counts baked at compile time. See index parent page.\nCustom C++ nodes: see cpp-dsp-nodes language guide.\nVoice management: each voice gets independent state; supports voice suspension for tails.\n\nCPU: negligible framework overhead, actual cost depends on loaded network, polyphonic (scales with voices).\n\nCommon mistakes:\n  Must compile DSP networks before loading.\n  Channel count between routing matrix and network must match.\n  Avoid reserved parameter names.\n  Must recompile DLL after HISE updates.\n\nSee also:\n  alternative PolyScriptFX - interpreted XML scriptnode per-voice effect\n  alternative HardcodedMasterFX - compiled monophonic effect\n  companion HardcodedSynth - compiled synthesiser for per-voice processing\n  guide cpp-dsp-nodes - C++ DSP node callback interface and examples",
+    "llmRef": "Hardcoded Polyphonic FX (Effect/VoiceEffect)\n\nRuns a compiled C++ scriptnode network or custom C++ DSP node as a per-voice effect processor. Each voice has independent state. No fixed parameters — all come from the loaded network.\n\nSignal flow:\n  audio in (per voice) -> [compiled network per voice] -> audio out (per voice)\n\nModulation: extra slots only (NUM_HARDCODED_POLY_FX_MODS, default 0), no built-in chains. See modulators parent page.\nInactive modulation: HISE_FORCE_INACTIVE_MOD_RENDERING updates connected parameters from one retained voice after all voices stop, but does not call the compiled network process() callback. Parameter-derived displays can update while audio-derived displays remain frozen.\nChannels: fixed at compile time, must match routing matrix. See sound-generators parent page.\nParameters: all from network, offset 0. See index parent page.\nComplex data: slot counts baked at compile time. See index parent page.\nCustom C++ nodes: see cpp-dsp-nodes language guide.\nVoice management: each voice gets independent state; supports voice suspension for tails.\n\nCPU: negligible framework overhead, actual cost depends on loaded network, polyphonic (scales with voices).\n\nCommon mistakes:\n  Must compile DSP networks before loading.\n  Channel count between routing matrix and network must match.\n  Avoid reserved parameter names.\n  Must recompile DLL after HISE updates.\n\nSee also:\n  alternative PolyScriptFX - interpreted XML scriptnode per-voice effect\n  alternative HardcodedMasterFX - compiled monophonic effect\n  companion HardcodedSynth - compiled synthesiser for per-voice processing\n  guide cpp-dsp-nodes - C++ DSP node callback interface and examples",
     "cpuProfile": {
       "baseline": "negligible",
       "polyphonic": true,
@@ -3109,41 +3109,6 @@
       "description": "Read Message.getNoteNumber() in the onVoiceStart callback and divide by 127"
     }
   },
-  "LegatoWithRetrigger": {
-    "id": "LegatoWithRetrigger",
-    "type": "MidiProcessor",
-    "subtype": "MidiProcessor",
-    "builderPath": "b.MidiProcessors.LegatoWithRetrigger",
-    "tags": [
-      "note_processing"
-    ],
-    "llmRef": "LegatoWithRetrigger (MidiProcessor)\n\nEnforces monophonic note behaviour with single-depth retrigger. When a new note arrives while one is held, the previous note is killed and stored as a retrigger candidate. When the active note is released and a candidate exists, the candidate is retriggered as a new note.\n\nSignal flow:\n  noteOn: make artificial -> kill previous if held -> store retrigger candidate -> pass through\n  noteOff (active note released): kill active -> retrigger candidate if available, else go idle\n\nCPU: negligible (pure event manipulation, no DSP).\n\nParameters: none.\n\nRetrigger stack depth: 1. Only the single most recent previous note is remembered.\n\nVelocity behaviour: retriggered notes use the velocity of the most recently played note, not the original velocity of the retriggered note.\n\nWhen to use:\n  Lead lines and expressive legato phrasing where releasing a note should return to the previous pitch, similar to classic monosynth behaviour.\n\nCommon mistakes:\n  Stack is only 1 deep - playing A, B, C in legato means A is forgotten when C arrives.\n  Retriggered notes inherit the last-played velocity, not their original velocity.\n\nSee also: (none)",
-    "cpuProfile": {
-      "baseline": "negligible",
-      "polyphonic": false,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "Only most recent note retriggered",
-        "wrong": "Playing three or more notes in legato and expecting all previous notes to retrigger in sequence",
-        "right": "Only the single most recent previous note is stored for retrigger",
-        "explanation": "The retrigger stack is one note deep. In a legato sequence A-B-C, releasing C retriggers B, but releasing B then produces silence because A was never stored."
-      },
-      {
-        "title": "Retriggered notes use last velocity",
-        "wrong": "Expecting a retriggered note to sound at its original velocity",
-        "right": "The retriggered note always uses the velocity of the most recently played note",
-        "explanation": "If you play A at velocity 100 then B at velocity 50, releasing B retriggers A at velocity 50, not 100."
-      }
-    ],
-    "customEquivalent": {
-      "approach": "hisescript",
-      "moduleType": "ScriptProcessor",
-      "complexity": "simple",
-      "description": "Reproducible with a ScriptProcessor using onNoteOn/onNoteOff callbacks, Message.makeArtificial(), Synth.noteOffByEventId(), and Synth.addNoteOn() with a few tracking variables."
-    }
-  },
   "LFO": {
     "id": "LFO",
     "type": "Modulator",
@@ -3303,6 +3268,153 @@
           "Custom",
           "Steps"
         ]
+      }
+    }
+  },
+  "LegatoWithRetrigger": {
+    "id": "LegatoWithRetrigger",
+    "type": "MidiProcessor",
+    "subtype": "MidiProcessor",
+    "builderPath": "b.MidiProcessors.LegatoWithRetrigger",
+    "tags": [
+      "note_processing"
+    ],
+    "llmRef": "LegatoWithRetrigger (MidiProcessor)\n\nEnforces monophonic note behaviour with single-depth retrigger. When a new note arrives while one is held, the previous note is killed and stored as a retrigger candidate. When the active note is released and a candidate exists, the candidate is retriggered as a new note.\n\nSignal flow:\n  noteOn: make artificial -> kill previous if held -> store retrigger candidate -> pass through\n  noteOff (active note released): kill active -> retrigger candidate if available, else go idle\n\nCPU: negligible (pure event manipulation, no DSP).\n\nParameters: none.\n\nRetrigger stack depth: 1. Only the single most recent previous note is remembered.\n\nVelocity behaviour: retriggered notes use the velocity of the most recently played note, not the original velocity of the retriggered note.\n\nWhen to use:\n  Lead lines and expressive legato phrasing where releasing a note should return to the previous pitch, similar to classic monosynth behaviour.\n\nCommon mistakes:\n  Stack is only 1 deep - playing A, B, C in legato means A is forgotten when C arrives.\n  Retriggered notes inherit the last-played velocity, not their original velocity.\n\nSee also: (none)",
+    "cpuProfile": {
+      "baseline": "negligible",
+      "polyphonic": false,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "Only most recent note retriggered",
+        "wrong": "Playing three or more notes in legato and expecting all previous notes to retrigger in sequence",
+        "right": "Only the single most recent previous note is stored for retrigger",
+        "explanation": "The retrigger stack is one note deep. In a legato sequence A-B-C, releasing C retriggers B, but releasing B then produces silence because A was never stored."
+      },
+      {
+        "title": "Retriggered notes use last velocity",
+        "wrong": "Expecting a retriggered note to sound at its original velocity",
+        "right": "The retriggered note always uses the velocity of the most recently played note",
+        "explanation": "If you play A at velocity 100 then B at velocity 50, releasing B retriggers A at velocity 50, not 100."
+      }
+    ],
+    "customEquivalent": {
+      "approach": "hisescript",
+      "moduleType": "ScriptProcessor",
+      "complexity": "simple",
+      "description": "Reproducible with a ScriptProcessor using onNoteOn/onNoteOff callbacks, Message.makeArtificial(), Synth.noteOffByEventId(), and Synth.addNoteOn() with a few tracking variables."
+    }
+  },
+  "MPEModulator": {
+    "id": "MPEModulator",
+    "type": "Modulator",
+    "subtype": "EnvelopeModulator",
+    "builderPath": "b.Modulators.MPEModulator",
+    "tags": [
+      "input"
+    ],
+    "llmRef": "MPE Modulator (Modulator/EnvelopeModulator)\n\nConverts MPE gesture data into per-voice modulation signals. Five gesture types: Press (channel aftertouch), Slide (CC#74), Glide (pitch bend per channel), Stroke (note-on velocity), Lift (note-off velocity). Press, Slide, and Glide are continuous; Stroke and Lift fire once.\n\nSignal flow:\n  MIDI event -> gesture type filter -> normalise to 0-1 -> table lookup -> one-pole smoother -> intensity scaling -> modulation out\n\nCPU: low, polyphonic (per-voice per-sample smoothing, scales with voice count)\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares a single voice state; aggregates max value across all channels\n  Retrigger (Off/On, default On) - resets smoother on new notes in monophonic mode\n  GestureCC (Press/Slide/Glide/Stroke/Lift, default dynamic) - selects which MPE gesture type to track\n  SmoothingTime (0-2000 ms, default 200 ms) - one-pole smoothing time constant for gesture values\n  DefaultValue (0-100%, default dynamic) - initial value when voice starts and no gesture data is available\n  SmoothedIntensity (0-100%, default 100%) - modulation depth/amplitude (not a smoothing control)\n\nWhen to use:\n  Per-voice expressive control from MPE controllers. Map pressure to filter cutoff, slide to timbre, glide to pitch. Requires an MPE panel in the interface for activation.\n\nCommon mistakes:\n  MPE modulators start bypassed - an MPE panel widget must be in the interface for them to activate.\n  Stroke/Lift are one-shot (note-on/off only), not continuous like Press/Slide/Glide.\n  SmoothedIntensity is the modulation depth, not a smoothing control.\n\nCustom equivalent:\n  complex - MPE per-voice channel routing is deeply integrated into the voice system and not straightforward to replicate.\n\nSee also:\n  alternative PitchWheel - monophonic pitch bend modulator\n  alternative MidiController - monophonic CC modulator",
+    "cpuProfile": {
+      "baseline": "low",
+      "polyphonic": true,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "MPE panel required for activation",
+        "wrong": "Adding an MPE Modulator to the module tree and expecting it to work immediately",
+        "right": "Include an MPE panel widget in the interface so the end user can enable MPE mode",
+        "explanation": "MPE modulators start bypassed and only activate when global MPE mode is enabled through the MPE panel. Without the panel, the modulators never receive gesture data."
+      },
+      {
+        "title": "Stroke and Lift are one-shot, not continuous",
+        "wrong": "Using Stroke mode and expecting continuous velocity tracking during the note",
+        "right": "Use Press, Slide, or Glide for continuous per-voice modulation during a note",
+        "explanation": "Stroke reads the velocity at note-on and Lift reads the velocity at note-off. Neither updates continuously. For ongoing gesture control, use one of the three continuous gesture types."
+      },
+      {
+        "title": "SmoothedIntensity controls modulation depth, not smoothing",
+        "wrong": "Adjusting SmoothedIntensity to change the smoothing amount",
+        "right": "Use SmoothingTime to control smoothing speed; SmoothedIntensity sets overall modulation depth",
+        "explanation": "Despite the name, SmoothedIntensity is the modulator intensity (depth/amplitude). Setting it to zero disables the modulation output entirely."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "PitchWheel",
+        "type": "alternative",
+        "reason": "Monophonic pitch bend modulator - use when MPE per-voice glide is not needed"
+      },
+      {
+        "id": "MidiController",
+        "type": "alternative",
+        "reason": "Monophonic CC modulator - use when MPE per-voice slide/pressure is not needed"
+      }
+    ],
+    "customEquivalent": {
+      "approach": "scriptnode",
+      "moduleType": "ScriptNode",
+      "complexity": "complex",
+      "description": "MPE per-voice channel routing is deeply integrated into the voice management system. Replicating it requires matching incoming MIDI channels to active voices, which is not straightforward in scriptnode or HISEScript."
+    },
+    "parameters": {
+      "DefaultValue": {
+        "description": "Initial value when the voice starts and no gesture data is available",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 0
+      },
+      "GestureCC": {
+        "description": "Selects which MPE gesture type to track",
+        "min": 1.0,
+        "max": 5.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Press",
+          "Slide",
+          "Glide",
+          "Stroke",
+          "Lift"
+        ]
+      },
+      "Monophonic": {
+        "description": "Shares a single voice state and aggregates the maximum value across all channels",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Retrigger": {
+        "description": "",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "SmoothedIntensity": {
+        "description": "Modulation depth applied to the final output",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.0,
+        "defaultValue": 1.0
+      },
+      "SmoothingTime": {
+        "description": "One-pole smoothing time constant for gesture values",
+        "min": 0.0,
+        "max": 2000.0,
+        "step": 0.1,
+        "defaultValue": 200.0
       }
     }
   },
@@ -3884,118 +3996,6 @@
       }
     }
   },
-  "MPEModulator": {
-    "id": "MPEModulator",
-    "type": "Modulator",
-    "subtype": "EnvelopeModulator",
-    "builderPath": "b.Modulators.MPEModulator",
-    "tags": [
-      "input"
-    ],
-    "llmRef": "MPE Modulator (Modulator/EnvelopeModulator)\n\nConverts MPE gesture data into per-voice modulation signals. Five gesture types: Press (channel aftertouch), Slide (CC#74), Glide (pitch bend per channel), Stroke (note-on velocity), Lift (note-off velocity). Press, Slide, and Glide are continuous; Stroke and Lift fire once.\n\nSignal flow:\n  MIDI event -> gesture type filter -> normalise to 0-1 -> table lookup -> one-pole smoother -> intensity scaling -> modulation out\n\nCPU: low, polyphonic (per-voice per-sample smoothing, scales with voice count)\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares a single voice state; aggregates max value across all channels\n  Retrigger (Off/On, default On) - resets smoother on new notes in monophonic mode\n  GestureCC (Press/Slide/Glide/Stroke/Lift, default dynamic) - selects which MPE gesture type to track\n  SmoothingTime (0-2000 ms, default 200 ms) - one-pole smoothing time constant for gesture values\n  DefaultValue (0-100%, default dynamic) - initial value when voice starts and no gesture data is available\n  SmoothedIntensity (0-100%, default 100%) - modulation depth/amplitude (not a smoothing control)\n\nWhen to use:\n  Per-voice expressive control from MPE controllers. Map pressure to filter cutoff, slide to timbre, glide to pitch. Requires an MPE panel in the interface for activation.\n\nCommon mistakes:\n  MPE modulators start bypassed - an MPE panel widget must be in the interface for them to activate.\n  Stroke/Lift are one-shot (note-on/off only), not continuous like Press/Slide/Glide.\n  SmoothedIntensity is the modulation depth, not a smoothing control.\n\nCustom equivalent:\n  complex - MPE per-voice channel routing is deeply integrated into the voice system and not straightforward to replicate.\n\nSee also:\n  alternative PitchWheel - monophonic pitch bend modulator\n  alternative MidiController - monophonic CC modulator",
-    "cpuProfile": {
-      "baseline": "low",
-      "polyphonic": true,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "MPE panel required for activation",
-        "wrong": "Adding an MPE Modulator to the module tree and expecting it to work immediately",
-        "right": "Include an MPE panel widget in the interface so the end user can enable MPE mode",
-        "explanation": "MPE modulators start bypassed and only activate when global MPE mode is enabled through the MPE panel. Without the panel, the modulators never receive gesture data."
-      },
-      {
-        "title": "Stroke and Lift are one-shot, not continuous",
-        "wrong": "Using Stroke mode and expecting continuous velocity tracking during the note",
-        "right": "Use Press, Slide, or Glide for continuous per-voice modulation during a note",
-        "explanation": "Stroke reads the velocity at note-on and Lift reads the velocity at note-off. Neither updates continuously. For ongoing gesture control, use one of the three continuous gesture types."
-      },
-      {
-        "title": "SmoothedIntensity controls modulation depth, not smoothing",
-        "wrong": "Adjusting SmoothedIntensity to change the smoothing amount",
-        "right": "Use SmoothingTime to control smoothing speed; SmoothedIntensity sets overall modulation depth",
-        "explanation": "Despite the name, SmoothedIntensity is the modulator intensity (depth/amplitude). Setting it to zero disables the modulation output entirely."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "PitchWheel",
-        "type": "alternative",
-        "reason": "Monophonic pitch bend modulator - use when MPE per-voice glide is not needed"
-      },
-      {
-        "id": "MidiController",
-        "type": "alternative",
-        "reason": "Monophonic CC modulator - use when MPE per-voice slide/pressure is not needed"
-      }
-    ],
-    "customEquivalent": {
-      "approach": "scriptnode",
-      "moduleType": "ScriptNode",
-      "complexity": "complex",
-      "description": "MPE per-voice channel routing is deeply integrated into the voice management system. Replicating it requires matching incoming MIDI channels to active voices, which is not straightforward in scriptnode or HISEScript."
-    },
-    "parameters": {
-      "DefaultValue": {
-        "description": "Initial value when the voice starts and no gesture data is available",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 0
-      },
-      "GestureCC": {
-        "description": "Selects which MPE gesture type to track",
-        "min": 1.0,
-        "max": 5.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Press",
-          "Slide",
-          "Glide",
-          "Stroke",
-          "Lift"
-        ]
-      },
-      "Monophonic": {
-        "description": "Shares a single voice state and aggregates the maximum value across all channels",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Retrigger": {
-        "description": "",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "SmoothedIntensity": {
-        "description": "Modulation depth applied to the final output",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.0,
-        "defaultValue": 1.0
-      },
-      "SmoothingTime": {
-        "description": "One-pole smoothing time constant for gesture values",
-        "min": 0.0,
-        "max": 2000.0,
-        "step": 0.1,
-        "defaultValue": 200.0
-      }
-    }
-  },
   "Noise": {
     "id": "Noise",
     "type": "SoundGenerator",
@@ -4302,6 +4302,64 @@
       }
     }
   },
+  "PolyScriptFX": {
+    "id": "PolyScriptFX",
+    "type": "Effect",
+    "subtype": "VoiceEffect",
+    "builderPath": "b.Effects.PolyScriptFX",
+    "tags": [
+      "custom"
+    ],
+    "llmRef": "Polyphonic Script FX (Effect/VoiceEffect)\n\nPer-voice effect that processes each voice independently through a scriptnode DSP network. Each voice maintains its own state in the network.\n\nSignal flow:\n  voice audio in -> [voice active?] -> ExtraModChains modulate network params -> init voice on note-on -> network process (per voice) -> voice audio out\n                                    -> bypass (voice silent)\n\nCPU: depends on loaded network, polyphonic\n  Scales linearly with active voices. Includes voice suspension for silent voices.\n  Inactive rendering retains modulation cost for one last-started voice, but not network audio-processing cost.\n\nParameters:\n  No fixed parameters (offset = 0). All parameters come from the loaded network.\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nInactive modulation:\n  HISE_FORCE_INACTIVE_MOD_RENDERING continues used extra-mod slots for one retained voice after all voices stop.\n  The network process() function does not run and no audio is processed. Parameter-derived displays can update while audio-derived displays remain frozen.\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use for per-voice effects like distortion, filtering, or waveshaping that need independent state per voice. For monophonic effects, use ScriptFX instead.\n\nCommon mistakes:\n  Do not use for monophonic effects - wastes CPU on per-voice processing.\n  Must compile network before export.\n  Forgetting to set HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS when needing extra mod slots.\n\nSee also:\n  alternative HardcodedPolyphonicFX - compiled variant for exported plugins\n  alternative ScriptFX - monophonic variant for master effects\n  companion ScriptSynth - scriptnode synthesiser",
+    "cpuProfile": {
+      "baseline": "(depends on loaded network)",
+      "polyphonic": true,
+      "scalingFactors": [
+        {
+          "parameter": "(active voices)",
+          "impact": "linear",
+          "note": "CPU scales with the number of active voices"
+        }
+      ]
+    },
+    "commonMistakes": [
+      {
+        "title": "Using PolyScriptFX for monophonic effects",
+        "wrong": "Adding a PolyScriptFX for an effect that does not need per-voice state (e.g. master reverb)",
+        "right": "Use ScriptFX for monophonic effects - it processes once per buffer instead of once per voice",
+        "explanation": "PolyScriptFX processes the network independently for every active voice. For effects that should be shared across all voices, use ScriptFX instead."
+      },
+      {
+        "title": "Network not compiled before export",
+        "wrong": "Exporting with an uncompiled network",
+        "right": "Compile the network to a DLL before exporting, or switch to HardcodedPolyphonicFX",
+        "explanation": "Uncompiled networks only work in the HISE IDE."
+      },
+      {
+        "title": "Forgetting to enable extra mod chains",
+        "wrong": "Trying to add modulation chains to PolyScriptFX without setting the preprocessor definition",
+        "right": "Add HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS=N to the Extra Definitions field in the project settings",
+        "explanation": "By default, PolyScriptFX has zero extra modulation chain slots. You must set the HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS preprocessor macro to the desired count before compilation."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "HardcodedPolyphonicFX",
+        "type": "alternative",
+        "reason": "Compiled variant for exported plugins"
+      },
+      {
+        "id": "ScriptFX",
+        "type": "alternative",
+        "reason": "Monophonic variant for master effects that do not need per-voice processing"
+      },
+      {
+        "id": "ScriptSynth",
+        "type": "companion",
+        "reason": "Scriptnode synthesiser - PolyScriptFX is typically placed in its FX chain for per-voice effects"
+      }
+    ]
+  },
   "PolyphonicFilter": {
     "id": "PolyphonicFilter",
     "type": "Effect",
@@ -4310,7 +4368,7 @@
     "tags": [
       "filter"
     ],
-    "llmRef": "PolyphonicFilter (VoiceEffect)\n\nPer-voice filter with 18 selectable modes (LP, HP, shelf, peak, SVF, Moog, ladder, allpass, ring mod, one-pole). Automatically switches between per-voice and monophonic processing based on whether any modulation chain contains polyphonic modulators. Default: StateVariableLP at 20000 Hz (transparent).\n\nSignal flow:\n  audio in (multichannel) -> select enabled source channels via routing matrix -> combine frequency modulation (normalise + bipolar offset + freq mod scale) -> update coefficients if changed -> filter process (topology selected by Mode) on enabled channels only -> audio out (disabled channels pass through unmodified)\n\nCPU: medium baseline, scales linearly with voice count. MoogLP and Ladder modes are more expensive.\n\nParameters:\n  Frequency (20-20000 Hz, default 20000 Hz) - cutoff/centre frequency. Default passes all audible frequencies.\n  Q (0.3-8.0, default 1.0) - resonance/bandwidth.\n  Gain (-18 to 18 dB, default 0 dB) - only affects LowShelf, HighShelf, and Peak modes.\n  Mode (0-17, default 6/StateVariableLP) - selects filter type. Modes 11 (StateVariablePeak) and 16 (LadderFourPoleHP) are non-functional.\n  Quality (0-4096, default 512) - has no effect on processing.\n  BipolarIntensity (-1.0 to 1.0, default 0.0) - scales the bipolar frequency modulation offset.\n\nModulation chains:\n  Frequency Modulation (gain mode) - scales normalised cutoff frequency. Per-voice when polyphonic modulators present.\n  Gain Modulation (gain mode) - scales filter gain for shelf/peak modes.\n  Bipolar Freq Modulation (offset mode) - adds signed offset to normalised frequency before standard frequency modulation.\n  Q Modulation (gain mode) - scales the Q value.\n\nChannel routing:\n  Routing matrix supports up to NUM_MAX_CHANNELS source channels (enabling-only, no source-to-destination remapping).\n  Only enabled channels are processed by the filter; disabled channels pass through unmodified.\n  Default: all channels enabled. Persisted as RoutingMatrix child in the ValueTree.\n\nFilter modes:\n  0=LowPass, 1=HighPass, 2=LowShelf, 3=HighShelf, 4=Peak, 5=ResoLow, 6=StateVariableLP, 7=StateVariableHP, 8=MoogLP, 9=OnePoleLowPass, 10=OnePoleHighPass, 11=StateVariablePeak(broken), 12=StateVariableNotch, 13=StateVariableBandPass, 14=Allpass, 15=LadderFourPoleLP, 16=LadderFourPoleHP(broken), 17=RingMod\n\nWhen to use:\n  Per-voice filtering in polyphonic instruments. Connect an envelope to the Frequency Modulation chain for classic filter sweeps per voice.\n\nCommon mistakes:\n  Gain parameter only works with shelf/peak modes.\n  StateVariablePeak and LadderFourPoleHP modes are non-functional.\n  Quality parameter has no effect.\n  Channels left disabled in the routing matrix pass through unfiltered (this is intentional, not a bug).\n\nSee also:\n  CurveEq - monophonic multi-band parametric EQ alternative\n  HarmonicFilter - polyphonic harmonic series filter\n  [scriptnode] filters.svf - scriptnode state variable filter with superior modulation stability\n  [scriptnode] filters.biquad - scriptnode biquad filter with six modes\n  [scriptnode] filters.ladder - scriptnode 24 dB/oct ladder filter\n  [scriptnode] filters.moog - scriptnode Moog-style transistor ladder filter",
+    "llmRef": "PolyphonicFilter (VoiceEffect)\n\nPer-voice filter with 18 selectable modes (LP, HP, shelf, peak, SVF, Moog, ladder, allpass, ring mod, one-pole). Automatically switches between per-voice and monophonic processing based on whether any modulation chain contains polyphonic modulators. Default: StateVariableLP at 20000 Hz (transparent).\n\nSignal flow:\n  audio in (multichannel) -> select enabled source channels via routing matrix -> combine frequency modulation (normalise + bipolar offset + freq mod scale) -> update coefficients if changed -> filter process (topology selected by Mode) on enabled channels only -> audio out (disabled channels pass through unmodified)\n\nCPU: medium baseline, scales linearly with voice count. MoogLP and Ladder modes are more expensive.\n\nParameters:\n  Frequency (20-20000 Hz, default 20000 Hz) - cutoff/centre frequency. Default passes all audible frequencies.\n  Q (0.3-8.0, default 1.0) - resonance/bandwidth.\n  Gain (-18 to 18 dB, default 0 dB) - only affects LowShelf, HighShelf, and Peak modes.\n  Mode (0-17, default 6/StateVariableLP) - selects filter type. Modes 11 (StateVariablePeak) and 16 (LadderFourPoleHP) are non-functional.\n  Quality (0-4096, default 512) - has no effect on processing.\n  BipolarIntensity (-1.0 to 1.0, default 0.0) - scales the bipolar frequency modulation offset.\n\nModulation chains:\n  Frequency Modulation (gain mode) - scales normalised cutoff frequency. Per-voice when polyphonic modulators present.\n  Gain Modulation (gain mode) - scales filter gain for shelf/peak modes.\n  Bipolar Freq Modulation (offset mode) - adds signed offset to normalised frequency before standard frequency modulation.\n  Q Modulation (gain mode) - scales the Q value.\n\nInactive modulation:\n  HISE_FORCE_INACTIVE_MOD_RENDERING refreshes modulation-derived filter values and response display state from one retained voice while the owner synth is idle. No idle audio is filtered.\n\nChannel routing:\n  Routing matrix supports up to NUM_MAX_CHANNELS source channels (enabling-only, no source-to-destination remapping).\n  Only enabled channels are processed by the filter; disabled channels pass through unmodified.\n  Default: all channels enabled. Persisted as RoutingMatrix child in the ValueTree.\n\nFilter modes:\n  0=LowPass, 1=HighPass, 2=LowShelf, 3=HighShelf, 4=Peak, 5=ResoLow, 6=StateVariableLP, 7=StateVariableHP, 8=MoogLP, 9=OnePoleLowPass, 10=OnePoleHighPass, 11=StateVariablePeak(broken), 12=StateVariableNotch, 13=StateVariableBandPass, 14=Allpass, 15=LadderFourPoleLP, 16=LadderFourPoleHP(broken), 17=RingMod\n\nWhen to use:\n  Per-voice filtering in polyphonic instruments. Connect an envelope to the Frequency Modulation chain for classic filter sweeps per voice.\n\nCommon mistakes:\n  Gain parameter only works with shelf/peak modes.\n  StateVariablePeak and LadderFourPoleHP modes are non-functional.\n  Quality parameter has no effect.\n  Channels left disabled in the routing matrix pass through unfiltered (this is intentional, not a bug).\n\nSee also:\n  CurveEq - monophonic multi-band parametric EQ alternative\n  HarmonicFilter - polyphonic harmonic series filter\n  [scriptnode] filters.svf - scriptnode state variable filter with superior modulation stability\n  [scriptnode] filters.biquad - scriptnode biquad filter with six modes\n  [scriptnode] filters.ladder - scriptnode 24 dB/oct ladder filter\n  [scriptnode] filters.moog - scriptnode Moog-style transistor ladder filter",
     "cpuProfile": {
       "baseline": "medium",
       "polyphonic": true,
@@ -4428,64 +4486,6 @@
         "defaultValue": 512.0
       }
     }
-  },
-  "PolyScriptFX": {
-    "id": "PolyScriptFX",
-    "type": "Effect",
-    "subtype": "VoiceEffect",
-    "builderPath": "b.Effects.PolyScriptFX",
-    "tags": [
-      "custom"
-    ],
-    "llmRef": "Polyphonic Script FX (Effect/VoiceEffect)\n\nPer-voice effect that processes each voice independently through a scriptnode DSP network. Each voice maintains its own state in the network.\n\nSignal flow:\n  voice audio in -> [voice active?] -> ExtraModChains modulate network params -> init voice on note-on -> network process (per voice) -> voice audio out\n                                    -> bypass (voice silent)\n\nCPU: depends on loaded network, polyphonic\n  Scales linearly with active voices. Includes voice suspension for silent voices.\n\nParameters:\n  No fixed parameters (offset = 0). All parameters come from the loaded network.\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use for per-voice effects like distortion, filtering, or waveshaping that need independent state per voice. For monophonic effects, use ScriptFX instead.\n\nCommon mistakes:\n  Do not use for monophonic effects - wastes CPU on per-voice processing.\n  Must compile network before export.\n  Forgetting to set HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS when needing extra mod slots.\n\nSee also:\n  alternative HardcodedPolyphonicFX - compiled variant for exported plugins\n  alternative ScriptFX - monophonic variant for master effects\n  companion ScriptSynth - scriptnode synthesiser",
-    "cpuProfile": {
-      "baseline": "(depends on loaded network)",
-      "polyphonic": true,
-      "scalingFactors": [
-        {
-          "parameter": "(active voices)",
-          "impact": "linear",
-          "note": "CPU scales with the number of active voices"
-        }
-      ]
-    },
-    "commonMistakes": [
-      {
-        "title": "Using PolyScriptFX for monophonic effects",
-        "wrong": "Adding a PolyScriptFX for an effect that does not need per-voice state (e.g. master reverb)",
-        "right": "Use ScriptFX for monophonic effects - it processes once per buffer instead of once per voice",
-        "explanation": "PolyScriptFX processes the network independently for every active voice. For effects that should be shared across all voices, use ScriptFX instead."
-      },
-      {
-        "title": "Network not compiled before export",
-        "wrong": "Exporting with an uncompiled network",
-        "right": "Compile the network to a DLL before exporting, or switch to HardcodedPolyphonicFX",
-        "explanation": "Uncompiled networks only work in the HISE IDE."
-      },
-      {
-        "title": "Forgetting to enable extra mod chains",
-        "wrong": "Trying to add modulation chains to PolyScriptFX without setting the preprocessor definition",
-        "right": "Add HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS=N to the Extra Definitions field in the project settings",
-        "explanation": "By default, PolyScriptFX has zero extra modulation chain slots. You must set the HISE_NUM_POLYPHONIC_SCRIPTNODE_FX_MODS preprocessor macro to the desired count before compilation."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "HardcodedPolyphonicFX",
-        "type": "alternative",
-        "reason": "Compiled variant for exported plugins"
-      },
-      {
-        "id": "ScriptFX",
-        "type": "alternative",
-        "reason": "Monophonic variant for master effects that do not need per-voice processing"
-      },
-      {
-        "id": "ScriptSynth",
-        "type": "companion",
-        "reason": "Scriptnode synthesiser - PolyScriptFX is typically placed in its FX chain for per-voice effects"
-      }
-    ]
   },
   "PolyshapeFX": {
     "id": "PolyshapeFX",
@@ -4901,7 +4901,7 @@
     "tags": [
       "custom"
     ],
-    "llmRef": "Script FX (Effect/MasterEffect)\n\nMonophonic master effect that processes stereo audio through a scriptnode DSP network. Also supports HISEScript processBlock callbacks as a fallback when no network is loaded. All parameters are dynamic - they come from the loaded network.\n\nSignal flow:\n  audio in (L/R) -> [network loaded?] -> ExtraModChains modulate network params -> network process -> audio out (L/R)\n                                      -> script processBlock -> audio out (L/R)\n\nCPU: depends on loaded network, monophonic\n  Framework overhead is negligible.\n\nParameters:\n  All parameters are dynamic and come from the loaded scriptnode network.\n  No fixed parameters (offset = 0).\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use ScriptFX to host a custom effect built in scriptnode during development. For exported plugins, switch to HardcodedMasterFX with the compiled network.\n\nCommon mistakes:\n  Forgetting to compile the network before export.\n  Having both script and network code - network always takes priority.\n  Forgetting to set HISE_NUM_SCRIPTNODE_FX_MODS when needing extra mod slots.\n  Leaving .xml network file in the project when exporting crashes the compiled plugin.\n\nTips:\n  HISEScript processBlock mode is legacy and will be removed - use scriptnode networks instead.\n  Only top-level network parameters (macro knobs) are addressable via processorId/parameterId.\n  Use a preprocessor define to swap between ScriptFX (development) and HardcodedMasterFX (export).\n\nSee also:\n  alternative HardcodedMasterFX - compiled variant for exported plugins\n  alternative PolyScriptFX - per-voice effect variant",
+    "llmRef": "Script FX (Effect/MasterEffect)\n\nMonophonic master effect that processes stereo audio through a scriptnode DSP network. Also supports HISEScript processBlock callbacks as a fallback when no network is loaded. All parameters are dynamic - they come from the loaded network.\n\nSignal flow:\n  audio in (L/R) -> [network loaded?] -> ExtraModChains modulate network params -> network process -> audio out (L/R)\n                                      -> script processBlock -> audio out (L/R)\n\nCPU: depends on loaded network, monophonic\n  Framework overhead is negligible.\n  With HISE_FORCE_INACTIVE_MOD_RENDERING enabled, suspended blocks retain modulation-target dispatch overhead but not network audio-processing cost.\n\nParameters:\n  All parameters are dynamic and come from the loaded scriptnode network.\n  No fixed parameters (offset = 0).\n\nModulation chains:\n  Extra Modulation Chains (default 0, configurable via HISE_NUM_SCRIPTNODE_FX_MODS) - see Audio Modules modulators reference for connection mode details\n\nInactive modulation:\n  HISE_FORCE_INACTIVE_MOD_RENDERING keeps connected network parameters updating after silence suspension, but does not call the network process() function or legacy HISEScript processBlock() callback.\n  Parameter-derived displays can update while audio-derived displays remain frozen.\n\nChannel configuration:\n  Standard scriptnode channel configuration (default stereo, up to 16). See Audio Modules sound-generators reference for details.\n\nComplex data types and parameter exposure:\n  No fixed parameters (offset = 0). See Audio Modules index Custom section for complex data types, parameter exposure, and configuration table.\n\nWhen to use:\n  Use ScriptFX to host a custom effect built in scriptnode during development. For exported plugins, switch to HardcodedMasterFX with the compiled network.\n\nCommon mistakes:\n  Forgetting to compile the network before export.\n  Having both script and network code - network always takes priority.\n  Forgetting to set HISE_NUM_SCRIPTNODE_FX_MODS when needing extra mod slots.\n  Leaving .xml network file in the project when exporting crashes the compiled plugin.\n\nTips:\n  HISEScript processBlock mode is legacy and will be removed - use scriptnode networks instead.\n  Only top-level network parameters (macro knobs) are addressable via processorId/parameterId.\n  Use a preprocessor define to swap between ScriptFX (development) and HardcodedMasterFX (export).\n\nSee also:\n  alternative HardcodedMasterFX - compiled variant for exported plugins\n  alternative PolyScriptFX - per-voice effect variant",
     "cpuProfile": {
       "baseline": "(depends on loaded network)",
       "polyphonic": false,
@@ -4950,76 +4950,6 @@
         "reason": "Required for voice management when using scriptnode envelopes alongside this module"
       }
     ]
-  },
-  "ScriptnodeVoiceKiller": {
-    "id": "ScriptnodeVoiceKiller",
-    "type": "Modulator",
-    "subtype": "EnvelopeModulator",
-    "builderPath": "b.Modulators.ScriptnodeVoiceKiller",
-    "tags": [
-      "custom"
-    ],
-    "llmRef": "Scriptnode Voice Killer (Modulator/EnvelopeModulator)\n\nA structural envelope modulator that monitors a scriptnode envelope's gate signal and terminates voices when the gate closes. Required whenever a ScriptEnvelopeModulator or HardcodedEnvelopeModulator is used for voice management. It produces a constant 1.0 modulation output and does not shape the signal.\n\nSignal flow:\n  noteOn -> voice marked active -> constant 1.0 modulation output\n  scriptnode gate close -> voice marked inactive -> voice killed by HISE\n\nCPU: negligible, polyphonic. Only performs atomic boolean operations and a buffer fill.\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares one envelope state across all voices\n  Retrigger (Off/On, default On) - restarts on new notes in monophonic mode\n\nWhen to use:\n  Add to the Gain Modulation chain of any sound generator that uses a ScriptEnvelopeModulator or HardcodedEnvelopeModulator. Without it, voices will never stop. Not needed for built-in envelopes like AHDSR, which handle voice killing internally.\n\nCommon mistakes:\n  Forgetting to add it causes voices to pile up indefinitely.\n  Placing it outside the Gain Modulation chain renders it inert.\n\nSee also:\n  companion ScriptEnvelopeModulator - scriptnode envelope requiring this voice killer\n  companion HardcodedEnvelopeModulator - compiled scriptnode envelope requiring this voice killer\n  alternative AHDSR - built-in envelope with integrated voice killing",
-    "cpuProfile": {
-      "baseline": "negligible",
-      "polyphonic": true,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "Forgetting to add ScriptnodeVoiceKiller when using scriptnode envelopes",
-        "wrong": "Using a ScriptEnvelopeModulator or HardcodedEnvelopeModulator without a ScriptnodeVoiceKiller",
-        "right": "Add a ScriptnodeVoiceKiller to the Gain Modulation chain of the same sound generator",
-        "explanation": "Without a ScriptnodeVoiceKiller, voices started by the sound generator will never be terminated. Notes will pile up indefinitely, consuming CPU until the voice limit is reached."
-      },
-      {
-        "title": "Placing the voice killer in the wrong modulation chain",
-        "wrong": "Adding the ScriptnodeVoiceKiller to a modulation chain other than Gain Modulation",
-        "right": "Place the ScriptnodeVoiceKiller in the Gain Modulation chain of the parent sound generator",
-        "explanation": "The module only registers itself as the voice killer when placed in the Gain Modulation chain. In any other chain, it does nothing."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "ScriptEnvelopeModulator",
-        "type": "companion",
-        "reason": "Scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
-      },
-      {
-        "id": "HardcodedEnvelopeModulator",
-        "type": "companion",
-        "reason": "Compiled scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
-      },
-      {
-        "id": "AHDSR",
-        "type": "alternative",
-        "reason": "Built-in envelope with integrated voice killing - does not need a separate voice killer"
-      }
-    ],
-    "parameters": {
-      "Monophonic": {
-        "description": "Shares one envelope state across all voices instead of per-voice tracking",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Retrigger": {
-        "description": "Restarts the voice state when a new note arrives in monophonic mode",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 1.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      }
-    }
   },
   "ScriptProcessor": {
     "id": "ScriptProcessor",
@@ -5268,6 +5198,76 @@
       }
     ]
   },
+  "ScriptnodeVoiceKiller": {
+    "id": "ScriptnodeVoiceKiller",
+    "type": "Modulator",
+    "subtype": "EnvelopeModulator",
+    "builderPath": "b.Modulators.ScriptnodeVoiceKiller",
+    "tags": [
+      "custom"
+    ],
+    "llmRef": "Scriptnode Voice Killer (Modulator/EnvelopeModulator)\n\nA structural envelope modulator that monitors a scriptnode envelope's gate signal and terminates voices when the gate closes. Required whenever a ScriptEnvelopeModulator or HardcodedEnvelopeModulator is used for voice management. It produces a constant 1.0 modulation output and does not shape the signal.\n\nSignal flow:\n  noteOn -> voice marked active -> constant 1.0 modulation output\n  scriptnode gate close -> voice marked inactive -> voice killed by HISE\n\nCPU: negligible, polyphonic. Only performs atomic boolean operations and a buffer fill.\n\nParameters:\n  Monophonic (Off/On, default dynamic) - shares one envelope state across all voices\n  Retrigger (Off/On, default On) - restarts on new notes in monophonic mode\n\nWhen to use:\n  Add to the Gain Modulation chain of any sound generator that uses a ScriptEnvelopeModulator or HardcodedEnvelopeModulator. Without it, voices will never stop. Not needed for built-in envelopes like AHDSR, which handle voice killing internally.\n\nCommon mistakes:\n  Forgetting to add it causes voices to pile up indefinitely.\n  Placing it outside the Gain Modulation chain renders it inert.\n\nSee also:\n  companion ScriptEnvelopeModulator - scriptnode envelope requiring this voice killer\n  companion HardcodedEnvelopeModulator - compiled scriptnode envelope requiring this voice killer\n  alternative AHDSR - built-in envelope with integrated voice killing",
+    "cpuProfile": {
+      "baseline": "negligible",
+      "polyphonic": true,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "Forgetting to add ScriptnodeVoiceKiller when using scriptnode envelopes",
+        "wrong": "Using a ScriptEnvelopeModulator or HardcodedEnvelopeModulator without a ScriptnodeVoiceKiller",
+        "right": "Add a ScriptnodeVoiceKiller to the Gain Modulation chain of the same sound generator",
+        "explanation": "Without a ScriptnodeVoiceKiller, voices started by the sound generator will never be terminated. Notes will pile up indefinitely, consuming CPU until the voice limit is reached."
+      },
+      {
+        "title": "Placing the voice killer in the wrong modulation chain",
+        "wrong": "Adding the ScriptnodeVoiceKiller to a modulation chain other than Gain Modulation",
+        "right": "Place the ScriptnodeVoiceKiller in the Gain Modulation chain of the parent sound generator",
+        "explanation": "The module only registers itself as the voice killer when placed in the Gain Modulation chain. In any other chain, it does nothing."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "ScriptEnvelopeModulator",
+        "type": "companion",
+        "reason": "Scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
+      },
+      {
+        "id": "HardcodedEnvelopeModulator",
+        "type": "companion",
+        "reason": "Compiled scriptnode envelope that requires a ScriptnodeVoiceKiller for voice management"
+      },
+      {
+        "id": "AHDSR",
+        "type": "alternative",
+        "reason": "Built-in envelope with integrated voice killing - does not need a separate voice killer"
+      }
+    ],
+    "parameters": {
+      "Monophonic": {
+        "description": "Shares one envelope state across all voices instead of per-voice tracking",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Retrigger": {
+        "description": "Restarts the voice state when a new note arrives in monophonic mode",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 1.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      }
+    }
+  },
   "SendContainer": {
     "id": "SendContainer",
     "type": "SoundGenerator",
@@ -5277,7 +5277,7 @@
       "container",
       "routing"
     ],
-    "llmRef": "Send Container (SoundGenerator)\n\nReceive end of a send/return routing pair. Accumulates audio from one or more Send Effect instances, processes it through an effect chain, and routes the result to the output via a routing matrix. Does not generate sound - acts as a summing bus with effects.\n\nSignal flow:\n  Send Effects (external) -> internal buffer (additive sum) -> effect chain (MasterEffect only) -> routing matrix -> audio out -> clear buffer\n\nCPU: very low base, depends on FX chain contents. Monophonic (no per-voice processing).\n\nParameters (inherited, mostly vestigial):\n  Gain (0-100%, default 25%) - NOT applied in render path\n  Balance (-1 to 1, default 0) - NOT applied in render path\n  VoiceLimit (1-256, default 256) - irrelevant (single voice)\n  KillFadeTime (0-20000 ms, default 20 ms) - irrelevant (single voice)\n\nModulation chains (inherited, vestigial):\n  Gain Modulation - NOT applied in render path\n  Pitch Modulation - NOT applicable (no oscillator)\n\nFX chain:\n  MasterEffect only (NoMidiInputConstrainer). All effects forced to monophonic. This is the primary user-facing feature.\n\nRouting:\n  Resizable routing matrix maps internal channels to output channels. SendEffect channel offset determines which internal channel pair receives the send signal. Multiple SendEffects can target the same container (additive summing).\n\nWhen to use:\n  Shared reverb, delay, or other effects across multiple sound generators. Classic aux send/return workflow. Place effects in the container's FX chain and use Send Effects on the source modules to control send levels.\n\nCommon mistakes:\n  Gain/Balance knobs have no effect - use FX chain or SendEffect gain instead.\n  Polyphonic effects are forced monophonic in this container.\n\nSee also:\n  alternative SendFX - the send side of the pair",
+    "llmRef": "Send Container (SoundGenerator)\n\nReceive end of a send/return routing pair. Accumulates audio from one or more Send Effect instances, processes it through an effect chain, and routes the result to the output via a routing matrix. Does not generate sound - acts as a summing bus with effects.\n\nSignal flow:\n  Send Effects (external) -> internal buffer (additive sum) -> constrained effect chain -> routing matrix -> audio out -> clear buffer\n\nCPU: very low base, depends on FX chain contents. Monophonic (no per-voice processing).\n\nParameters (inherited, mostly vestigial):\n  Gain (0-100%, default 25%) - NOT applied in render path\n  Balance (-1 to 1, default 0) - NOT applied in render path\n  VoiceLimit (1-256, default 256) - irrelevant (single voice)\n  KillFadeTime (0-20000 ms, default 20 ms) - irrelevant (single voice)\n\nModulation chains (inherited, vestigial):\n  Gain Modulation - NOT applied in render path\n  Pitch Modulation - NOT applicable (no oscillator)\n\nFX chain:\n  Master and monophonic effects plus Polyphonic Filter (NoMidiInputConstrainer). Polyphonic Filter processes the summed signal through its monophonic filter path.\n\nRouting:\n  Resizable routing matrix maps internal channels to output channels. SendEffect channel offset determines which internal channel pair receives the send signal. Multiple SendEffects can target the same container (additive summing).\n\nWhen to use:\n  Shared reverb, delay, or other effects across multiple sound generators. Classic aux send/return workflow. Place effects in the container's FX chain and use Send Effects on the source modules to control send levels.\n\nCommon mistakes:\n  Gain/Balance knobs have no effect - use FX chain or SendEffect gain instead.\n  General polyphonic effects are unsupported; Polyphonic Filter is the summed-buffer exception.\n\nSee also:\n  alternative SendFX - the send side of the pair",
     "cpuProfile": {
       "baseline": "very low",
       "polyphonic": false,
@@ -5294,10 +5294,10 @@
         "explanation": "The Gain and Balance parameters are inherited from the base class but are not applied in the Send Container's render path. The output level is determined entirely by the Send Effect gain and the effects in the FX chain."
       },
       {
-        "title": "Polyphonic effects forced to monophonic",
+        "title": "Unsupported polyphonic effects",
         "wrong": "Adding polyphonic effects to the Send Container's FX chain and expecting per-voice processing",
-        "right": "All effects in the Send Container run monophonically",
-        "explanation": "The Send Container forces monophonic processing for all effects in its chain, regardless of whether the effect supports polyphonic mode."
+        "right": "Use master or monophonic effects; Polyphonic Filter is the supported exception and processes the summed signal",
+        "explanation": "The Send Container has no per-voice audio. Its constrainer permits master effects, monophonic effects, and Polyphonic Filter, which detects the constrainer and uses its summed-buffer path."
       }
     ],
     "seeAlso": [
@@ -6841,94 +6841,6 @@
       }
     }
   },
-  "Velocity": {
-    "id": "Velocity",
-    "type": "Modulator",
-    "subtype": "VoiceStartModulator",
-    "builderPath": "b.Modulators.Velocity",
-    "tags": [
-      "input",
-      "note_processing"
-    ],
-    "llmRef": "Velocity Modulator (Modulator/VoiceStartModulator)\n\nConverts MIDI note-on velocity into a per-voice modulation value (0-1). Three optional processing stages - inversion, table lookup, and decibel conversion - shape the velocity response curve.\n\nSignal flow:\n  noteOn velocity -> [invert] -> [table lookup] -> [dB conversion] -> modulation out\n\nCPU: negligible, polyphonic (runs once per voice on note-on)\n\nParameters:\n  Inverted (Off/On, default Off) - flips the velocity curve so loud notes produce low modulation values\n  UseTable (Off/On, default Off) - enables a user-editable curve for custom velocity response\n  DecibelMode (Off/On, default Off) - maps the value through a -100..0 dB range then converts to linear gain, providing a more perceptually natural response\n\nWhen to use:\n  Standard velocity-to-volume or velocity-to-filter mapping. Use the table for custom response curves. Enable DecibelMode when mapping to gain parameters for a more natural dynamic feel.\n\nCommon mistakes:\n  DecibelMode applies after the table, not before - the table always works in linear domain.\n  UseTable must be enabled for the curve editor to have any effect.\n\nTips:\n  To share the same velocity curve across multiple sound generators, use a Global Voice Start Modulator instead of duplicating the table in each module.\n\nCustom equivalent:\n  hisescript via ScriptVoiceStartModulator: read Message.getVelocity() and apply transforms in onVoiceStart.\n\nSee also:\n  alternative KeyNumber - reads note number instead of velocity\n  alternative ArrayModulator - per-note values from a slider pack\n  disambiguation Constant - fixed modulation value, no MIDI input",
-    "cpuProfile": {
-      "baseline": "negligible",
-      "polyphonic": true,
-      "scalingFactors": []
-    },
-    "commonMistakes": [
-      {
-        "title": "DecibelMode applies after table lookup",
-        "wrong": "Enabling DecibelMode and expecting the table to operate in dB domain",
-        "right": "The table always operates in linear 0-1 domain; DecibelMode converts after the table lookup",
-        "explanation": "The processing order is fixed: invert, then table, then dB conversion. The table input and output are always linear regardless of DecibelMode."
-      },
-      {
-        "title": "UseTable must be enabled to work",
-        "wrong": "Leaving UseTable off but expecting a custom velocity curve",
-        "right": "Enable UseTable to activate the curve editor",
-        "explanation": "The table is bypassed by default. Without UseTable enabled, the velocity mapping is linear (or inverted linear)."
-      }
-    ],
-    "seeAlso": [
-      {
-        "id": "KeyNumber",
-        "type": "alternative",
-        "reason": "Similar voice-start modulator that reads MIDI note number instead of velocity"
-      },
-      {
-        "id": "ArrayModulator",
-        "type": "alternative",
-        "reason": "Per-note modulation via a 128-entry slider pack instead of the velocity value"
-      },
-      {
-        "id": "Constant",
-        "type": "disambiguation",
-        "reason": "Also a VoiceStartModulator but outputs a fixed value rather than reading from MIDI"
-      }
-    ],
-    "customEquivalent": {
-      "approach": "hisescript",
-      "moduleType": "ScriptVoiceStartModulator",
-      "complexity": "trivial",
-      "description": "Read Message.getVelocity() in the onVoiceStart callback and apply inversion, table lookup, or dB conversion in script"
-    },
-    "parameters": {
-      "DecibelMode": {
-        "description": "Converts output through a -100..0 dB range to linear gain for a logarithmic response",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "Inverted": {
-        "description": "Flips the velocity response so high velocities produce low modulation values",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      },
-      "UseTable": {
-        "description": "Enables the lookup table for custom velocity response curves",
-        "min": 0.0,
-        "max": 1.0,
-        "step": 1.0,
-        "defaultValue": 0.0,
-        "items": [
-          "Off",
-          "On"
-        ]
-      }
-    }
-  },
   "WaveSynth": {
     "id": "WaveSynth",
     "type": "SoundGenerator",
@@ -7245,6 +7157,94 @@
         "max": 256.0,
         "step": 1.0,
         "defaultValue": 256.0
+      }
+    }
+  },
+  "Velocity": {
+    "id": "Velocity",
+    "type": "Modulator",
+    "subtype": "VoiceStartModulator",
+    "builderPath": "b.Modulators.Velocity",
+    "tags": [
+      "input",
+      "note_processing"
+    ],
+    "llmRef": "Velocity Modulator (Modulator/VoiceStartModulator)\n\nConverts MIDI note-on velocity into a per-voice modulation value (0-1). Three optional processing stages - inversion, table lookup, and decibel conversion - shape the velocity response curve.\n\nSignal flow:\n  noteOn velocity -> [invert] -> [table lookup] -> [dB conversion] -> modulation out\n\nCPU: negligible, polyphonic (runs once per voice on note-on)\n\nParameters:\n  Inverted (Off/On, default Off) - flips the velocity curve so loud notes produce low modulation values\n  UseTable (Off/On, default Off) - enables a user-editable curve for custom velocity response\n  DecibelMode (Off/On, default Off) - maps the value through a -100..0 dB range then converts to linear gain, providing a more perceptually natural response\n\nWhen to use:\n  Standard velocity-to-volume or velocity-to-filter mapping. Use the table for custom response curves. Enable DecibelMode when mapping to gain parameters for a more natural dynamic feel.\n\nCommon mistakes:\n  DecibelMode applies after the table, not before - the table always works in linear domain.\n  UseTable must be enabled for the curve editor to have any effect.\n\nTips:\n  To share the same velocity curve across multiple sound generators, use a Global Voice Start Modulator instead of duplicating the table in each module.\n\nCustom equivalent:\n  hisescript via ScriptVoiceStartModulator: read Message.getVelocity() and apply transforms in onVoiceStart.\n\nSee also:\n  alternative KeyNumber - reads note number instead of velocity\n  alternative ArrayModulator - per-note values from a slider pack\n  disambiguation Constant - fixed modulation value, no MIDI input",
+    "cpuProfile": {
+      "baseline": "negligible",
+      "polyphonic": true,
+      "scalingFactors": []
+    },
+    "commonMistakes": [
+      {
+        "title": "DecibelMode applies after table lookup",
+        "wrong": "Enabling DecibelMode and expecting the table to operate in dB domain",
+        "right": "The table always operates in linear 0-1 domain; DecibelMode converts after the table lookup",
+        "explanation": "The processing order is fixed: invert, then table, then dB conversion. The table input and output are always linear regardless of DecibelMode."
+      },
+      {
+        "title": "UseTable must be enabled to work",
+        "wrong": "Leaving UseTable off but expecting a custom velocity curve",
+        "right": "Enable UseTable to activate the curve editor",
+        "explanation": "The table is bypassed by default. Without UseTable enabled, the velocity mapping is linear (or inverted linear)."
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "KeyNumber",
+        "type": "alternative",
+        "reason": "Similar voice-start modulator that reads MIDI note number instead of velocity"
+      },
+      {
+        "id": "ArrayModulator",
+        "type": "alternative",
+        "reason": "Per-note modulation via a 128-entry slider pack instead of the velocity value"
+      },
+      {
+        "id": "Constant",
+        "type": "disambiguation",
+        "reason": "Also a VoiceStartModulator but outputs a fixed value rather than reading from MIDI"
+      }
+    ],
+    "customEquivalent": {
+      "approach": "hisescript",
+      "moduleType": "ScriptVoiceStartModulator",
+      "complexity": "trivial",
+      "description": "Read Message.getVelocity() in the onVoiceStart callback and apply inversion, table lookup, or dB conversion in script"
+    },
+    "parameters": {
+      "DecibelMode": {
+        "description": "Converts output through a -100..0 dB range to linear gain for a logarithmic response",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "Inverted": {
+        "description": "Flips the velocity response so high velocities produce low modulation values",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
+      },
+      "UseTable": {
+        "description": "Enables the lookup table for custom velocity response curves",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 1.0,
+        "defaultValue": 0.0,
+        "items": [
+          "Off",
+          "On"
+        ]
       }
     }
   }

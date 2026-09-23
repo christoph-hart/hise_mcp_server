@@ -34,14 +34,14 @@ export interface SnippetSummary {
   difficulty: "beginner" | "intermediate" | "advanced";
 }
 
-type ScriptnodeNodeReference = { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any };
+type ScriptnodeExampleLink = { id: string; title: string; summary: string; url?: string };
+type ScriptnodeNodeReference = { factoryPath: string; factory: string; title: string; description: string; llmRef?: string; commonMistakes?: any[]; seeAlso?: any[]; tags?: string[]; polyphonic?: boolean; cpuProfile?: any; parameters?: any; example?: ScriptnodeExampleLink };
 
 type ScriptnodeReferenceResult =
   | { kind: 'node'; node: ScriptnodeNodeReference }
   | { kind: 'parameter'; node: ScriptnodeNodeReference; parameterName: string; parameter: any }
   | { kind: 'missingParameter'; node: ScriptnodeNodeReference; parameterName: string; availableParameters: string[] }
   | { kind: 'factory'; factory: string };
-
 export class HISEDataLoader {
   private data: HISEData | null = null;
   private propertyIndex: Map<string, UIComponentProperty> = new Map();
@@ -483,8 +483,23 @@ export class HISEDataLoader {
   private storeScriptnodeData(data: any): void {
     this.scriptnodeIndex.clear();
     const nodes = data?.nodes || {};
+    let examplesByNode: Record<string, any> = {};
+    try {
+      const detailsPath = join(__dirname, '..', 'data', 'example_details.json');
+      if (existsSync(detailsPath)) {
+        const details = JSON.parse(readFileSync(detailsPath, 'utf8'));
+        for (const detail of Object.values(details) as any[]) {
+          const node = detail.metadata?.node;
+          if (node) examplesByNode[node.toLowerCase()] = detail;
+        }
+      }
+    } catch (error) {
+      log.warn('Failed to load Scriptnode example details:', error);
+    }
+
     for (const [factoryPath, nodeData] of Object.entries(nodes)) {
       const nd = nodeData as any;
+      const example = examplesByNode[factoryPath.toLowerCase()];
       this.scriptnodeIndex.set(factoryPath.toLowerCase(), {
         factoryPath: nd.factoryPath || factoryPath,
         factory: nd.factory || '',
@@ -497,6 +512,14 @@ export class HISEDataLoader {
         polyphonic: nd.polyphonic,
         cpuProfile: nd.cpuProfile,
         parameters: nd.parameters,
+        ...(example ? {
+          example: {
+            id: example.id,
+            title: example.metadata.title,
+            summary: example.metadata.summary || example.metadata.description || '',
+            url: example.metadata.url
+          }
+        } : {})
       });
     }
   }

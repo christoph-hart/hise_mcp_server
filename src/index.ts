@@ -141,9 +141,9 @@ const DOC_TOOLS: Tool[] = [
         },
         domain: {
           type: 'string',
-          enum: ['audio', 'complex-data', 'data', 'event', 'file', 'network',
+          enum: ['architecture', 'audio', 'complex-data', 'data', 'event', 'file', 'network',
                  'playback', 'preset-model', 'routing', 'scripting', 'scriptnode', 'ui'],
-          description: 'Filter by functional domain (audio, ui, event, file, etc.)',
+          description: 'Filter by functional domain (architecture, audio, ui, event, file, etc.)',
         },
         role: {
           type: 'string',
@@ -804,14 +804,29 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
 
             if (semanticResults.length > 0) {
               lines.push('\n--- Semantic search results ---\n');
-              for (const r of semanticResults.slice(0, 8)) {
+              const displayedSemanticResults = [];
+              const seenWebsitePages = new Set<string>();
+              for (const result of semanticResults) {
+                const sourcePath = result.metadata.sourcePath;
+                if (sourcePath) {
+                  if (seenWebsitePages.has(sourcePath)) continue;
+                  seenWebsitePages.add(sourcePath);
+                }
+                displayedSemanticResults.push(result);
+                if (displayedSemanticResults.length === 8) break;
+              }
+              for (const r of displayedSemanticResults) {
                 const m = r.metadata;
+                const contentLabel = m.pageTitle && m.section
+                  ? `${m.pageTitle} — ${m.section}`
+                  : m.title || m.url;
                 const label = m.class
                   ? `${m.class}${m.method ? '.' + m.method : ''}`
-                  : m.title || m.url;
+                  : contentLabel;
                 const desc = typeof m.description === 'string' ? m.description.split(/\.\s/)[0] + '.' : '';
+                const sourceLabel = [m.domain, m.language].filter(Boolean).join('/');
                 const tag = r.via === 'vector' ? '' : ` [${r.via}]`;
-                lines.push(`${label}${tag}  (${r.score.toFixed(3)})`);
+                lines.push(`${label}${tag}  (${r.score.toFixed(3)})${sourceLabel ? ` [${sourceLabel}]` : ''}`);
                 lines.push(`  ${m.url}`);
                 if (desc) lines.push(`  ${desc}`);
                 lines.push('');
@@ -1144,7 +1159,7 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
         }
 
         return {
-          content: [{ type: 'text', text: result.node.llmRef || JSON.stringify(result.node, null, 2) }],
+          content: [{ type: 'text', text: `${result.node.llmRef || JSON.stringify(result.node, null, 2)}${result.node.example ? `\n\nExample: ${result.node.example.title}\n${result.node.example.summary}\nUse get_example({ id: "${result.node.example.id}" }) to retrieve the complete example.` : ''}` }],
         };
       }
 
@@ -1206,12 +1221,12 @@ async function handleToolCall(name: string, args: unknown): Promise<ToolCallResu
           };
         }
 
-        const header = result.metadata.class
-          ? `# ${result.metadata.title}\n**${result.metadata.class}.${result.metadata.method}** | Source: ${result.metadata.source}`
-          : `# ${result.metadata.title}\n**Category:** ${result.metadata.category} | Source: ${result.metadata.source}`;
-
         return {
-          content: [{ type: 'text', text: `${header}\n\n${result.body}` }],
+          content: [{ type: 'text', text: JSON.stringify({
+            id,
+            metadata: result.metadata,
+            body: result.body,
+          }, null, 2) }],
         };
       }
 

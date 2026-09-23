@@ -14,3 +14,4 @@ data/.cache.json
 .env
 content/*
 !content/transcripts
+/.pi/quiet-tools

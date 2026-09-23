@@ -15,7 +15,9 @@
  *   - data/graph.json
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
-import { join, relative } from 'path';
+import { join, relative, resolve, posix } from 'path';
+import { fileURLToPath } from 'url';
+import { sanitizeMarkdown } from '../src/markdown-sanitizer.js';
 
 const SCRIPT_DIR = import.meta.dirname;
 const ROOT_DIR = join(SCRIPT_DIR, '..');
@@ -27,7 +29,27 @@ const SURVEY_DATA = join(DATA_DIR, 'class_survey_data.json');
 const CHUNKS_OUT = join(DATA_DIR, 'doc_chunks.json');
 const GRAPH_OUT = join(DATA_DIR, 'graph.json');
 
-// Sections where we include the full markdown body, chunked by heading
+const WEBSITE_DOCS_DIR = join(CONTENT_DIR, 'website_docs');
+const INCLUDED_WEBSITE_PREFIXES = [
+  'architecture/',
+  'reference/audio-modules/',
+  'reference/scriptnodes/',
+  'reference/ui-components/',
+];
+const INCLUDED_LANGUAGE_FILES = new Set([
+  'reference/languages/index.md',
+  'reference/languages/hisescript.md',
+  'reference/languages/scriptnode.md',
+  'reference/languages/snex.md',
+  'reference/languages/cpp-dsp-nodes.md',
+  'reference/languages/faust.md',
+  'reference/languages/rnbo.md',
+  'reference/languages/css.md',
+  'reference/languages/regex.md',
+  'reference/languages/markdown.md',
+]);
+
+// Legacy content sections where the full markdown body is useful.
 const FULL_BODY_SECTIONS = ['guide', 'architecture', 'getting-started', 'reference', 'examples'];
 
 // Domain lookup from class_survey_data.json
@@ -50,12 +72,12 @@ function buildDomainMap() {
 
 // Map content URL paths to domains
 function getContentDomain(url) {
-  if (url.includes('/reference/audio-modules/')) return 'audio';
-  if (url.includes('/reference/scriptnodes/')) return 'scriptnode';
-  if (url.includes('/reference/ui-components/')) return 'ui';
-  if (url.includes('/reference/languages/')) return 'scripting';
+  if (url.includes('/reference/audio-modules')) return 'audio';
+  if (url.includes('/reference/scriptnodes')) return 'scriptnode';
+  if (url.includes('/reference/ui-components')) return 'ui';
+  if (url.includes('/reference/languages')) return 'scripting';
   if (url.includes('/guide/')) return 'guide';
-  if (url.includes('/architecture/')) return 'architecture';
+  if (url.includes('/architecture')) return 'architecture';
   if (url.includes('/getting-started/')) return 'getting-started';
   if (url.includes('/examples/')) return 'examples';
   return 'other';
@@ -68,9 +90,46 @@ function extractFrontmatter(content) {
   const body = content.slice(m[0].length).trim();
   const result = {};
 
-  for (const field of ['title', 'description', 'contentType', 'componentType']) {
+  for (const field of ['title', 'description', 'contentType', 'componentType', 'componentId', 'moduleId', 'factoryPath']) {
     const match = yaml.match(new RegExp(`^${field}:\\s*"?(.*?)"?\\s*$`, 'm'));
     if (match) result[field] = match[1].replace(/^["']|["']$/g, '');
+  }
+
+  const yamlLines = yaml.split('\n');
+  const guidanceStart = yamlLines.findIndex(line => /^guidance:\s*$/.test(line));
+  if (guidanceStart !== -1) {
+    const guidanceLines = [];
+    for (let i = guidanceStart + 1; i < yamlLines.length; i++) {
+      if (/^[A-Za-z][\w-]*:/.test(yamlLines[i])) break;
+      guidanceLines.push(yamlLines[i]);
+    }
+
+    const fieldBlock = field => {
+      const start = guidanceLines.findIndex(line => new RegExp(`^  ${field}:`).test(line));
+      if (start === -1) return [];
+      const block = [];
+      for (let i = start + 1; i < guidanceLines.length; i++) {
+        if (/^  [\w-]+:/.test(guidanceLines[i])) break;
+        block.push(guidanceLines[i]);
+      }
+      return block;
+    };
+
+    const summaryLine = guidanceLines.find(line => /^  summary:/.test(line));
+    if (summaryLine) {
+      const inlineSummary = summaryLine.replace(/^  summary:\s*[>|]?\s*/, '');
+      const summaryLines = fieldBlock('summary').map(line => line.replace(/^    /, ''));
+      result.summary = [inlineSummary, ...summaryLines].filter(Boolean).join(' ').trim();
+    }
+
+    const complexityLine = guidanceLines.find(line => /^  complexity:/.test(line));
+    if (complexityLine) result.complexity = complexityLine.replace(/^  complexity:\s*/, '').replace(/^["']|["']$/g, '');
+    for (const field of ['concepts', 'prerequisites']) {
+      result[field] = fieldBlock(field)
+        .map(line => line.match(/^    -\s+(.*?)\s*$/)?.[1])
+        .filter(Boolean)
+        .map(item => item.replace(/^["']|["']$/g, ''));
+    }
   }
 
   const llmMatch = yaml.match(/^llmRef:\s*\|\s*\n([\s\S]*?)(?=\n\w|\n---)/m);
@@ -96,8 +155,44 @@ function extractSeeAlsoLinks(content) {
   return links;
 }
 
+export function shouldIncludeWebsiteDoc(relativePath) {
+  const normalized = relativePath.replace(/\\/g, '/');
+  return INCLUDED_WEBSITE_PREFIXES.some(prefix => normalized.startsWith(prefix))
+    || INCLUDED_LANGUAGE_FILES.has(normalized);
+}
+
+function normalizeRoutePath(route) {
+  const [pathname, anchor = ''] = route.split('#', 2);
+  const segments = pathname.split('/').filter(Boolean).map(segment => segment.replace(/^\d+\./, '').toLowerCase());
+  const hadIndex = segments.at(-1) === 'index';
+  if (hadIndex) segments.pop();
+  let normalized = '/' + segments.join('/');
+  if (hadIndex && !normalized.endsWith('/')) normalized += '/';
+  return normalized + (anchor ? `#${slugify(anchor)}` : '');
+}
+
+export function websiteDocUrl(relativePath) {
+  const route = relativePath.replace(/\\/g, '/').replace(/\.md$/, '');
+  return normalizeRoutePath(`/v2/${route}`);
+}
+
+function normalizeInternalLink(link, pageUrl) {
+  if (!link || /^(?:https?:|mailto:|\/images\/|\/data\/)/.test(link)) return null;
+  if (link.startsWith('#')) return pageUrl.replace(/#.*$/, '').replace(/\/$/, '') + '#' + slugify(link.slice(1));
+  if (link.startsWith('/v2/')) return normalizeRoutePath(link);
+  const pagePath = pageUrl.replace(/#.*$/, '');
+  const base = pagePath.endsWith('/') ? pagePath : posix.dirname(pagePath) + '/';
+  return normalizeRoutePath(posix.resolve(base, link));
+}
+
+function extractInternalLinks(content, pageUrl) {
+  const links = new Set(extractSeeAlsoLinks(content));
+  for (const match of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) links.add(match[1]);
+  return [...links].map(link => normalizeInternalLink(link, pageUrl)).filter(Boolean);
+}
+
 function chunkByHeading(body) {
-  const cleaned = body.replace(/::\w[\s\S]*?::/g, '').trim();
+  const cleaned = sanitizeMarkdown(body).trim();
   if (!cleaned) return [];
 
   const sections = cleaned.split(/^## /m);
@@ -148,6 +243,48 @@ function walkMarkdown(dir) {
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function getWebsiteType(relativePath) {
+  if (relativePath.startsWith('architecture/')) return 'architecture';
+  if (relativePath.startsWith('reference/audio-modules/')) return 'audio-module-reference';
+  if (relativePath.startsWith('reference/scriptnodes/')) return 'scriptnode-reference';
+  if (relativePath.startsWith('reference/ui-components/')) return 'ui-component-reference';
+  if (relativePath.startsWith('reference/languages/')) return 'language-reference';
+  return 'page';
+}
+
+function getLanguage(relativePath) {
+  if (!relativePath.startsWith('reference/languages/')) return undefined;
+  const name = posix.basename(relativePath, '.md');
+  return name === 'index' ? undefined : name;
+}
+
+function websiteMetadata(fm, relativePath, url, sourcePath, overrides = {}) {
+  return {
+    source: 'content',
+    type: getWebsiteType(relativePath),
+    title: fm.title || '',
+    description: fm.description || fm.summary || '',
+    summary: fm.summary,
+    concepts: fm.concepts,
+    prerequisites: fm.prerequisites,
+    complexity: fm.complexity,
+    language: getLanguage(relativePath),
+    sourcePath,
+    componentId: fm.componentId,
+    moduleId: fm.moduleId,
+    factoryPath: fm.factoryPath,
+    domain: getContentDomain(url),
+    url,
+    ...overrides,
+  };
+}
+
+function buildWebsiteSearchText(fm, heading, text, domain) {
+  const context = [fm.title, heading].filter(Boolean).join(' — ');
+  const guidance = [fm.summary, fm.concepts?.length ? `Concepts: ${fm.concepts.join(', ')}` : ''].filter(Boolean);
+  return [context, `Domain: ${domain}`, ...guidance, text].filter(Boolean).join('\n\n');
 }
 
 function buildMethodBody(methodName, methodData) {
@@ -331,114 +468,152 @@ function collectChunks() {
     console.warn('Warning: Could not read preprocessor.json:', e.message);
   }
 
-  // 2. Markdown files
-  console.log('Reading markdown files...');
-  const mdFiles = walkMarkdown(CONTENT_DIR);
+  // 2. Legacy markdown files (transcripts and any non-website content).
+  console.log('Reading legacy markdown files...');
+  const legacyFiles = walkMarkdown(CONTENT_DIR).filter(file => !file.startsWith(WEBSITE_DOCS_DIR));
 
-  for (const file of mdFiles) {
+  for (const file of legacyFiles) {
     const content = readFileSync(file, 'utf-8');
     const { fm, body } = extractFrontmatter(content);
     if (!fm) continue;
 
-    const relPath = ('v2/' + relative(CONTENT_DIR, file))
-      .replace(/\.md$/, '').replace(/\/index$/, '');
+    const relPath = ('v2/' + relative(CONTENT_DIR, file)).replace(/\.md$/, '').replace(/\/index$/, '');
     const url = '/' + relPath;
     const section = relPath.split('/')[1] || '';
-    const seeAlsoLinks = extractSeeAlsoLinks(content);
+    const cleanBody = sanitizeMarkdown(body);
+    const text = [fm.llmRef, fm.description].filter(Boolean).join('\n\n');
+    if (!text) continue;
+
+    const chunkId = `content:${url}`;
+    chunks.push({
+      id: chunkId,
+      text,
+      body: cleanBody || text,
+      metadata: {
+        source: 'content',
+        type: fm.componentType || 'page',
+        title: fm.title || '',
+        description: fm.description || '',
+        domain: getContentDomain(url),
+        url
+      }
+    });
 
     if (FULL_BODY_SECTIONS.includes(section)) {
-      const bodyChunks = chunkByHeading(body);
-
-      const fmText = [fm.llmRef, fm.description].filter(Boolean).join('\n\n');
-      if (fmText) {
-        const fmId = `content:${url}`;
-        chunks.push({
-          id: fmId,
-          text: fmText,
-          body: body,
-          metadata: {
-            source: 'content',
-            type: fm.componentType || 'page',
-            title: fm.title || '',
-            description: fm.description || '',
-            domain: getContentDomain(url),
-            url
-          }
-        });
-
-        if (seeAlsoLinks.length) {
-          graph[fmId] = graph[fmId] || [];
-          for (const link of seeAlsoLinks) {
-            graph[fmId].push(`content:${link}`);
-          }
-        }
-
-        for (const chunk of bodyChunks) {
-          const anchor = chunk.heading ? '#' + slugify(chunk.heading) : '';
-          const chunkId = `content:${url}${anchor}`;
-          graph[fmId] = graph[fmId] || [];
-          graph[fmId].push(chunkId);
-          graph[chunkId] = graph[chunkId] || [];
-          graph[chunkId].push(fmId);
-        }
-      }
-
-      for (const chunk of bodyChunks) {
-        const anchor = chunk.heading ? '#' + slugify(chunk.heading) : '';
-        const chunkId = `content:${url}${anchor}`;
+      for (const chunk of chunkByHeading(cleanBody)) {
+        const anchor = '#' + (chunk.heading ? slugify(chunk.heading) : 'overview');
+        const sectionId = `content:${url}${anchor}`;
         const chunkText = chunk.heading ? `${chunk.heading}\n\n${chunk.text}` : chunk.text;
         chunks.push({
-          id: chunkId,
+          id: sectionId,
           text: chunkText,
           body: chunkText,
           metadata: {
-            source: 'content',
-            type: 'section',
-            title: chunk.heading || fm.title || '',
-            pageTitle: fm.title || '',
-            description: firstSentence(chunk.text),
-            domain: getContentDomain(url),
-            url: url + anchor
+            source: 'content', type: 'section', title: chunk.heading || fm.title || '',
+            pageTitle: fm.title || '', description: firstSentence(chunk.text),
+            domain: getContentDomain(url), url: url + anchor
           }
         });
-      }
-    } else {
-      const text = [fm.llmRef, fm.description].filter(Boolean).join('\n\n');
-      if (!text) continue;
-
-      const chunkId = `content:${url}`;
-      chunks.push({
-        id: chunkId,
-        text,
-        body: body || text,
-        metadata: {
-          source: 'content',
-          type: fm.componentType || 'page',
-          title: fm.title || '',
-          description: fm.description || '',
-          domain: getContentDomain(url),
-          url
-        }
-      });
-
-      if (seeAlsoLinks.length) {
-        graph[chunkId] = graph[chunkId] || [];
-        for (const link of seeAlsoLinks) {
-          graph[chunkId].push(`content:${link}`);
-        }
+        graph[chunkId] = [...(graph[chunkId] || []), sectionId];
+        graph[sectionId] = [...(graph[sectionId] || []), chunkId];
       }
     }
   }
 
-  // Deduplicate graph edges
-  for (const key of Object.keys(graph)) {
-    graph[key] = [...new Set(graph[key])];
+  // 3. Selected website documentation. These pages always retain a complete,
+  // sanitized retrieval body and get heading-level semantic chunks.
+  console.log('Reading selected website documentation...');
+  const websiteFiles = walkMarkdown(WEBSITE_DOCS_DIR)
+    .map(file => ({ file, relativePath: relative(WEBSITE_DOCS_DIR, file).replace(/\\/g, '/') }))
+    .filter(entry => shouldIncludeWebsiteDoc(entry.relativePath));
+
+  for (const { file, relativePath } of websiteFiles) {
+    const content = readFileSync(file, 'utf-8');
+    const { fm, body } = extractFrontmatter(content);
+    if (!fm) continue;
+
+    const url = websiteDocUrl(relativePath);
+    const pageId = `content:${url}`;
+    const cleanBody = sanitizeMarkdown(body);
+    const domain = getContentDomain(url);
+    const pageSummary = [fm.llmRef, fm.summary, fm.description].filter(Boolean).join('\n\n');
+    const pageText = buildWebsiteSearchText(fm, '', pageSummary || firstSentence(cleanBody), domain);
+    const sourcePath = `content/website_docs/${relativePath}`;
+
+    chunks.push({
+      id: pageId,
+      text: pageText,
+      body: cleanBody || pageSummary,
+      metadata: websiteMetadata(fm, relativePath, url, sourcePath)
+    });
+    graph[pageId] = graph[pageId] || [];
+
+    for (const chunk of chunkByHeading(cleanBody)) {
+      const anchor = '#' + (chunk.heading ? slugify(chunk.heading) : 'overview');
+      const sectionUrl = url.replace(/\/$/, '') + anchor;
+      const sectionId = `content:${sectionUrl}`;
+      const sectionText = chunk.heading ? `${chunk.heading}\n\n${chunk.text}` : chunk.text;
+      chunks.push({
+        id: sectionId,
+        text: buildWebsiteSearchText(fm, chunk.heading || 'Overview', sectionText, domain),
+        body: sectionText,
+        metadata: websiteMetadata(fm, relativePath, sectionUrl, sourcePath, {
+          type: 'section',
+          documentType: getWebsiteType(relativePath),
+          title: chunk.heading || fm.title || '',
+          pageTitle: fm.title || '',
+          section: chunk.heading || 'Overview',
+          description: firstSentence(chunk.text),
+        })
+      });
+      graph[pageId].push(sectionId);
+      graph[sectionId] = [...(graph[sectionId] || []), pageId];
+    }
+
+    for (const targetUrl of extractInternalLinks(content, url)) {
+      graph[pageId].push(`content:${targetUrl}`);
+    }
+
+    if (fm.componentId) graph[pageId].push(`api:${fm.componentId}`);
   }
+
+  // Resolve content links to an existing page when a link uses a harmless
+  // trailing-slash variation, and drop unresolved internal content targets.
+  const chunkIds = new Set(chunks.map(chunk => chunk.id));
+  const contentUrlIds = new Map();
+  for (const chunk of chunks) {
+    if (chunk.metadata?.url) {
+      contentUrlIds.set(chunk.metadata.url.replace(/\/$/, ''), chunk.id);
+    }
+  }
+
+  let unresolvedLinks = 0;
+  for (const key of Object.keys(graph)) {
+    const resolvedEdges = [];
+    for (const target of graph[key]) {
+      if (!target.startsWith('content:')) {
+        if (chunkIds.has(target)) resolvedEdges.push(target);
+        continue;
+      }
+      if (chunkIds.has(target)) {
+        resolvedEdges.push(target);
+        continue;
+      }
+      const normalizedTarget = target.slice('content:'.length).replace(/\/$/, '');
+      const resolvedId = contentUrlIds.get(normalizedTarget)
+        || contentUrlIds.get(normalizedTarget.replace(/#.*$/, ''));
+      if (resolvedId) resolvedEdges.push(resolvedId);
+      else unresolvedLinks++;
+    }
+    graph[key] = [...new Set(resolvedEdges)];
+  }
+
+  if (unresolvedLinks) console.warn(`  Skipped ${unresolvedLinks} unresolved internal documentation links`);
 
   return { chunks, graph };
 }
 
-function main() {
+export function main() {
   const { chunks, graph } = collectChunks();
 
   console.log(`Collected ${chunks.length} chunks`);
@@ -454,4 +629,6 @@ function main() {
   console.log(`Done! ${chunks.length} chunks (${chunksMB}MB), graph: ${Object.keys(graph).length} nodes`);
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

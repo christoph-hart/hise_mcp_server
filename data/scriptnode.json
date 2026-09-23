@@ -734,7 +734,7 @@
         "serial",
         "midi"
       ],
-      "llmRef": "container.midichain\n\nA serial container that enables sample-accurate MIDI event processing. Splits the audio block at MIDI event timestamps so children process audio in chunks aligned to event boundaries.\n\nSignal flow:\n  input audio block + MIDI events ->\n    process(samples before event 1) ->\n    handleEvent(event 1) ->\n    process(samples before event 2) ->\n    handleEvent(event 2) ->\n    ... -> output\n\nCPU: low, monophonic\n  Overhead proportional to MIDI event count per block.\n\nParameters:\n  None\n\nWhen to use:\n  Required in effect plugin contexts to enable MIDI processing. Provides sample-accurate MIDI timing for nodes that respond to MIDI (oscillators, envelopes). Unnecessary in synthesiser or modulator contexts where MIDI is already enabled.\n\nSee also:\n  [companion] container.no_midi -- blocks MIDI events instead of enabling them\n  [disambiguation] container.chain -- serial chain without MIDI event splitting",
+      "llmRef": "container.midichain\n\nA serial container that enables sample-accurate MIDI event processing. Splits the audio block at MIDI event timestamps so children process audio in chunks aligned to event boundaries.\n\nSignal flow:\n  input audio block + MIDI events ->\n    process(samples before event 1) ->\n    handleEvent(event 1) ->\n    process(samples before event 2) ->\n    handleEvent(event 2) ->\n    ... -> output\n\nCPU: low, monophonic\n  Overhead proportional to MIDI event count per block.\n\nParameters:\n  None\n\nWhen to use:\n  Required in effect plugin contexts to enable MIDI processing. Provides sample-accurate MIDI timing for nodes that respond to MIDI (oscillators, envelopes). Unnecessary in synthesiser or modulator contexts where MIDI is already enabled.\n\nFrame-context rule:\n  - container.midichain cannot be placed inside frame1_block, frame2_block, or framex_block.\n  - If child nodes need both MIDI events and frame processing, put the frame container inside the midichain: midichain -> frame2_block -> event-sensitive nodes.\n  - The reverse order, frame2_block -> midichain, is invalid because midichain rejects blockSize=1 during prepare.\n\nSee also:\n  [companion] container.no_midi -- blocks MIDI events instead of enabling them\n  [disambiguation] container.chain -- serial chain without MIDI event splitting",
       "cpuProfile": {
         "baseline": "low",
         "polyphonic": false,
@@ -3900,13 +3900,19 @@
         "modulation",
         "bridge"
       ],
-      "llmRef": "core.extra_mod\n\nPicks up a modulation signal from an extra modulation chain of the parent module and exposes it inside scriptnode. The signal passes through unmodified (raw mode) -- no intensity scaling or mode formula is applied. The Index parameter selects which extra modulation chain slot to read from.\n\nSignal flow:\n  parent module's extra mod chain -> raw passthrough -> modulation output (normalised 0-1)\n  (optional) -> audio channel 0 when ProcessSignal is enabled\n\nCPU: negligible, polyphonic\n\nParameters:\n  Index (0 - 16, default 0): Selects which extra modulation chain to read from.\n  ProcessSignal (Disabled / Enabled, default Disabled): Writes raw modulation to audio channel 0.\n\nWhen to use:\n  - Bringing external modulation (LFOs, envelopes) into a scriptnode network\n  - Per-voice modulation from the parent module's extra mod chains\n  - Sample-accurate modulation of parameters within the network\n\nCommon mistakes:\n  - Must define preprocessor for extra mod slot count per module type\n  - Cannot use root parameter connection and extra_mod on the same index\n\nSee also:\n  [alternative] core.global_mod -- receives from GlobalModulatorContainer\n  [companion] core.pitch_mod -- bridge for pitch modulation chain\n  [alternative] core.matrix_mod -- dual-source modulation with matrix features",
+      "llmRef": "core.extra_mod\n\nPicks up a modulation signal from an extra modulation chain of the parent module and exposes it inside scriptnode. The signal passes through unmodified (raw mode) -- no intensity scaling or mode formula is applied. The Index parameter selects which extra modulation chain slot to read from.\n\nSignal flow:\n  parent module's extra mod chain -> raw passthrough -> modulation output (normalised 0-1)\n  (optional) -> audio channel 0 when ProcessSignal is enabled\n\nCPU: negligible, polyphonic\n\nParameters:\n  Index (0 - 16, default 0): Selects which extra modulation chain to read from.\n  ProcessSignal (Disabled / Enabled, default Disabled): Writes raw modulation to audio channel 0.\n\nWhen to use:\n  - Bringing external modulation (LFOs, envelopes) into a scriptnode network\n  - Per-voice modulation from the parent module's extra mod chains\n  - Sample-accurate modulation of parameters within the network\n\nRequired parent context:\n  - core.extra_mod processes HISE events. In a monophonic ScriptFX network it must have a container.midichain ancestor.\n  - A polyphonic root network already provides the MIDI-processing context.\n  - Do not place it below container.no_midi.\n  - If it must also run in a frame context, use midichain -> frame2_block -> extra_mod. container.midichain cannot be placed inside frame2_block.\n\nRequired root parameter slot:\n  - Enable External Modulation on one root parameter to create the extra modulation slot that extra_mod reads.\n  - The root parameter's slot order must match extra_mod.Index. Index 0 reads the first root parameter with External Modulation enabled.\n  - Use either direct root-parameter modulation or extra_mod pickup for a slot, not both.\n\nCommon mistakes:\n  - Missing MIDI-processing context for extra_mod\n  - No root parameter assigned to the extra_mod slot\n  - Must define preprocessor for extra mod slot count per module type\n  - Cannot use root parameter connection and extra_mod on the same index\n\nSee also:\n  [alternative] core.global_mod -- receives from GlobalModulatorContainer\n  [companion] core.pitch_mod -- bridge for pitch modulation chain\n  [alternative] core.matrix_mod -- dual-source modulation with matrix features",
       "cpuProfile": {
         "baseline": "negligible",
         "polyphonic": true,
         "scalingFactors": []
       },
       "commonMistakes": [
+        {
+          "title": "Missing MIDI processing context",
+          "wrong": "Placing core.extra_mod directly in a monophonic ScriptFX chain without a MIDI-aware parent",
+          "right": "In monophonic effect networks, wrap core.extra_mod in container.midichain. If frame processing is also needed, put frame2_block inside midichain, not the other way around.",
+          "explanation": "extra_mod processes HISE events so it needs a MIDI-processing context: either a polyphonic root network or a container.midichain ancestor, with no container.no_midi ancestor."
+        },
         {
           "title": "Missing preprocessor for mod slots",
           "wrong": "Adding core.extra_mod without defining the preprocessor for the module type",
@@ -3918,6 +3924,12 @@
           "wrong": "Connecting a root parameter target and an extra_mod node to the same modulation index",
           "right": "Use either a root parameter connection or an extra_mod node for a given index, not both.",
           "explanation": "These two modes are mutually exclusive. If both are active on the same index, a warning icon appears and the behaviour is undefined."
+        },
+        {
+          "title": "No root parameter assigned to the slot",
+          "wrong": "Adding core.extra_mod without setting External Modulation on a root parameter",
+          "right": "Set one root parameter's External Modulation mode (eg. Combined) so that its modulation slot index matches core.extra_mod.Index.",
+          "explanation": "extra_mod reads an existing extra modulation slot. The slot is created by a root parameter with ExternalModulation enabled; otherwise validation reports 'No parameter assigned to modulation slot'."
         }
       ],
       "seeAlso": [
