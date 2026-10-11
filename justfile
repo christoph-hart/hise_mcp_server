@@ -1,5 +1,6 @@
 set windows-shell := ["powershell.exe", "-c"]
 
+[macos]
 local:
     PORT=4406 node dist/index.js
 
